@@ -259,13 +259,13 @@ def run_dynamic_simulation(
         dynaRecord = pd.concat([dynaRecord, statei], axis=1, ignore_index=False)
     return dynaRecord, params
 
-if __name__ == '__main__':
-    hybrid_parameters = PROJECT_DIR / 'calibrated_hybrid_parameters.pkl'
-    rate_parameters = PROJECT_DIR / 'calibrated_rate_parameters.pkl'
-    selected_parameters = hybrid_parameters if hybrid_parameters.exists() else rate_parameters
-    run_dynamic_simulation(
-        paraName= None, # selected_parameters,
-        initialization_mode='measured', # three options: 'config', 'steady'， 'measured'
-    )
+# if __name__ == '__main__':
+#     hybrid_parameters = PROJECT_DIR / 'calibrated_hybrid_parameters.pkl'
+#     rate_parameters = PROJECT_DIR / 'calibrated_rate_parameters.pkl'
+#     selected_parameters = hybrid_parameters if hybrid_parameters.exists() else rate_parameters
+#     run_dynamic_simulation(
+#         paraName= None, # selected_parameters,
+#         initialization_mode='measured', # three options: 'config', 'steady'， 'measured'
+#     )
 
 # %%

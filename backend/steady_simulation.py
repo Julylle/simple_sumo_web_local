@@ -160,7 +160,7 @@ def run_steady_simulation(
     return simuRecord, params, steady_state_initial_values
 
 
-if __name__ == '__main__':
-    run_steady_simulation()
+# if __name__ == '__main__':
+#     run_steady_simulation()
 
 # %%

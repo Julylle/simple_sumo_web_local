@@ -36,6 +36,27 @@ model_parameters = {
     'Rdiff' : 0.9640, # average flow rate, L/s
 }
 
+# Public simulation inputs used by the browser, mapped to the ASM model's
+# internal names and units.  The model uses L/s for hydraulic flows.
+PROCESS_VOLUME_L = 2 * 233727.29 + 3 * 467454.51
+
+
+def frontend_parameter_overrides(parameters):
+    """Translate API simulation inputs into ASM parameter overrides."""
+    return {
+        'qinlet': float(parameters.flow_m3_d) / 86.4,
+        'SSinlet': float(parameters.influent_cod_mg_l) * 0.8,
+        'SNHinlet': float(parameters.influent_nh4_mg_l),
+        'DOSetpoint': 1,
+        'S1DOsetpoint': 0,
+        'S2DOsetpoint': 0,
+        'S3DOsetpoint': float(parameters.do_mg_l),
+        'S4DOsetpoint': float(parameters.do_mg_l),
+        'S5DOsetpoint': float(parameters.do_mg_l),
+        'qwas': PROCESS_VOLUME_L / (float(parameters.srt_d) * 86400),
+        'frontend_inputs': True,
+    }
+
 # # Calibration parameters for steady state
 # default_calibration_params = {
 #     # AOB kinetic parameters

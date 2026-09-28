@@ -15,9 +15,9 @@ export interface SimulationResult {
 }
 
 export async function simulate(params: Params): Promise<SimulationResult> {
-  const response = await fetch('/api/simulation', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  const response = await fetch("/api/simulation", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
   });
   if (!response.ok) throw new Error(`Simulation failed (${response.status})`);

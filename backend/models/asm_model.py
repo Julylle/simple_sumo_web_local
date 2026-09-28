@@ -176,8 +176,20 @@ class GrowthCoupledProduction:
             kla3O2_dyna = kla3O2_cal*mag_corr3
             t_index = min(max(int(t / 60), 0), len(self.dyInput) - 1)
             row = self.dyInput.iloc[t_index]
-            influent = (row["Effluent rate (L/s)"] + row["WAS (L/s)"]) * 60 / 11 # L/min, convert to single lane
-            MLR = influent * self.model_parameters['qmlr_ratio'] # L/min
+            if self.model_parameters.get('frontend_inputs'):
+                influent = self.model_parameters['qinlet'] * 60 / 11
+                MLR = influent * self.model_parameters['qmlr_ratio']
+                qras = self.model_parameters['qras'] * 60 / 11
+                qwas = self.model_parameters['qwas'] * 60 / 11
+                snh_inlet = self.model_parameters['SNHinlet']
+                ss_inlet = self.model_parameters['SSinlet']
+            else:
+                influent = (row["Effluent rate (L/s)"] + row["WAS (L/s)"]) * 60 / 11 # L/min, convert to single lane
+                MLR = influent * self.model_parameters['qmlr_ratio'] # L/min
+                qras = row["RAS (L/s)"] * 60 / 11
+                qwas = row["WAS (L/s)"] * 60 / 11
+                snh_inlet = row.SNH
+                ss_inlet = row.bCOD
             # Dynamic KLa columns are optional.  The configured values are in
             # day^-1, so convert them to min^-1 when the worksheet omits them.
             if self.model_parameters['constantKLa']:
@@ -190,7 +202,7 @@ class GrowthCoupledProduction:
                 kla3O2 = kla3O2_dyna[t_index] / 24 / 60 # min-1
 
             return (
-                row.SNH,
+                snh_inlet,
                 0, # self.dyInput.SNH2OH[t_index],
                 0, # self.dyInput.SN2[t_index],
                 0, # self.dyInput.SN2O[t_index],
@@ -198,15 +210,15 @@ class GrowthCoupledProduction:
                 row.SNO2,
                 row.SNO3,
                 0, # self.dyInput.SO[t_index],
-                row.bCOD,
+                ss_inlet,
                 0, # self.dyInput.XAOB[t_index],
                 0, # self.dyInput.XNOB[t_index],
                 0, # self.dyInput.XH[t_index],
                 row.XI, # XI
                 influent,
                 MLR,
-                row["RAS (L/s)"] * 60 / 11, # L/min, convert to single lane
-                row["WAS (L/s)"] * 60 / 11, # L/min, convert to single lane
+                qras, # L/min, convert to single lane
+                qwas, # L/min, convert to single lane
                 kla1O2, # min-1
                 kla2O2, # min-1,
                 kla3O2, # min-1,

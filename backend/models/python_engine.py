@@ -2,24 +2,21 @@ import numpy as np
 
 from models.base import SimulationEngine
 from dynamic_simulation import run_dynamic_simulation
+from config.parameters import frontend_parameter_overrides
 from schemas.simulation import SimulationInput
 
 
 class PythonEngine(SimulationEngine):
     """Adapt ASM dynamic results to the public simulation output contract.
 
-    Flow, influent concentrations and sludge wasting come from the dynamic
-    workbook; the demo's flow/COD/NH4/SRT inputs are not mapped to this model.
+    Browser inputs are translated into ASM hydraulic, influent, oxygen and
+    sludge-retention parameters before the dynamic model is executed.
     """
 
     def run(self, p: SimulationInput) -> dict:
+        parameter_overrides = frontend_parameter_overrides(p)
         record, _ = run_dynamic_simulation(
-            parameter_overrides={
-                "DOSetpoint": 1,
-                "S3DOsetpoint": p.do_mg_l,
-                "S4DOsetpoint": p.do_mg_l,
-                "S5DOsetpoint": p.do_mg_l,
-            },
+            parameter_overrides=parameter_overrides,
             output_times=np.linspace(0.0, p.duration_h * 60.0, 481),
             plot=False,
             compare=False,
@@ -32,3 +29,13 @@ class PythonEngine(SimulationEngine):
             # Keep the existing API key; this is dissolved N2O (mg N/L).
             "n2o_index": record["S5N2O"].to_numpy(dtype=float),
         }
+
+
+if __name__ == '__main__':
+    hybrid_parameters = PROJECT_DIR / 'calibrated_hybrid_parameters.pkl'
+    rate_parameters = PROJECT_DIR / 'calibrated_rate_parameters.pkl'
+    selected_parameters = hybrid_parameters if hybrid_parameters.exists() else rate_parameters
+    run_dynamic_simulation(
+        paraName= None, # selected_parameters,
+        initialization_mode='measured', # three options: 'config', 'steady'， 'measured'
+    )
