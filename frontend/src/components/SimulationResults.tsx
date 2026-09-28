@@ -53,17 +53,13 @@ export function SimulationResults({
               "Final COD",
               final?.cod,
               "mg/L",
-              data
-                ? `${formatNumber((1 - final!.cod / parameters.influent_cod_mg_l) * 100, 1)}% removal`
-                : "Awaiting run",
+              data ? "Measured dynamic influent" : "Awaiting run",
             ],
             [
               "Final NH₄-N",
               final?.nh4,
               "mg/L",
-              data
-                ? `${formatNumber((1 - final!.nh4 / parameters.influent_nh4_mg_l) * 100, 1)}% removal`
-                : "Awaiting run",
+              data ? "Measured dynamic influent" : "Awaiting run",
             ],
             [
               "Peak N₂O index",

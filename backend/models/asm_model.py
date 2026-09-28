@@ -6,6 +6,7 @@ import pandas as pd
 # from scipy.integrate import solve_ivp
 # from scipy.interpolate import interp1d
 from config.paths import DYNAMIC_DATA_FILE
+from services.input_series import sample
 
 
 class MonodSingleTank:
@@ -128,7 +129,7 @@ class GrowthCoupledProduction:
         self.SingleTank = MonodSingleTank(**{k: v for k, v in model_parameters.items() if k in MonodSingleTank.__init__.__code__.co_varnames})
         # Dictionary Comprehension distract parameters from model_parameters for MonodSingleTank contractor function
 
-        if model_parameters['dynamicSwitch']:
+        if model_parameters['dynamicSwitch'] or model_parameters.get('time_series'):
 
             self.dyInput = pd.read_excel(DYNAMIC_DATA_FILE, sheet_name='dyinput', header=0)
             # rawInlet.set_index('Time', inplace=True)
@@ -148,83 +149,24 @@ class GrowthCoupledProduction:
 
 
     def get_dynamic_inputs(self, t):
-        if self.model_parameters['dynamicSwitch']:
-            # Use the most recent input row.  ``iloc`` avoids treating the
-            # integer as an index label, and clipping keeps the final solver
-            # evaluation within the available input data.
-            mag_kla1O2 = self.model_parameters['kla1O2']
-            mag_kla2O2 = self.model_parameters['kla2O2']
-            mag_kla3O2 = self.model_parameters['kla3O2']
-            tot_Af = self.dyInput["Aeration Tank 4_m3/h"]/60/60 # m3/s
-            Ae1_per =  0.55
-            Ae2_per =  0.26
-            Ae3_per =  0.19
-            Aerobic_area = 141.6528818
-            Ae1_Vg = tot_Af * Ae1_per / Aerobic_area
-            Ae2_Vg = tot_Af * Ae2_per / Aerobic_area
-            Ae3_Vg = tot_Af * Ae3_per / Aerobic_area
-            d_R = 3.3 # m
-            d_L = 0.815 # lab reactor depth
-            # tempcorr = pow(1.024,temp-20)
-            kla1O2_cal = pow(d_R/d_L,-0.49)*34500*pow(Ae1_Vg,0.86)/self.model_parameters['Rdiff'] # day^-1
-            kla2O2_cal = pow(d_R/d_L,-0.49)*34500*pow(Ae2_Vg,0.86)/self.model_parameters['Rdiff'] # day^-1
-            kla3O2_cal = pow(d_R/d_L,-0.49)*34500*pow(Ae3_Vg,0.86)/self.model_parameters['Rdiff'] # day^-1
-            mag_corr1 = mag_kla1O2/kla1O2_cal[:8].mean()
-            mag_corr2 = mag_kla2O2/kla2O2_cal[:8].mean()
-            mag_corr3 = mag_kla3O2/kla3O2_cal[:8].mean()
-            kla1O2_dyna = kla1O2_cal*mag_corr1
-            kla2O2_dyna = kla2O2_cal*mag_corr2
-            kla3O2_dyna = kla3O2_cal*mag_corr3
-            t_index = min(max(int(t / 60), 0), len(self.dyInput) - 1)
-            row = self.dyInput.iloc[t_index]
-            if self.model_parameters.get('frontend_inputs'):
-                influent = self.model_parameters['qinlet'] * 60 / 11
-                MLR = influent * self.model_parameters['qmlr_ratio']
-                qras = self.model_parameters['qras'] * 60 / 11
-                qwas = self.model_parameters['qwas'] * 60 / 11
-                snh_inlet = self.model_parameters['SNHinlet']
-                ss_inlet = self.model_parameters['SSinlet']
-            else:
-                influent = (row["Effluent rate (L/s)"] + row["WAS (L/s)"]) * 60 / 11 # L/min, convert to single lane
-                MLR = influent * self.model_parameters['qmlr_ratio'] # L/min
-                qras = row["RAS (L/s)"] * 60 / 11
-                qwas = row["WAS (L/s)"] * 60 / 11
-                snh_inlet = row.SNH
-                ss_inlet = row.bCOD
-            # Dynamic KLa columns are optional.  The configured values are in
-            # day^-1, so convert them to min^-1 when the worksheet omits them.
-            if self.model_parameters['constantKLa']:
-                kla1O2 = self.model_parameters['kla1O2'] / 24 / 60
-                kla2O2 = self.model_parameters['kla2O2'] / 24 / 60
-                kla3O2 = self.model_parameters['kla3O2'] / 24 / 60
-            else:
-                kla1O2 = kla1O2_dyna[t_index] / 24 / 60 # min-1
-                kla2O2 = kla2O2_dyna[t_index] / 24 / 60 # min-1
-                kla3O2 = kla3O2_dyna[t_index] / 24 / 60 # min-1
-
-            return (
-                snh_inlet,
-                0, # self.dyInput.SNH2OH[t_index],
-                0, # self.dyInput.SN2[t_index],
-                0, # self.dyInput.SN2O[t_index],
-                0, # self.dyInput.SNO[t_index],
-                row.SNO2,
-                row.SNO3,
-                0, # self.dyInput.SO[t_index],
-                ss_inlet,
-                0, # self.dyInput.XAOB[t_index],
-                0, # self.dyInput.XNOB[t_index],
-                0, # self.dyInput.XH[t_index],
-                row.XI, # XI
-                influent,
-                MLR,
-                qras, # L/min, convert to single lane
-                qwas, # L/min, convert to single lane
-                kla1O2, # min-1
-                kla2O2, # min-1,
-                kla3O2, # min-1,
-                )
-
+        if self.model_parameters.get('time_series'):
+            # Uploaded values are already per lane: never divide them by 11.
+            time = t if self.dynamicSwitch else 0.0
+            values = {key: sample(profile, time) for key, profile in self.model_parameters['time_series'].items()}
+            row_index = np.searchsorted(self.dyInput['t (min)'], time, side='right') - 1
+            row = self.dyInput.iloc[max(0, min(row_index, len(self.dyInput) - 1))]
+            inflow = values['inflow'] * 1000 / 1440 # m³/d -> L/min
+            ras = values['ras'] * 1000 / 1440 # m³/d -> L/min
+            was = values['was'] * 1000 / 1440 # m³/d -> L/min
+            # Preserve the calibrated KLa/reference-airflow relationship. Use
+            # the built-in reference, so changing uploaded airflow magnitude
+            # changes oxygen transfer instead of normalizing itself away.
+            kla = [self.model_parameters[f'kla{i}O2'] / 1440 *
+                   (values[f'airflow{i}'] / self.model_parameters['airflow_reference'][i - 1]) ** 0.86
+                   for i in (1, 2, 3)]
+            return (values['nh4'], 0, 0, 0, 0, row.SNO2, row.SNO3, 0,
+                    values['bcod'], 0, 0, 0, row.XI, inflow,
+                    inflow * self.model_parameters['qmlr_ratio'], ras, was, *kla)
         else:
             lane_count = 11 if self.model_parameters.get('frontend_inputs') else 1
             MLR = self.model_parameters['qinlet'] * self.model_parameters['qmlr_ratio'] * 60 / lane_count

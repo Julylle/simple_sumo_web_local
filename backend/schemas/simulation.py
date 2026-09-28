@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field, field_validator
 from config.parameters import calibration_params_initial
 
 class SimulationInput(BaseModel):
+    input_series: dict[str, str] = Field(default_factory=dict)
     calibration_parameters: dict[str, float] = Field(default_factory=dict)
 
     @field_validator('calibration_parameters')

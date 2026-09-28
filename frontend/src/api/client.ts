@@ -33,12 +33,36 @@ export async function getCalibrationParameters(signal?: AbortSignal): Promise<Re
   return response.json();
 }
 
-export async function simulate(params: Params, calibrationParameters: Record<string, number> = {}): Promise<SimulationResult> {
+export async function simulate(params: Params, calibrationParameters: Record<string, number> = {}, inputSeries: Record<string, string> = {}): Promise<SimulationResult> {
   const response = await fetch("/api/simulation", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...params, calibration_parameters: calibrationParameters }),
+    body: JSON.stringify({ ...params, calibration_parameters: calibrationParameters, input_series: inputSeries }),
   });
-  if (!response.ok) throw new Error(`Simulation failed (${response.status})`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(typeof body?.detail === "string" ? body.detail : `Simulation failed (${response.status})`);
+  }
   return (await response.json()).result;
+}
+
+export type InputSeriesKey = "inflow" | "bcod" | "nh4" | "ras" | "was" | "airflow1" | "airflow2" | "airflow3";
+export interface InputSeriesInfo {
+  id: string | null;
+  key: InputSeriesKey;
+  filename: string;
+  unit: string;
+  count: number;
+  end_h: number;
+  minimum: number;
+  maximum: number;
+}
+
+export async function uploadInputSeries(key: InputSeriesKey, file: File): Promise<InputSeriesInfo> {
+  const response = await fetch(`/api/input-series/${key}?filename=${encodeURIComponent(file.name)}`, {
+    method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file,
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(result?.detail ?? `Import failed (${response.status})`);
+  return result;
 }

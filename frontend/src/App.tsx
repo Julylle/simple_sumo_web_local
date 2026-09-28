@@ -19,7 +19,7 @@ const tabLabels: Record<WorkspaceTab, string> = {
 
 export default function App() {
   const [tab, setTab] = useState<WorkspaceTab>("simulation");
-  const { parameters, data, busy, error, dirty, updateParameter, run, reset, calibration, calibrationError, calibrationLoaded, updateCalibration, retryCalibration } =
+  const { inputSeries, parameters, data, busy, error, dirty, updateParameter, run, reset, calibration, calibrationError, calibrationLoaded, updateCalibration, retryCalibration } =
     useSimulation();
 
   async function handleRun() {
@@ -53,7 +53,7 @@ export default function App() {
             )}
 
             <PlantLocation />
-            <ProcessConfiguration parameters={parameters} onChange={updateParameter} />
+            <ProcessConfiguration parameters={parameters} onChange={updateParameter} inputSeries={inputSeries} busy={busy} />
             <SimulationConfiguration
               parameters={parameters}
               onChange={updateParameter}

@@ -1,3 +1,4 @@
+import { useInputSeries } from "./useInputSeries";
 import { useEffect, useState } from "react";
 import { getCalibrationParameters, simulate } from "../api/client";
 import type { Params, SimulationResult } from "../api/client";
@@ -8,6 +9,8 @@ export interface SimulationRun extends SimulationResult {
 }
 
 export function useSimulation() {
+  const inputSeries = useInputSeries();
+  const [lastSeries, setLastSeries] = useState("");
   const [parameters, setParameters] = useState<Params>(defaultParameters);
   const [lastParameters, setLastParameters] = useState<Params | null>(null);
   const [data, setData] = useState<SimulationRun | null>(null);
@@ -39,14 +42,14 @@ export function useSimulation() {
     }
   }
 
-  const dirty = JSON.stringify(calibration) !== lastCalibration ||
+  const dirty = JSON.stringify(inputSeries.ids) !== lastSeries || JSON.stringify(calibration) !== lastCalibration ||
     !lastParameters ||
     (Object.keys(parameters) as (keyof Params)[]).some(
       (key) => parameters[key] !== lastParameters[key],
     );
 
   function updateParameter(key: keyof Params, value: number) {
-    if (key === "mlr_ratio") setCalibration(current => ({ ...current, qmlr_ratio: String(value) }));
+    if (key === "mlr_ratio" && calibrationDefaults?.qmlr_ratio !== undefined) setCalibration(current => ({ ...current, qmlr_ratio: String(value) }));
     setParameters((current) => ({
       ...current,
       [key]: value,
@@ -55,6 +58,8 @@ export function useSimulation() {
   }
 
   async function run() {
+    if (inputSeries.pending) { setError("Wait for Excel imports to finish."); return false; }
+    const seriesSnapshot = JSON.stringify(inputSeries.ids);
     if (!calibrationDefaults) { setError("Load calibration parameters before running."); return false; }
     const invalid = Object.entries(calibration).find(([name, value]) =>
       !value.trim() || !Number.isFinite(Number(value)) || Number(value) < 0 || (name.startsWith("K") && Number(value) === 0));
@@ -66,13 +71,14 @@ export function useSimulation() {
     const submittedParameters = { ...parameters };
     const started = performance.now();
     try {
-      const result = await simulate(submittedParameters, submittedCalibration);
+      const result = await simulate(submittedParameters, submittedCalibration, inputSeries.ids);
       setData({
         ...result,
         runtimeSeconds: (performance.now() - started) / 1000,
       });
       setLastParameters(submittedParameters);
       setLastCalibration(calibrationSnapshot);
+      setLastSeries(seriesSnapshot);
       return true;
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "Simulation failed");
@@ -88,7 +94,7 @@ export function useSimulation() {
     setError("");
   }
 
-  return { parameters, data, busy, error, dirty, updateParameter, run, reset,
+  return { inputSeries, parameters, data, busy, error, dirty, updateParameter, run, reset,
     calibration, calibrationError, calibrationLoaded: calibrationDefaults !== null,
     updateCalibration, retryCalibration: () => setCalibrationAttempt(current => current + 1) };
 }

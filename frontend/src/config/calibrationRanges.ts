@@ -1,0 +1,35 @@
+// Transcribed from the rightmost Range column in the three user-supplied images.
+// These are reference values, not input validation limits. Keep the reported
+// ranges even where individual literature columns contain different extrema.
+export const calibrationRanges: Record<string, string> = {
+  bAOB: "[0.04, 0.15]",
+  uAOB: "[0.45, 2.208]",
+  KAOB1O: "[0.043, 1.45]",
+  KAOB2O: "[0.058, 1.45]",
+  KAOBNH: "[0.1, 25]",
+  KAOBNO2: "[0.14, 150]",
+  bNOB: "[0.04, 0.22]",
+  uNOB: "[0.4, 1.44]",
+  KNOBO: "[0.13, 2.2]",
+  KNOBNH: "0.02",
+  KNOBNO2: "[0.05, 5.5]",
+  bH: "[0.24, 0.75]",
+  uH: "[6, 11.8]",
+  KHNH: "[0.01, 0.02]",
+  KHO: "[0.0311, 0.2]",
+  KHNO2: "[0.2, 0.81]",
+  KHNO3: "[0.2, 0.5]",
+  // K_H,S covers processes 9–12, implemented as KHS1–KHS4 in asm_model.py.
+  KHS1: "[1.5, 20]",
+  KHS2: "[1.5, 20]",
+  KHS3: "[1.5, 20]",
+  KHS4: "[1.5, 20]",
+  KHS5: "[2, 40]",
+  etag2: "[0.029, 0.5]",
+  etag3: "[0.024, 0.5]",
+  etag4: "[0.35, 0.8]",
+  etag5: "[0.35, 0.81]",
+  kla1O2: "[20, 500]",
+  kla2O2: "[20, 500]",
+  kla3O2: "[20, 500]",
+};

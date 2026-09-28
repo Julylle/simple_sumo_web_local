@@ -6,7 +6,7 @@ export const defaultParameters: Params = {
   influent_nh4_mg_l: 63.6,
   do_mg_l: 2,
   srt_d: 14,
-  duration_h: 960,
+  duration_h: 16,
   tank1_volume_m3: 233.72729,
   tank1_do_mg_l: 0,
   tank2_volume_m3: 233.72729,

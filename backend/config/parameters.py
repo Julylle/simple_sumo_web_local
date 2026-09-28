@@ -21,7 +21,8 @@ model_parameters = {
     'SOsat': 9.28, # shuting: 8.46
     # 'SRT': 13.5, # degine SRT
     'qwas': 1.6, # WAS flow rate, L/s
-    'dynamicSwitch': 1, 'constantKLa':0, 'DOSetpoint': 0,
+    # 'dynamicSwitch': 1, 
+    'constantKLa':0, 'DOSetpoint': 0,
     'S1DOsetpoint': 0, 'S2DOsetpoint': 0, 'S3DOsetpoint': 1.6, 'S4DOsetpoint': 2.0, 'S5DOsetpoint': 2.2,
     'SN2inlet': 0,  'SN2Oinlet': 0, 'SNHinlet': 63.595, 
     'SNH2OHinlet': 0, 'SNOinlet': 0,
@@ -38,7 +39,7 @@ model_parameters = {
 
 # Public simulation inputs used by the browser, mapped to the ASM model's
 # internal names and units.  The model uses L/s for hydraulic flows.
-PROCESS_VOLUME_L = 2 * 233727.29 + 3 * 467454.51
+# PROCESS_VOLUME_L = 2 * 233727.29 + 3 * 467454.51
 
 
 def frontend_parameter_overrides(parameters):
@@ -47,13 +48,13 @@ def frontend_parameter_overrides(parameters):
         'qinlet': float(parameters.flow_m3_d) / 86.4,
         'SSinlet': float(parameters.influent_cod_mg_l) * 0.8,
         'SNHinlet': float(parameters.influent_nh4_mg_l),
-        'DOSetpoint': 1,
+        # 'DOSetpoint': 1,
         'S1DOsetpoint': 0,
         'S2DOsetpoint': 0,
         'S3DOsetpoint': float(parameters.do_mg_l),
         'S4DOsetpoint': float(parameters.do_mg_l),
         'S5DOsetpoint': float(parameters.do_mg_l),
-        'qwas': PROCESS_VOLUME_L / (float(parameters.srt_d) * 86400),
+        # 'qwas': PROCESS_VOLUME_L / (float(parameters.srt_d) * 86400),
         'frontend_inputs': True,
     }
 

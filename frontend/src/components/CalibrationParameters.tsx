@@ -1,3 +1,5 @@
+import { calibrationRanges } from "../config/calibrationRanges";
+
 export interface CalibrationParametersProps {
   parameters: Record<string, string>;
   loaded: boolean;
@@ -17,19 +19,21 @@ export function CalibrationParameters({ parameters, loaded, error, busy, onChang
           <p>Edit values, then Run simulation to apply.</p>
         </div>
       </div>
-      <p className="calibration-note">KLa values apply when oxygen transfer controls DO. With fixed DO setpoints, they do not affect the result. MLR is shared with the flow diagram.</p>
+      {/* <p className="calibration-note">KLa parameters scale oxygen transfer from the reactor airflow series. DO is calculated dynamically.</p> */}
       {error ? (
         <div role="alert"><p>{error}</p><button className="secondary" onClick={onRetry}>Retry</button></div>
       ) : loaded ? (
         <div className="calibration-table-scroll" tabIndex={0} aria-label="Initial calibration parameters">
           <table className="calibration-table">
-            <thead><tr><th scope="col">Parameter</th><th scope="col">Value</th></tr></thead>
+            <thead><tr><th scope="col">Parameter</th><th scope="col">Value</th><th scope="col">Range</th></tr></thead>
             <tbody>{Object.entries(parameters).map(([name, value]) => (
               <tr key={name}><th scope="row">{name}</th><td><input type="number" step="any" min={name.startsWith("K") ? undefined : 0}
                 aria-label={`Calibration parameter ${name}`} value={value} disabled={busy}
-                onChange={(event) => onChange(name, event.target.value)} /></td></tr>
+                onChange={(event) => onChange(name, event.target.value)} /></td>
+                <td className="calibration-range">{calibrationRanges[name] ?? "Not provided"}</td></tr>
             ))}</tbody>
           </table>
+          <p className="calibration-note">Reference ranges from literature; not enforced as input limits.</p>
         </div>
       ) : <p role="status">Loading calibration parameters…</p>}
     </div>

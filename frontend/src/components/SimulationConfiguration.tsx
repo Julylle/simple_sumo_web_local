@@ -37,6 +37,7 @@ export function SimulationConfiguration({ parameters, onChange, busy, dirty, onR
         </div>
         <small className="hint">Minimum 1 h; no upper limit</small>
       </label>
+      <p className="calibration-note">Dynamic inputs use the selected Excel time series. Beyond each series end, its final value is held. Airflow drives calculated DO; the initial steady state uses the first value of each input.</p>
     </section>
   );
 }

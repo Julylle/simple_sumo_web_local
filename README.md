@@ -95,3 +95,28 @@ The drawing is a process schematic based on the supplied layout, not a geographi
 mapping of the satellite image. Default volumes come from the existing model.
 
 Backend checks: `python -m unittest discover -s tests -v` from `backend/`.
+
+## Excel time-series boundary conditions
+
+The MLE editor accepts eight independent `.xlsx` inputs: single-lane inflow,
+bCOD, NH4-N, RAS, WAS, and airflow for each of Aerobic 1/2/3. Download the
+per-input template and replace the values in the first worksheet. Columns are
+`time_h` and `value`; time starts at zero and increases strictly. Each input
+can have its own irregular time grid. Values are held until the next timestamp;
+after the final timestamp the final value remains in use. RAS must be positive.
+
+Water/sludge flows use m3/day per lane, concentrations mg/L, and airflow m3/hour
+per lane. Uploaded inflow/RAS/WAS are converted to L/min without dividing by 11;
+bCOD is used directly. The built-in workbook fallback converts plant flow to
+one lane, and splits its original airflow by 55%/26%/19% as in the existing model.
+
+Uploads preserve the original Excel and normalized JSON in the `input-series`
+Docker volume. Browser local storage retains the selected file IDs across
+refreshes. Reset leaves file selections intact; Use built-in clears a selection.
+Files are not written into the read-only private data mount.
+
+`PythonEngine` resolves selected file IDs and passes the eight profiles into
+`GrowthCoupledProduction`. `get_dynamic_inputs(t)` reads each profile at t.
+Steady initialization uses the first point of each profile. Dynamic DO is solved
+from oxygen transfer, not fixed. The existing calibrated KLa relationship uses
+(airflow / built-in reference airflow)^0.86, preserving independent air inputs.

@@ -14,7 +14,7 @@ class CalibrationInputTests(unittest.TestCase):
         original = calibration_params_initial.copy()
         record = pd.DataFrame({'S5NH': [1.], 'S5S': [2.], 'S5N2O': [0.1]}, index=[0.])
         with patch('models.python_engine.run_dynamic_simulation', return_value=(record, {})) as run:
-            PythonEngine().run(SimulationInput(calibration_parameters={'uAOB': 0.45, 'qmlr_ratio': 4}))
+            PythonEngine().run(SimulationInput(calibration_parameters={'uAOB': 0.45}, mlr_ratio=4))
             overrides = run.call_args.kwargs['parameter_overrides']
             self.assertEqual(overrides['uAOB'], 0.45)
             self.assertEqual(overrides['qmlr_ratio'], 4)

@@ -5,6 +5,7 @@ from dynamic_simulation import run_dynamic_simulation
 from config.paths import BACKEND_DIR as PROJECT_DIR
 from config.parameters import frontend_parameter_overrides
 from schemas.simulation import SimulationInput
+from services.input_series import resolve_profiles
 
 
 class PythonEngine(SimulationEngine):
@@ -16,6 +17,12 @@ class PythonEngine(SimulationEngine):
     def run(self, p: SimulationInput) -> dict:
         parameter_overrides = frontend_parameter_overrides(p)
         parameter_overrides.update(p.calibration_parameters)
+        # Keep browser settings for steady initialization, but use measured
+        # workbook boundary conditions throughout the dynamic phase.
+        parameter_overrides['dynamic_input_source'] = 'measured'
+        profiles, references = resolve_profiles(p.input_series)
+        parameter_overrides.update(time_series=profiles, airflow_reference=references,
+                                   DOSetpoint=0, constantKLa=0)
         record, _ = run_dynamic_simulation(
             parameter_overrides=parameter_overrides,
             output_times=np.linspace(0.0, p.duration_h * 60.0, 481),

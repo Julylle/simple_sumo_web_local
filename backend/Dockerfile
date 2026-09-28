@@ -5,6 +5,7 @@ RUN micromamba install --yes --name base --file /tmp/environment.yml && \
     micromamba clean --all --yes
 
 ARG MAMBA_DOCKERFILE_ACTIVATE=1
+RUN mkdir -p /home/mambauser/input-series
 WORKDIR /app
 COPY requirements.txt .
 RUN python -m pip install --no-cache-dir -r requirements.txt && python -m pip check

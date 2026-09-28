@@ -196,7 +196,7 @@ def run_dynamic_simulation(
         _, _, steady_state = run_steady_simulation(
             paraName=paraName,
             parameter_overrides=parameter_overrides,
-            save_state = True,
+            save_state = False,
         )
         initial_state = [steady_state[name] for name in initial_values]
     # Set dynamic mode
@@ -220,6 +220,11 @@ def run_dynamic_simulation(
     model.name = 'ASM-N2O dynamic simulation'
     
     sim = CVode(model)
+    # Do not step across the entire hourly input profile after a steady start.
+    sim.maxh = 60.0
+    if params.get('time_series'):
+        sim.maxh = min(sim.maxh, min(float(np.min(np.diff(profile['time_h']))) * 60
+                                   for profile in params['time_series'].values()))
     tfinal = float(output_times[-1]) if output_times is not None else 960
     if output_times is None:
         t, y = sim.simulate(tfinal)

@@ -5,8 +5,10 @@ services:
     restart: unless-stopped
     environment:
       PRIVATE_DATA_DIR: /private
+      SERIES_STORE_DIR: /home/mambauser/input-series
     volumes:
       - ./private:/private:ro
+      - input-series:/home/mambauser/input-series
     networks: [internal]
   frontend:
     build: ./frontend
@@ -24,3 +26,5 @@ services:
 networks:
   internal:
     driver: bridge
+volumes:
+  input-series:
