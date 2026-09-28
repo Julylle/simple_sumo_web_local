@@ -20,7 +20,11 @@ export function useSimulation() {
     );
 
   function updateParameter(key: keyof Params, value: number) {
-    setParameters((current) => ({ ...current, [key]: value }));
+    setParameters((current) => ({
+      ...current,
+      [key]: value,
+      ...(key === "do_mg_l" ? { tank3_do_mg_l: value, tank4_do_mg_l: value, tank5_do_mg_l: value } : {}),
+    }));
   }
 
   async function run() {

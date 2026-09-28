@@ -1,19 +1,31 @@
 import type { Params } from "../api/client";
 
 export const defaultParameters: Params = {
-  flow_m3_d: 50000,
-  influent_cod_mg_l: 450,
-  influent_nh4_mg_l: 40,
+  flow_m3_d: 5098,
+  influent_cod_mg_l: 412.8,
+  influent_nh4_mg_l: 63.6,
   do_mg_l: 2,
-  srt_d: 15,
-  duration_h: 24,
+  srt_d: 14,
+  duration_h: 960,
+  tank1_volume_m3: 233.72729,
+  tank1_do_mg_l: 0,
+  tank2_volume_m3: 233.72729,
+  tank2_do_mg_l: 0,
+  tank3_volume_m3: 467.45451,
+  tank3_do_mg_l: 2,
+  tank4_volume_m3: 467.45451,
+  tank4_do_mg_l: 2,
+  tank5_volume_m3: 467.45451,
+  tank5_do_mg_l: 2,
+  mlr_ratio: 2.5,
+  ras_ratio: 1,
 };
 type Field = {
   key: keyof Params;
   label: string;
   unit: string;
   min: number;
-  max: number;
+  max?: number;
   step: number;
   hint: string;
 };
@@ -40,7 +52,7 @@ export const parameterGroups: {
         label: "Influent COD",
         unit: "mg/L",
         min: 10,
-        max: 3000,
+        max: 1000,
         step: 1,
         hint: "Initial biodegradable COD",
       },
@@ -48,7 +60,7 @@ export const parameterGroups: {
         key: "influent_nh4_mg_l",
         label: "Influent NH₄-N",
         unit: "mg/L",
-        min: 0.1,
+        min: 1,
         max: 300,
         step: 0.1,
         hint: "Initial ammonium nitrogen",
@@ -64,7 +76,7 @@ export const parameterGroups: {
         label: "DO setpoint",
         unit: "mg/L",
         min: 0.2,
-        max: 8,
+        max: 4,
         step: 0.1,
         hint: "Dissolved oxygen concentration",
       },
@@ -73,7 +85,7 @@ export const parameterGroups: {
         label: "SRT",
         unit: "d",
         min: 1,
-        max: 80,
+        max: 30,
         step: 1,
         hint: "Solids retention time",
       },
@@ -88,7 +100,6 @@ export const parameterGroups: {
         label: "Simulation duration",
         unit: "h",
         min: 1,
-        max: 240,
         step: 1,
         hint: "ODE integration horizon",
       },

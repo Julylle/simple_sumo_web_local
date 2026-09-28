@@ -140,6 +140,7 @@ class GrowthCoupledProduction:
 
         self.Vaerobic = 467454.51      # L
         self.Vanoxic = 233727.29       # L
+        self.volumes = {i: model_parameters.get(f'V{i}', self.Vanoxic if i < 3 else self.Vaerobic) for i in range(1, 6)}
         self.SOsat = model_parameters['SOsat']
         self.Rdiff = 0.9640
         self.SN2Oequi = 1.695E-04  # mg/L
@@ -225,7 +226,8 @@ class GrowthCoupledProduction:
                 )
 
         else:
-            MLR = self.model_parameters['qinlet'] * self.model_parameters['qmlr_ratio'] * 60
+            lane_count = 11 if self.model_parameters.get('frontend_inputs') else 1
+            MLR = self.model_parameters['qinlet'] * self.model_parameters['qmlr_ratio'] * 60 / lane_count
             return (
                 self.model_parameters['SNHinlet'],
                 self.model_parameters['SNH2OHinlet'],
@@ -240,10 +242,10 @@ class GrowthCoupledProduction:
                 self.model_parameters['XNOBinlet'],
                 self.model_parameters['XHinlet'],
                 self.model_parameters['XIinlet'],
-                self.model_parameters['qinlet'] * 60, # L/min
+                self.model_parameters['qinlet'] * 60 / lane_count, # L/min
                 MLR, # L/min
-                self.model_parameters['qras'] * 60, # L/min
-                self.model_parameters['qwas'] * 60, # L/min
+                self.model_parameters['qras'] * 60 / lane_count, # L/min
+                self.model_parameters['qwas'] * 60 / lane_count, # L/min
                 self.model_parameters['kla1O2']/24/60, # min-1
                 self.model_parameters['kla2O2']/24/60, # min-1
                 self.model_parameters['kla3O2']/24/60, # min-1
@@ -284,9 +286,9 @@ class GrowthCoupledProduction:
             [S5N2, S5N2O, S5NH2OH, S5NH, S5NO2, S5NO3, S5NO, S5O, S5S, X5AOB, X5H, X5I, X5NOB])
 
 
-        Dinlet = qinlet / self.Vanoxic  # min^-1
-        Dras = qras / self.Vanoxic  # min^-1
-        Dmlr = qmlr / self.Vanoxic  # min^-1
+        Dinlet = qinlet / self.volumes[1]  # min^-1
+        Dras = qras / self.volumes[1]  # min^-1
+        Dmlr = qmlr / self.volumes[1]  # min^-1
 
         # Anoxic tank 1 (An1), 1 
         dS1NHdt = Dinlet * (SNHinlet - S1NH) + (Dras + Dmlr) * (S5NH - S1NH) + r11
@@ -307,7 +309,7 @@ class GrowthCoupledProduction:
         dX1Idt = Dinlet * (XIinlet - X1I) + Dmlr * (X5I - X1I) + Dras * (X5I * sludgeR - X1I) + r113
 
         # Anoxic tank 2 (An2), 2
-        Dadd2 = (qinlet + qras + qmlr) / self.Vanoxic  # min^-1
+        Dadd2 = (qinlet + qras + qmlr) / self.volumes[2]  # min^-1
 
         dS2NHdt = Dadd2 * (S1NH - S2NH) + r21
         dS2NH2OHdt = Dadd2 * (S1NH2OH - S2NH2OH) + r22
@@ -348,7 +350,7 @@ class GrowthCoupledProduction:
         dX3Idt = Dadd3 * (X2I - X3I) + r313
 
         # Aerobic tank 2 (Ae2), 4
-        Dadd4 = (qinlet + qmlr + qras) / self.Vaerobic  # min^-1
+        Dadd4 = (qinlet + qmlr + qras) / self.volumes[4]  # min^-1
 
         dS4NHdt = Dadd4 * (S3NH - S4NH) + r41
         dS4NH2OHdt = Dadd4 * (S3NH2OH - S4NH2OH) + r42
@@ -369,7 +371,7 @@ class GrowthCoupledProduction:
         dX4Idt = Dadd4 * (X3I - X4I) + r413
 
         # Aerobic tank 3 (Ae3), 5
-        Dadd5 = (qinlet + qmlr + qras) / self.Vaerobic  # min^-1
+        Dadd5 = (qinlet + qmlr + qras) / self.volumes[5]  # min^-1
 
         dS5NHdt = Dadd5 * (S4NH - S5NH) + r51
         dS5NH2OHdt = Dadd5 * (S4NH2OH - S5NH2OH) + r52

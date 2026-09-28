@@ -4,6 +4,7 @@ import { Sidebar } from "./components/Sidebar";
 import type { WorkspaceTab } from "./components/Sidebar";
 import { Placeholder } from "./components/EmptyState";
 import { SimulationConfiguration } from "./components/SimulationConfiguration";
+import { PlantLocation } from "./components/PlantLocation";
 import { SimulationResults } from "./components/SimulationResults";
 import { useSimulation } from "./hooks/useSimulation";
 import "./style.css";
@@ -59,6 +60,7 @@ export default function App() {
               </div>
             )}
 
+            <PlantLocation />
             <SimulationConfiguration
               parameters={parameters}
               onChange={updateParameter}

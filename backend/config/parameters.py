@@ -43,7 +43,7 @@ PROCESS_VOLUME_L = 2 * 233727.29 + 3 * 467454.51
 
 def frontend_parameter_overrides(parameters):
     """Translate API simulation inputs into ASM parameter overrides."""
-    return {
+    overrides = {
         'qinlet': float(parameters.flow_m3_d) / 86.4,
         'SSinlet': float(parameters.influent_cod_mg_l) * 0.8,
         'SNHinlet': float(parameters.influent_nh4_mg_l),
@@ -56,6 +56,21 @@ def frontend_parameter_overrides(parameters):
         'qwas': PROCESS_VOLUME_L / (float(parameters.srt_d) * 86400),
         'frontend_inputs': True,
     }
+
+    total_volume_l = 0.0
+    for tank in range(1, 6):
+        volume_l = getattr(parameters, f'tank{tank}_volume_m3') * 1000
+        overrides[f'V{tank}'] = volume_l
+        total_volume_l += volume_l
+        oxygen = getattr(parameters, f'tank{tank}_do_mg_l')
+        if oxygen is not None:
+            overrides[f'S{tank}DOsetpoint'] = oxygen
+    overrides['qmlr_ratio'] = parameters.mlr_ratio
+    overrides['qras'] = overrides['qinlet'] * parameters.ras_ratio
+    # UI flow is plant-wide; each of the 11 identical lanes has these volumes.
+    # Retain the model's existing volume/SRT approximation for sludge wasting.
+    overrides['qwas'] = total_volume_l * 11 / (parameters.srt_d * 86400)
+    return overrides
 
 # Calibration parameters for steady state
 calibration_params_initial = {

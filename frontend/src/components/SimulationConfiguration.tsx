@@ -45,7 +45,7 @@ export function SimulationConfiguration({
                     <span>{f.unit}</span>
                   </div>
                   <small className="hint">
-                    {f.hint} · {f.min}–{f.max}
+                    {f.hint} · {f.max === undefined ? `Minimum ${f.min} ${f.unit}; no upper limit` : `${f.min}–${f.max}`}
                   </small>
                 </label>
               ))}

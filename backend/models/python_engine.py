@@ -23,6 +23,9 @@ class PythonEngine(SimulationEngine):
         )
         return {
             "time_h": record.index.to_numpy(dtype=float) / 60.0,
+            "variables": {
+                name: record[name].to_numpy(dtype=float) for name in record.columns
+            },
             "nh4_mg_l": record["S5NH"].to_numpy(dtype=float),
             "cod_mg_l": record["S5S"].to_numpy(dtype=float),
             # Keep the existing API key; this is dissolved N2O (mg N/L).
