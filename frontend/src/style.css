@@ -26,7 +26,16 @@
 .process-heading p,.process-help,.process-editor p { font-size:12px; color:#667085; line-height:1.6; margin:0; }
 .process-help { margin-top:16px; }
 .process-scroll { overflow-x:auto; }
-.process-svg { width:100%; min-width:950px; display:block; }
+.plant-diagram { width:80%; min-width:880px; display:block; margin:12px auto 22px; }
+.plant-target { cursor:pointer; outline:none; }
+.plant-hit { fill:transparent; stroke:transparent; stroke-width:2; }
+.plant-target:hover .plant-hit,.plant-target:focus-visible .plant-hit { fill:#e9f5ff66; stroke:#86b4cb; }
+.plant-target.is-selected .plant-hit { fill:#e5f4ff55; stroke:#2696bf; stroke-dasharray:5 4; }
+.plant-name { fill:#233f59; font-size:16px; font-weight:600; text-anchor:middle; pointer-events:none; }
+.plant-detail { fill:#617589; font-size:12px; text-anchor:middle; pointer-events:none; }
+.plant-badge { fill:#eff8ff; stroke:#4595bf; stroke-width:2; }
+.sludge-badge { fill:#f6edfb; stroke:#a679bc; }
+.plant-target:hover .plant-badge,.plant-target:focus-visible .plant-badge,.plant-target.is-selected .plant-badge { stroke:#dba32a; stroke-width:3; }
 .process-pipes { stroke:#176582; color:#176582; }
 .recycle-pipe { stroke:#3b82f6; color:#3b82f6; }
 .ras-pipe { stroke:#7c3aed; color:#7c3aed; }

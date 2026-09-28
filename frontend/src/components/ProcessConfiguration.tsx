@@ -1,3 +1,4 @@
+import { ProcessFlowDiagram } from "./ProcessFlowDiagram";
 import { InputSeriesUpload } from "./InputSeriesUpload";
 import type { InputSeriesControls } from "../hooks/useInputSeries";
 import { useState } from "react";
@@ -42,33 +43,7 @@ export function ProcessConfiguration({ parameters, onChange, inputSeries, busy }
       {expanded && <div id="process-diagram">
         <p className="process-help">Select a reactor or flow to edit its parameters. Import each input from Excel: first sheet, time_h and value columns, starting at 0 h. All flows are per lane. Each value is held until the next time point, and the last value is held after the series ends. Imports persist after refresh; Reset keeps imported files.</p>
         <div className="process-scroll">
-          <svg className="process-svg" viewBox="0 0 1230 320" aria-label="MLE process: influent, two anoxic tanks, three aerobic tanks, secondary settling tank and effluent, with internal and sludge recycles">
-            <defs><marker id="flow-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" /></marker></defs>
-            <g className="process-pipes" fill="none" strokeWidth="2" markerEnd="url(#flow-arrow)">
-              {nodes.map((node, index) => <path key={node.id} d={`M ${node.x + node.width} 105 H ${nodes[index + 1]?.x ?? 1210}`} />)}
-              <path className="recycle-pipe" d="M 980 105 V 205 H 150 V 105 H 170" />
-              <path className="ras-pipe" d="M 1060 145 V 275 H 140 V 105 H 170" />
-              <path className="ras-pipe" d="M 1060 275 V 312" />
-            </g>
-            <text x="1165" y="80" textAnchor="middle" className="flow-label">Final effluent</text>
-            <text x="1075" y="305" className="flow-label">WAS</text>
-            {nodes.map((node) => {
-              const volume = parameters[`tank${node.id}_volume_m3` as keyof Params];
-              return <g key={node.id} role="button" tabIndex={0} aria-label={`Edit ${node.label} parameters`} aria-pressed={selected === node.id}
-                className={`process-node ${selected === node.id ? "selected" : ""}`}
-                onClick={() => setSelected(node.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelected(node.id); } }}>
-                <rect x={node.x} y="65" width={node.width} height="80" rx={node.id === "sst" ? 30 : 7} />
-                <text x={node.x + node.width / 2} y="92" textAnchor="middle">{node.label}</text>
-                <text className="node-detail" x={node.x + node.width / 2} y="113" textAnchor="middle">{node.id === "inlet" ? "Excel time series" : node.id === "sst" ? "RAS / WAS: Excel" : `${volume.toFixed(1)} m3`}</text>
-                {Number(node.id) > 0 && <text className="node-detail" x={node.x + node.width / 2} y="132" textAnchor="middle">{Number(node.id) >= 3 ? "Airflow: Excel" : "Anoxic reactor"}</text>}
-              </g>;
-            })}
-            <g role="button" tabIndex={0} className={`process-node recycle-node ${selected === "mlr" ? "selected" : ""}`} aria-label="Edit internal recycle ratio" aria-pressed={selected === "mlr"} onClick={() => setSelected("mlr")}
-              onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelected("mlr"); } }}>
-              <rect x="490" y="185" width="240" height="40" rx="6" /><text x="610" y="210" textAnchor="middle">← MLR · {parameters.mlr_ratio} × Q</text>
-            </g>
-            <text x="610" y="263" textAnchor="middle" className="flow-label">← Return activated sludge (RAS)</text>
-          </svg>
+          <ProcessFlowDiagram parameters={parameters} selected={selected} onSelect={setSelected} />
         </div>
         <div className="process-editor">
           <div><h3>{title}</h3><p>{selected === "sst" ? "RAS and WAS use single-lane Excel flow series in m3/d." : selected === "inlet" ? "Import single-lane inflow in m3/d, bCOD and NH4-N in mg/L. Uploaded values are used directly, without COD scaling or division by 11." : selected === "mlr" ? "Mixed liquor returns from Aerobic 3 to Anoxic 1." : "Volume applies to each lane. Airflow in m3/h drives oxygen transfer and the calculated DO."}</p></div>

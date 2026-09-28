@@ -4,7 +4,7 @@ import type { InputSeriesControls } from "../hooks/useInputSeries";
 export function InputSeriesUpload({ seriesKey, label, controls, busy }: {
   seriesKey: InputSeriesKey; label: string; controls: InputSeriesControls; busy: boolean;
 }) {
-  const info = controls.selected[seriesKey] ?? controls.defaults[seriesKey];
+  const info = controls.selected[seriesKey] ?? controls.defaults[seriesKey]; 
   const uploading = controls.uploading[seriesKey];
   return <div className="input-series-card">
     <h4>{label}</h4>
