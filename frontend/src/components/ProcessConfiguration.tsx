@@ -21,12 +21,12 @@ export function ProcessConfiguration({ parameters, onChange }: {
   const tank = Number(selected);
   const title = nodes.find((node) => node.id === selected)?.label ?? "Internal recycle (MLR)";
   const fields: ProcessField[] = selected === "inlet" ? [
-    { key: "flow_m3_d", label: "Total plant flow", unit: "m³/d", min: 100, max: 1000000, step: 100 },
-    { key: "influent_cod_mg_l", label: "Influent COD", unit: "mg/L", min: 10, max: 3000, step: 1 },
+    { key: "flow_m3_d", label: "Single lane inflow rate", unit: "m³/d", min: 100, max: 1000000, step: 100 },
+    { key: "influent_cod_mg_l", label: "Influent biodegradable COD (bCOD)", unit: "mg/L", min: 10, max: 3000, step: 1 },
     { key: "influent_nh4_mg_l", label: "Influent NH₄-N", unit: "mg/L", min: 0.1, max: 300, step: 0.1 },
   ] : selected === "sst" ? [
-    { key: "ras_ratio", label: "RAS / influent flow", unit: "ratio", min: 0.01, step: 0.1 },
-    { key: "srt_d", label: "Solids retention time", unit: "d", min: 1, max: 80, step: 1 },
+    { key: "ras_ratio", label: "Return activated sludge (RAS)", unit: "m³/d", min: 100, max: 1000000, step: 100 },
+    { key: "srt_d", label: "Waste activated sludge (WAS)", unit: "m³/d", min: 0, max: 10000, step: 1 },
   ] : selected === "mlr" ? [
     { key: "mlr_ratio", label: "MLR / influent flow", unit: "ratio", min: 0, step: 0.1 },
   ] : [
@@ -75,7 +75,7 @@ export function ProcessConfiguration({ parameters, onChange }: {
           </svg>
         </div>
         <div className="process-editor">
-          <div><h3>{title}</h3><p>{selected === "sst" ? "Ideal solids separation. SRT controls the model's approximate sludge wasting rate; settling geometry is not modelled." : selected === "inlet" ? "Plant flow is divided equally between 11 lanes." : selected === "mlr" ? "Mixed liquor returns from Aerobic 3 to Anoxic 1." : "Individual reactor settings override the common DO setpoint. Changing common DO resets the three aerobic setpoints."}</p></div>
+          <div><h3>{title}</h3><p>{selected === "sst" ? "Ideal solids separation. SRT controls the model's approximate sludge wasting rate; settling geometry is not modelled." : selected === "inlet" ? "Plant flow is divided equally between 11 lanes." : selected === "mlr" ? "Mixed liquor returns from Aerobic 3 to Anoxic 1." : "Set the volume and DO for this reactor in each of the 11 identical lanes."}</p></div>
           <div className="process-fields">{fields.map((field) => <label key={field.key}>{field.label}<div><input type="number" value={parameters[field.key]} min={field.min} max={field.max} step={field.step} onChange={(event) => onChange(field.key, Number(event.target.value))} /><span>{field.unit}</span></div></label>)}</div>
         </div>
       </div>}

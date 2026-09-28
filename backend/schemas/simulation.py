@@ -1,6 +1,20 @@
-from pydantic import BaseModel, Field
+import math
+from pydantic import BaseModel, Field, field_validator
+from config.parameters import calibration_params_initial
 
 class SimulationInput(BaseModel):
+    calibration_parameters: dict[str, float] = Field(default_factory=dict)
+
+    @field_validator('calibration_parameters')
+    @classmethod
+    def validate_calibration(cls, values):
+        for name, value in values.items():
+            if name not in calibration_params_initial:
+                raise ValueError(f'Unknown calibration parameter: {name}')
+            if not math.isfinite(value) or value < 0 or (name.startswith('K') and value == 0):
+                raise ValueError(f'{name} must be finite and {"positive" if name.startswith("K") else "non-negative"}')
+        return values
+
     flow_m3_d: float = Field(50000, ge=100, le=1_000_000)
     influent_cod_mg_l: float = Field(450, ge=10, le=3000)
     influent_nh4_mg_l: float = Field(40, ge=0.1, le=300)

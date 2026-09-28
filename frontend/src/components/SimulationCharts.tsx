@@ -3,6 +3,7 @@ import Plot from "react-plotly.js";
 import type { Config } from "plotly.js";
 import type { SimulationRun } from "../hooks/useSimulation";
 import { Empty } from "./EmptyState";
+import type { ReactNode } from "react";
 
 const plotConfig: Partial<Config> = {
   displaylogo: false,
@@ -10,7 +11,7 @@ const plotConfig: Partial<Config> = {
   modeBarButtonsToRemove: ["lasso2d", "select2d"],
 };
 
-export function SimulationCharts({ data }: { data: SimulationRun | null }) {
+export function SimulationCharts({ data, calibrationPanel }: { data: SimulationRun | null; calibrationPanel: ReactNode }) {
   const [tank, setTank] = useState("all");
   const [component, setComponent] = useState("all");
   const variables = Object.entries(data?.variables ?? {});
@@ -86,36 +87,7 @@ export function SimulationCharts({ data }: { data: SimulationRun | null }) {
           />
         )}
       </div>
-      <div className="chart-card info-card">
-        <div className="chart-head">
-          <div>
-            <h3>Run information</h3>
-            <p>Execution and data-boundary summary</p>
-          </div>
-        </div>
-        <dl>
-          <div>
-            <dt>Model</dt>
-            <dd>ODE Demo</dd>
-          </div>
-          <div>
-            <dt>Solver</dt>
-            <dd>RK4 · server-side</dd>
-          </div>
-          <div>
-            <dt>Raw states</dt>
-            <dd>Private</dd>
-          </div>
-          <div>
-            <dt>API output</dt>
-            <dd>Allow-listed + downsampled</dd>
-          </div>
-          <div>
-            <dt>Last run</dt>
-            <dd>{data ? "Completed" : "Not run"}</dd>
-          </div>
-        </dl>
-      </div>
+      {calibrationPanel}
     </section>
   );
 }

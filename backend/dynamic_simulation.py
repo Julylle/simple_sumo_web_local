@@ -144,20 +144,6 @@ def build_dynamic_initial_state(
     return vector
 
 
-def apply_biomass_scales(initial_numbers, parameters):
-    """Apply optional active-biomass multipliers used by hybrid calibration."""
-    scaled = np.asarray(initial_numbers, dtype=float).copy()
-    for biomass, parameter_name in (('NOB', 'XNOB_scale'), ('AOB', 'XAOB_scale')):
-        scale = float(parameters.get(parameter_name, 1.0))
-        if scale <= 0:
-            raise ValueError(f"{parameter_name} must be positive")
-        for tank in range(1, 6):
-            scaled[AllVariables.index(f'X{tank}{biomass}')] *= scale
-        if scale != 1.0:
-            print(f"Applied {parameter_name} = {scale:.6g} to initial {biomass} states")
-    return scaled
-
-
 def print_dynamic_fit_metrics(simulation, measurement, label):
     """Print time-aligned RMSE and bias for a five-tank concentration group."""
     errors = []
@@ -228,7 +214,6 @@ def run_dynamic_simulation(
         raise ValueError(
             f"initial_state has {len(initial_numbers)} values; expected {len(AllVariables)}"
         )
-    initial_numbers = apply_biomass_scales(initial_numbers, params)
     
     ASM_configuration = GrowthCoupledProduction(params)
     model = Explicit_Problem(ASM_configuration.rhs, initial_numbers, 0.0)

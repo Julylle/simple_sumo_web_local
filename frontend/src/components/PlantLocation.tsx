@@ -44,7 +44,6 @@ export function PlantLocation() {
           )}
           <p>Satellite view: Google Maps. Open Google Earth for the Earth view.</p>
           <a href={plant.addressSource} target="_blank" rel="noopener noreferrer">Facility address source</a>
-          <a href={plant.locationSource} target="_blank" rel="noopener noreferrer">Plant overview location source</a>
         </aside>
       </div>
     </section>

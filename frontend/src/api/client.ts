@@ -27,11 +27,17 @@ export interface SimulationResult {
   n2o_index: number[];
 }
 
-export async function simulate(params: Params): Promise<SimulationResult> {
+export async function getCalibrationParameters(signal?: AbortSignal): Promise<Record<string, number>> {
+  const response = await fetch("/api/calibration-parameters", { signal, cache: "no-store" });
+  if (!response.ok) throw new Error(`Could not load calibration parameters (${response.status})`);
+  return response.json();
+}
+
+export async function simulate(params: Params, calibrationParameters: Record<string, number> = {}): Promise<SimulationResult> {
   const response = await fetch("/api/simulation", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
+    body: JSON.stringify({ ...params, calibration_parameters: calibrationParameters }),
   });
   if (!response.ok) throw new Error(`Simulation failed (${response.status})`);
   return (await response.json()).result;

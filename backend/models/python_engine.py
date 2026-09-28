@@ -15,6 +15,7 @@ class PythonEngine(SimulationEngine):
 
     def run(self, p: SimulationInput) -> dict:
         parameter_overrides = frontend_parameter_overrides(p)
+        parameter_overrides.update(p.calibration_parameters)
         record, _ = run_dynamic_simulation(
             parameter_overrides=parameter_overrides,
             output_times=np.linspace(0.0, p.duration_h * 60.0, 481),

@@ -1,3 +1,4 @@
+import { CalibrationParameters } from "./components/CalibrationParameters";
 import { useState } from "react";
 import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
@@ -18,7 +19,7 @@ const tabLabels: Record<WorkspaceTab, string> = {
 
 export default function App() {
   const [tab, setTab] = useState<WorkspaceTab>("simulation");
-  const { parameters, data, busy, error, dirty, updateParameter, run, reset } =
+  const { parameters, data, busy, error, dirty, updateParameter, run, reset, calibration, calibrationError, calibrationLoaded, updateCalibration, retryCalibration } =
     useSimulation();
 
   async function handleRun() {
@@ -37,21 +38,11 @@ export default function App() {
           <>
             <section className="page-head">
               <div>
-                <h1>Real-time Simulation</h1>
+                <h1>Process modelling demo</h1>
                 <p>
                   Configure boundary and operating conditions, run the
                   server-side model, and inspect approved outputs.
                 </p>
-              </div>
-              <div className="run-controls">
-                {dirty && <span className="dirty">● Parameters changed</span>}
-                <button className="secondary" onClick={reset} disabled={busy}>
-                  Reset
-                </button>
-                <button className="primary" onClick={handleRun} disabled={busy}>
-                  <span>{busy ? "◌" : "▶"}</span>
-                  {busy ? "Running model…" : "Run simulation"}
-                </button>
               </div>
             </section>
             {error && (
@@ -66,8 +57,15 @@ export default function App() {
             <SimulationConfiguration
               parameters={parameters}
               onChange={updateParameter}
+              busy={busy}
+              dirty={dirty}
+              onRun={handleRun}
+              onReset={reset}
             />
-            <SimulationResults data={data} parameters={parameters} />
+            <SimulationResults data={data} parameters={parameters} calibrationPanel={
+              <CalibrationParameters parameters={calibration} loaded={calibrationLoaded}
+                error={calibrationError} busy={busy} onChange={updateCalibration} onRetry={retryCalibration} />
+            } />
           </>
         )}
         {tab === "comparison" && (

@@ -4,7 +4,7 @@ export function Header() {
       <div className="brand">
         <div className="brand-mark">M</div>
         <div>
-          <strong>Model Simulation Platform</strong>
+          <strong>Activated Sludge Model Simulation</strong>
           <span>Scientific modelling workspace</span>
         </div>
       </div>
@@ -13,7 +13,7 @@ export function Header() {
           <i /> Backend connected
         </span>
         <span className="engine">
-          Engine <b>Python / RK4</b>
+          Engine <b>Python</b>
         </span>
         <button className="avatar" title="Local development">
           SW

@@ -107,7 +107,6 @@ calibration_params_initial = {
     'kla1O2': 260, # 285,
     'kla2O2': 120, # 75,
     'kla3O2': 60, # 53,
-    'qmlr_ratio': 2.5,
 }
 
 

@@ -46,3 +46,19 @@
 .process-fields input { width:100%; min-width:0; padding:8px; border:1px solid #d0d5dd; border-radius:6px; }
 .process-fields span { white-space:nowrap; color:#667085; }
 @media(max-width:800px) { .process-editor { grid-template-columns:1fr; } }
+
+.simulation-settings .duration-field { display:block; max-width:320px; margin-top:18px; }
+
+.simulation-settings .section-title { flex-wrap:wrap; gap:16px; }
+
+.calibration-card { align-self:start; }
+.calibration-card code { overflow-wrap:anywhere; }
+.calibration-table-scroll { max-height:480px; overflow:auto; margin-top:14px; }
+.calibration-table { width:100%; border-collapse:collapse; font-size:12px; }
+.calibration-table th,.calibration-table td { padding:9px 10px; border-bottom:1px solid #edf0f3; text-align:left; }
+.calibration-table thead th { position:sticky; top:0; background:#f9fafb; color:#667085; }
+.calibration-table tbody th { font-weight:500; font-family:monospace; }
+.calibration-table td,.calibration-table thead th:last-child { text-align:right; font-variant-numeric:tabular-nums; }
+
+.calibration-table input { width:100%; min-width:75px; max-width:120px; padding:6px; border:1px solid #d0d5dd; border-radius:5px; text-align:right; }
+.calibration-note { font-size:11px; color:#667085; line-height:1.5; }
