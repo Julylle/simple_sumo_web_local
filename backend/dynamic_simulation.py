@@ -8,7 +8,6 @@ This script runs the dynamic ASM model using calibrated parameters.
 import numpy as np
 import pandas as pd
 import pickle
-import time
 from pathlib import Path
 
 from config.parameters import initial_values, model_parameters, AllVariables
@@ -134,10 +133,6 @@ def build_dynamic_initial_state(
                 if not oxygen.empty:
                     state[f'{oxygen_column}0'] = float(oxygen.iloc[0])
                     replaced.append(oxygen_column)
-        print(
-            f"Measured initialization: replaced {len(replaced)} soluble states "
-            f"from {Path(measurement_file).name}"
-        )
 
     if parameters.get('DOSetpoint', 0):
         for tank in range(1, 6):
@@ -196,8 +191,6 @@ def run_dynamic_simulation(
     parameter_overrides=None,
     initial_state=None,
     output_times=None,
-    plot=True,
-    compare=True,
     paraName='calibrated_parameters.pkl',
     initialization_mode='steady',
     refresh_steady_state=True,
@@ -213,16 +206,13 @@ def run_dynamic_simulation(
         params.update(calibrated_params)
     if parameter_overrides is not None:
         params.update(parameter_overrides)
-    if initial_state is None and refresh_steady_state and initialization_mode in {'measured', 'steady'}:
+    if initial_state is None and refresh_steady_state and initialization_mode == 'steady':
         _, _, steady_state = run_steady_simulation(
             paraName=paraName,
             parameter_overrides=parameter_overrides,
-            save_state=initialization_mode == 'measured',
-            plot=plot,
-            compare=compare,
+            save_state = True,
         )
-        if initialization_mode == 'steady':
-            initial_state = [steady_state[name] for name in initial_values]
+        initial_state = [steady_state[name] for name in initial_values]
     # Set dynamic mode
     params['dynamicSwitch'] = 1
 
@@ -259,13 +249,3 @@ def run_dynamic_simulation(
         dynaRecord = pd.concat([dynaRecord, statei], axis=1, ignore_index=False)
     return dynaRecord, params
 
-# if __name__ == '__main__':
-#     hybrid_parameters = PROJECT_DIR / 'calibrated_hybrid_parameters.pkl'
-#     rate_parameters = PROJECT_DIR / 'calibrated_rate_parameters.pkl'
-#     selected_parameters = hybrid_parameters if hybrid_parameters.exists() else rate_parameters
-#     run_dynamic_simulation(
-#         paraName= None, # selected_parameters,
-#         initialization_mode='measured', # three options: 'config', 'steady'， 'measured'
-#     )
-
-# %%

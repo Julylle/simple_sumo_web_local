@@ -53,22 +53,12 @@ def run_steady_simulation(
     tfinal=None,
     output_times=None,
     save_state=True,
-    plot=True,
-    compare=True,
     paraName='calibrated_parameters.pkl',
 ):
     """Run a steady simulation, optionally loading parameters from ``paraName``.
-
     Merge priority (lowest to highest) is: model defaults, calibration initial
     values, the ``paraName`` pickle, then ``parameter_overrides``.
     """
-    
-    # print("\n" + "="*70)
-    # print("PHASE 1: STEADY-STATE SIMULATION")
-    # print("="*70 + "\n")
-    
-    # Calibration parameters for steady state
-
     from config.parameters import calibration_params_initial
 
     params = model_parameters.copy()
@@ -99,9 +89,6 @@ def run_steady_simulation(
     else:
         t, y = sim.simulate(tfinal, ncp_list=list(output_times))
     
-    # elapsed_time = time.time() - start_time
-    # print(f"Simulation completed in {elapsed_time:.2f} seconds\n")
-    
     # Build simulation record
     simuRecord = pd.DataFrame()
     for i in range(len(AllVariables)):
@@ -115,52 +102,6 @@ def run_steady_simulation(
         name: float(value)
         for name, value in zip(initial_values.keys(), y[-1, :])
     }
-    if save_state:
-        with open(STEADY_STATE_FILE, 'wb') as f:
-            pickle.dump(steady_state_initial_values, f)
-        # print(f"Saved steady-state initial values to {STEADY_STATE_FILE}.")
-
-    # if not compare:
-    #     return simuRecord, params, steady_state_initial_values
-    
-    # Load measured data
-    # print("Loading measured data...")
-    # dfO2 = pd.read_excel(STEADY_DATA_FILE, sheet_name='O2', header=0, index_col=0).iloc[0]
-    # dfNO3 = pd.read_excel(STEADY_DATA_FILE, sheet_name='NO3', header=0, index_col=0).iloc[0]
-    # dfNO2 = pd.read_excel(STEADY_DATA_FILE, sheet_name='NO2', header=0, index_col=0).iloc[0]
-    # dfNH4 = pd.read_excel(STEADY_DATA_FILE, sheet_name='NH4', header=0, index_col=0).iloc[0]
-    # dfN2O = pd.read_excel(STEADY_DATA_FILE, sheet_name='N2O', header=0, index_col=0).iloc[0]
-    
-    # # Extract simulated values at steady state
-    # simu_NO3 = simuRecord.filter(regex=r'S.*NO3').iloc[-1, :]
-    # simu_NO2 = simuRecord.filter(regex=r'S.*NO2').iloc[-1, :]
-    # simu_NH4 = simuRecord.filter(regex=r'S.*NH$').iloc[-1, :]
-    # simu_N2O = simuRecord[['S1N2O', 'S2N2O', 'S3N2O', 'S4N2O', 'S5N2O']].iloc[-1, :]
-    # simu_O2 = simuRecord[['S3O', 'S4O', 'S5O']].iloc[-1, :]
-    
-    # # Compare with measured data
-    # print("\nComparison of Simulation vs. Measured Data:")
-    # print("-" * 70)
-    # mlss5 = simuRecord[['X5AOB', 'X5NOB', 'X5I', 'X5H']].iloc[-1, :].sum()
-    # mlss1 = simuRecord[['X1AOB', 'X1NOB', 'X1I', 'X1H']].iloc[-1, :].sum()
-    # # Sum biomass components across the four states for Zone 1 at each time
-    # # to produce a time-indexed DataFrame with column name 'X_MLSS'.
-    # MLSS_simu = simuRecord[['X1AOB', 'X1NOB', 'X1I', 'X1H']].sum(axis=1).to_frame('X_MLSS')
-
-    # unit1 = 'Concentration (mg/L)'
-    # unit2 = 'MLSS (mg/L)'
-    
-    # print("-" * 70)
-    # print("Steady-state simulation completed successfully!")
-    # print(f'MLSS is {mlss1:.2f} mg/L in Zone 1 and {mlss5:.2f} mg/L in Zone 5')
-    # print(f'AOB, NOB, I, H are {list(simuRecord[["X5AOB", "X5NOB", "X5I", "X5H"]].iloc[-1, :])} mg/L in Zone 5')
-    
-    # print("="*70 + "\n")
     
     return simuRecord, params, steady_state_initial_values
 
-
-# if __name__ == '__main__':
-#     run_steady_simulation()
-
-# %%

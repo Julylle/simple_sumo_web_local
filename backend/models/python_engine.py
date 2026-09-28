@@ -18,9 +18,8 @@ class PythonEngine(SimulationEngine):
         record, _ = run_dynamic_simulation(
             parameter_overrides=parameter_overrides,
             output_times=np.linspace(0.0, p.duration_h * 60.0, 481),
-            plot=False,
-            compare=False,
             paraName=None,
+            initialization_mode='steady', # three options: 'config', 'steady'， 'measured'
         )
         return {
             "time_h": record.index.to_numpy(dtype=float) / 60.0,
@@ -29,13 +28,3 @@ class PythonEngine(SimulationEngine):
             # Keep the existing API key; this is dissolved N2O (mg N/L).
             "n2o_index": record["S5N2O"].to_numpy(dtype=float),
         }
-
-
-if __name__ == '__main__':
-    hybrid_parameters = PROJECT_DIR / 'calibrated_hybrid_parameters.pkl'
-    rate_parameters = PROJECT_DIR / 'calibrated_rate_parameters.pkl'
-    selected_parameters = hybrid_parameters if hybrid_parameters.exists() else rate_parameters
-    run_dynamic_simulation(
-        paraName= None, # selected_parameters,
-        initialization_mode='steady', # three options: 'config', 'steady'， 'measured'
-    )

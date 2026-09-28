@@ -57,39 +57,6 @@ def frontend_parameter_overrides(parameters):
         'frontend_inputs': True,
     }
 
-# # Calibration parameters for steady state
-# default_calibration_params = {
-#     # AOB kinetic parameters
-#     'uAOB': 1.96,
-#     'bAOB': 0.068,
-#     'KAOB1O': 1.0,
-#     'KAOB2O': 0.6,
-#     'KAOBNO2': 20.2,
-#     'KAOBNH': 25,
-#     # NOB kinetic parameters
-#     'uNOB': 0.79,
-#     'bNOB': 0.04,
-#     'KNOBNO2': 0.51,
-#     'KNOBO': 1.1,
-#     # Heterotroph kinetic parameters
-#     'uH': 6.0,
-#     'bH': 0.5,
-#     'KHO': 0.1,
-#     'KHS1': 20,
-#     'KHS2': 20,
-#     'KHS3': 20,
-#     'KHS4': 20,
-#     'KHS5': 40,
-#     # Oxygen transfer coefficients
-#     'kla1O2': 110,
-#     'kla2O2': 90,
-#     'kla3O2': 80,
-#     'etag2': 0.28,
-#     'etag3': 0.16,
-#     'etag4': 0.35,
-#     'etag5': 0.35, 
-# }
-
 # Calibration parameters for steady state
 calibration_params_initial = {
     # AOB kinetic parameters
@@ -128,9 +95,6 @@ calibration_params_initial = {
     'qmlr_ratio': 2.5,
 }
 
-# Extract lists for backward compatibility
-# unknowns = list(calibration_params.keys())
-# initial_guess = list(calibration_params.values())
 
 AllVariables = [
             'S1N2', 'S1N2O', 'S1NH', 'S1NH2OH', 'S1NO', 'S1NO2', 'S1NO3', 'S1O', 'S1S',
