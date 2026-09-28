@@ -329,7 +329,7 @@ class GrowthCoupledProduction:
         dX2Idt = Dadd2 * (X1I - X2I) + r213
 
         # Aerobic tank 1, 3
-        Dadd3 = (qinlet + qras + qmlr) / self.Vaerobic  # min^-1
+        Dadd3 = (qinlet + qras + qmlr) / self.volumes[3]  # min^-1
 
         dS3NHdt = Dadd3 * (S2NH - S3NH) + r31
         dS3NH2OHdt = Dadd3 * (S2NH2OH - S3NH2OH) + r32

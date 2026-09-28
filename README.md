@@ -78,3 +78,20 @@ with pip alone does not install Assimulo: its PyPI source build is not used.
 
 After changing backend dependencies, rebuild with `docker compose build backend`
 and start the services with `docker compose up -d`.
+
+## Interactive MLE configuration
+
+Below the plant map, **Simplify configuration** opens a representative MLE lane
+for the 11 parallel lines. Select influent, any of the five reactors, MLR, or SST
+to edit parameters. Changes are included in the next Run simulation request;
+Reset restores the defaults, and hiding the diagram preserves edits.
+
+Flow is total plant flow, divided by 11 in both steady and dynamic calculations.
+Reactor volumes are per lane in cubic metres and converted to litres by the API.
+Each reactor has its own DO setpoint; editing the common DO input updates all
+three aerobic setpoints. SST exposes RAS ratio and SRT using the existing ideal
+separation and volume/SRT wasting approximation, not a settling geometry model.
+The drawing is a process schematic based on the supplied layout, not a geographic
+mapping of the satellite image. Default volumes come from the existing model.
+
+Backend checks: `python -m unittest discover -s tests -v` from `backend/`.

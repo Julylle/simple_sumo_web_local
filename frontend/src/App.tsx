@@ -5,6 +5,7 @@ import type { WorkspaceTab } from "./components/Sidebar";
 import { Placeholder } from "./components/EmptyState";
 import { SimulationConfiguration } from "./components/SimulationConfiguration";
 import { PlantLocation } from "./components/PlantLocation";
+import { ProcessConfiguration } from "./components/ProcessConfiguration";
 import { SimulationResults } from "./components/SimulationResults";
 import { useSimulation } from "./hooks/useSimulation";
 import "./style.css";
@@ -61,6 +62,7 @@ export default function App() {
             )}
 
             <PlantLocation />
+            <ProcessConfiguration parameters={parameters} onChange={updateParameter} />
             <SimulationConfiguration
               parameters={parameters}
               onChange={updateParameter}

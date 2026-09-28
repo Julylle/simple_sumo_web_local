@@ -19,3 +19,30 @@
 .plant-reactors button[aria-pressed="true"] { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; }
 .plant-reactors a { display: block; margin-top: 10px; color: #2563eb; font-size: 11px; }
 @media(max-width:800px) { .plant-location-content { grid-template-columns: 1fr; } }
+
+.process-config { background: white; border: 1px solid #e1e5ea; border-radius: 9px; padding: 18px; margin-bottom: 20px; }
+.process-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+.process-heading h2 { font-size:15px; margin:0 0 5px; }
+.process-heading p,.process-help,.process-editor p { font-size:12px; color:#667085; line-height:1.6; margin:0; }
+.process-help { margin-top:16px; }
+.process-scroll { overflow-x:auto; }
+.process-svg { width:100%; min-width:950px; display:block; }
+.process-pipes { stroke:#176582; color:#176582; }
+.recycle-pipe { stroke:#3b82f6; color:#3b82f6; }
+.ras-pipe { stroke:#7c3aed; color:#7c3aed; }
+.process-node { cursor:pointer; outline:none; }
+.process-node rect { fill:#176582; stroke:#104258; stroke-width:2; }
+.process-node text { fill:white; font-size:14px; pointer-events:none; }
+.process-node .node-detail { font-size:10px; }
+.process-node:hover rect,.process-node:focus rect,.process-node.selected rect { stroke:#f59e0b; stroke-width:4; }
+.recycle-node rect { fill:#eff6ff; stroke:#3b82f6; }
+.recycle-node text { fill:#1d4ed8; }
+.flow-label { fill:#475467; font-size:12px; }
+.process-editor { border-top:1px solid #e4e7ec; padding-top:16px; display:grid; grid-template-columns: minmax(180px,1fr) 2fr; gap:24px; }
+.process-editor h3 { margin:0 0 8px; font-size:14px; }
+.process-fields { display:flex; flex-wrap:wrap; gap:16px; }
+.process-fields label { font-size:12px; flex:1; min-width:140px; }
+.process-fields label>div { display:flex; margin-top:8px; align-items:center; gap:8px; }
+.process-fields input { width:100%; min-width:0; padding:8px; border:1px solid #d0d5dd; border-radius:6px; }
+.process-fields span { white-space:nowrap; color:#667085; }
+@media(max-width:800px) { .process-editor { grid-template-columns:1fr; } }
