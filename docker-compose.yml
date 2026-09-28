@@ -1,0 +1,26 @@
+services:
+  backend:
+    build: ./backend
+    expose: ["8000"]
+    restart: unless-stopped
+    environment:
+      PRIVATE_DATA_DIR: /private
+    volumes:
+      - ./private:/private:ro
+    networks: [internal]
+  frontend:
+    build: ./frontend
+    expose: ["80"]
+    restart: unless-stopped
+    networks: [internal]
+  nginx:
+    image: nginx:alpine
+    ports: ["8080:80"]
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on: [frontend, backend]
+    restart: unless-stopped
+    networks: [internal]
+networks:
+  internal:
+    driver: bridge
