@@ -15,10 +15,9 @@ Open `http://localhost:8080`.
 Backend:
 ```bash
 cd backend
-python -m venv .venv
-# Windows: .venv\\Scripts\\activate
-# macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
+conda env create --name model-platform --file environment.yml
+conda activate model-platform
+python -m pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
 
@@ -71,6 +70,11 @@ mode; the legacy UI flow/COD/NH4/SRT controls are not used by this adapter.
 The public output uses tank 5: `S5NH` as NH4, `S5S` as biodegradable COD and
 `S5N2O` as dissolved N2O (mg N/L) under the legacy `n2o_index` key. The frontend's
 demo/index labels therefore still need updating before interpreting these plots.
-The backend now requires the ASM dependencies in `requirements.txt`, including
-a working Assimulo/CVode installation; a full simulation and Docker build must
-be validated in an environment with those dependencies.
+The backend installs Python 3.12, NumPy and compiled Assimulo/CVode through
+`backend/environment.yml` using conda-forge. Other Python dependencies are in
+`backend/requirements.txt`. Docker uses micromamba to create the same environment
+and runs a CVode integration check during the build. Installing requirements
+with pip alone does not install Assimulo: its PyPI source build is not used.
+
+After changing backend dependencies, rebuild with `docker compose build backend`
+and start the services with `docker compose up -d`.

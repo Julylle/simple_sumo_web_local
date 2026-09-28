@@ -29,7 +29,7 @@ export default function App() {
       <Sidebar tab={tab} onTabChange={setTab} />
       <main className="workspace">
         <div className="breadcrumb">
-          Models <span>/</span> ODE Demo <span>/</span> {tabLabels[tab]}
+          Models <span>/</span> PyASM <span>/</span> {tabLabels[tab]}
         </div>
         {tab === "simulation" && (
           <>

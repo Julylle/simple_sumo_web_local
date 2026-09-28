@@ -2,13 +2,13 @@ import numpy as np
 
 from models.base import SimulationEngine
 from dynamic_simulation import run_dynamic_simulation
+from config.paths import BACKEND_DIR as PROJECT_DIR
 from config.parameters import frontend_parameter_overrides
 from schemas.simulation import SimulationInput
 
 
 class PythonEngine(SimulationEngine):
     """Adapt ASM dynamic results to the public simulation output contract.
-
     Browser inputs are translated into ASM hydraulic, influent, oxygen and
     sludge-retention parameters before the dynamic model is executed.
     """
@@ -37,5 +37,5 @@ if __name__ == '__main__':
     selected_parameters = hybrid_parameters if hybrid_parameters.exists() else rate_parameters
     run_dynamic_simulation(
         paraName= None, # selected_parameters,
-        initialization_mode='measured', # three options: 'config', 'steady'， 'measured'
+        initialization_mode='steady', # three options: 'config', 'steady'， 'measured'
     )
