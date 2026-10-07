@@ -1,4 +1,5 @@
 export interface Params {
+  use_do_setpoint: number;
   flow_m3_d: number;
   influent_cod_mg_l: number;
   influent_nh4_mg_l: number;

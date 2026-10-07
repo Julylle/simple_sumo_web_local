@@ -59,7 +59,19 @@ export function ProcessConfiguration({ parameters, onChange, inputSeries, busy }
               <InputSeriesUpload seriesKey="ras" label="Return activated sludge (RAS)" controls={inputSeries} busy={busy} />
               <InputSeriesUpload seriesKey="was" label="Waste activated sludge (WAS)" controls={inputSeries} busy={busy} />
             </>}
-            {tank >= 3 && tank <= 5 && <InputSeriesUpload seriesKey={`airflow${tank - 2}` as "airflow1" | "airflow2" | "airflow3"} label={`Aerobic ${tank - 2} airflow rate`} controls={inputSeries} busy={busy} />}
+            {tank >= 3 && tank <= 5 && <>
+              <InputSeriesUpload seriesKey={`airflow${tank - 2}` as "airflow1" | "airflow2" | "airflow3"} label={`Aerobic ${tank - 2} airflow rate`} controls={inputSeries} busy={busy} />
+              <div className="input-series-card">
+                <h4>Aerobic {tank - 2} DO setpoint</h4>
+                <label className="field">
+                  <span className="field-label">DO setpoint (mg/L)</span>
+                  <div className="input-wrap"><input type="number" min={0} max={8} step={0.1} disabled={busy}
+                    value={parameters[`tank${tank}_do_mg_l` as keyof Params]}
+                    onChange={(event) => onChange(`tank${tank}_do_mg_l` as keyof Params, Number(event.target.value))} /><span>mg/L</span></div>
+                </label>
+                <p>{parameters.use_do_setpoint ? "Active: DO is held at this value." : "Enable Use DO setpoints in Simulation settings to apply this value."}</p>
+              </div>
+            </>}
           </div>
         </div>
       </div>}

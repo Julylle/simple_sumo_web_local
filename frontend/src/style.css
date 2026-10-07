@@ -57,6 +57,8 @@
 @media(max-width:800px) { .process-editor { grid-template-columns:1fr; } }
 
 .simulation-settings .duration-field { display:block; max-width:320px; margin-top:18px; }
+.do-mode-toggle { display:flex; align-items:center; gap:8px; margin-top:18px; font-size:13px; cursor:pointer; }
+.do-mode-toggle input { width:16px; height:16px; }
 
 .simulation-settings .section-title { flex-wrap:wrap; gap:16px; }
 

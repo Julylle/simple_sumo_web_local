@@ -1,6 +1,7 @@
 import type { Params } from "../api/client";
 
 export const defaultParameters: Params = {
+  use_do_setpoint: 0,
   flow_m3_d: 5098,
   influent_cod_mg_l: 412.8,
   influent_nh4_mg_l: 63.6,

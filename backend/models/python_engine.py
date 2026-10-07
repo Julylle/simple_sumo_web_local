@@ -22,7 +22,7 @@ class PythonEngine(SimulationEngine):
         parameter_overrides['dynamic_input_source'] = 'measured'
         profiles, references = resolve_profiles(p.input_series)
         parameter_overrides.update(time_series=profiles, airflow_reference=references,
-                                   DOSetpoint=0, constantKLa=0)
+                                   DOSetpoint=int(p.use_do_setpoint), constantKLa=0)
         record, _ = run_dynamic_simulation(
             parameter_overrides=parameter_overrides,
             output_times=np.linspace(0.0, p.duration_h * 60.0, 481),
