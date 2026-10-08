@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { Params } from "../api/client";
 import type { SimulationRun } from "../hooks/useSimulation";
 import { SimulationCharts } from "./SimulationCharts";
+import type { useSimulationMeasurements } from "../hooks/useSimulationMeasurements";
 
 function formatNumber(value: number, digits = 1) {
   return Number.isFinite(value)
@@ -13,12 +14,14 @@ interface SimulationResultsProps {
   data: SimulationRun | null;
   parameters: Params;
   calibrationPanel: ReactNode;
+  measurements: ReturnType<typeof useSimulationMeasurements>;
 }
 
 export function SimulationResults({
   data,
   parameters,
   calibrationPanel,
+  measurements,
 }: SimulationResultsProps) {
   const final = data
     ? {
@@ -87,7 +90,7 @@ export function SimulationResults({
           </div>
         ))}
       </section>
-      <SimulationCharts data={data} calibrationPanel={calibrationPanel} />
+      <SimulationCharts data={data} calibrationPanel={calibrationPanel} measurements={measurements} />
     </>
   );
 }

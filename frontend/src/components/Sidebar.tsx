@@ -1,4 +1,4 @@
-export type WorkspaceTab = "simulation" | "comparison" | "history";
+export type WorkspaceTab = "simulation" | "auto-calibration" | "history";
 
 interface SidebarProps {
   tab: WorkspaceTab;
@@ -30,10 +30,10 @@ export function Sidebar({ tab, onTabChange }: SidebarProps) {
           <span className="nav-icon">▥</span>Simulation
         </button>
         <button
-          className={"nav " + (tab === "comparison" ? "active" : "")}
-          onClick={() => onTabChange("comparison")}
+          className={"nav " + (tab === "auto-calibration" ? "active" : "")}
+          onClick={() => onTabChange("auto-calibration")}
         >
-          <span className="nav-icon">⇄</span>Comparison
+          <span className="nav-icon">⇄</span>Auto-Calibration
         </button>
         {/* <button
           className={"nav " + (tab === "history" ? "active" : "")}

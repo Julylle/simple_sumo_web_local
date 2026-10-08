@@ -34,6 +34,56 @@ export async function getCalibrationParameters(signal?: AbortSignal): Promise<Re
   return response.json();
 }
 
+export interface MeasurementUpload {
+  id: string;
+  filename: string;
+  time_h: number[];
+  variables: Record<string, (number | null)[]>;
+}
+
+export interface CalibrationComparison {
+  time_h: number[];
+  measured: Record<string, (number | null)[]>;
+  before: Record<string, number[]>;
+  after: Record<string, number[]>;
+  metrics: Record<string, { before: number | null; after: number | null }>;
+}
+
+export async function uploadCalibrationMeasurements(file: File): Promise<MeasurementUpload> {
+  const response = await fetch(`/api/calibration-measurements?filename=${encodeURIComponent(file.name)}`, {
+    method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file,
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(typeof body?.detail === "string" ? body.detail : `Upload failed (${response.status})`);
+  return body;
+}
+
+export async function uploadSimulationMeasurements(file: File): Promise<MeasurementUpload> {
+  const response = await fetch(`/api/simulation-measurements?filename=${encodeURIComponent(file.name)}`, {
+    method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file,
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(typeof body?.detail === "string" ? body.detail : `Upload failed (${response.status})`);
+  return body;
+}
+
+export type OxygenMode = "do_setpoint" | "constant_kla" | "calculated_kla";
+
+export async function autoCalibrate(calibrationParameters: Record<string, number>, measurementId: string,
+  oxygenMode: OxygenMode, doSetpoints: number[]): Promise<{
+  calibration_parameters: Record<string, number>; comparison: CalibrationComparison;
+}> {
+  const response = await fetch("/api/auto-calibration", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ calibration_parameters: calibrationParameters, measurement_id: measurementId,
+      oxygen_mode: oxygenMode, do_setpoints: doSetpoints }),
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(typeof body?.detail === "string" ? body.detail : `Auto-calibration failed (${response.status})`);
+  return body;
+}
+
 export async function simulate(params: Params, calibrationParameters: Record<string, number> = {}, inputSeries: Record<string, string> = {}): Promise<SimulationResult> {
   const response = await fetch("/api/simulation", {
     method: "POST",

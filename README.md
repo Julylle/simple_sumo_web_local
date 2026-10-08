@@ -46,6 +46,48 @@ Implement `backend/models/sumo_engine.py`, keeping Dynamita/SUMO installation an
 
 ## ASM simulation files
 
+The Workspace **Auto-Calibration** page runs `backend/auto_calibration.py` via
+`POST /api/auto-calibration`. It uses the same kinetic parameter table and
+29-parameter list as Simulation, with separate editable values. Submitted values
+seed the optimizer (clipped to the script's search bounds). Successful results
+can be downloaded using **Save parameters (.json)** or copied into Simulation's
+input table using **Update parameters to Simulation**. Run Simulation again to
+update its outputs. Calibration does not automatically overwrite Simulation
+inputs, write a pickle, or mutate server defaults.
+
+Simulation's **Model variable time series** also accepts measurement uploads.
+Only the `validation` worksheet is needed: `t (min)` plus one or more model
+variable columns, such as `S5NH`. Measurements appear as points on the same
+elapsed-hour axis as simulated lines, with matching variable colors and shared
+Tank/Component filters. This comparison upload does not alter simulation inputs.
+
+Auto-Calibration requires a user-uploaded `.xlsx` workbook matching
+`TwoDays_Subiaco_DynamicCali_20260401.xlsx`. The page offers a blank template.
+The `validation` sheet holds `t (min)` and tank 1-5 O2, NH4, NO2 and NO3
+concentrations; N2O columns are optional. Blank measurements are excluded from
+fitting and RMSE. The `dyinput` sheet supplies the uploaded influent, plant-wide
+flows and aeration used in every calibration simulation. Times start at zero
+and increase strictly; dyinput must cover the measured period.
+
+Uploads are validated and persisted in the input-series volume. The UI previews
+measurements and, after calibration, overlays before/after simulations and RMSE
+for the selected tank and component. The existing objective fits NH4 and NO3;
+other components are displayed for comparison. API calibration uses dynamic
+mode, configured initial states and the script's model defaults (MLR ratio 2.5),
+not the Simulation page's operating-condition edits. Search bounds remain
+separate from literature reference ranges. PyGMO is installed through
+`backend/environment.yml`; rebuild the backend after this dependency change.
+Requests run synchronously with a one-hour Nginx read timeout.
+
+Auto-Calibration's **Oxygen control** selects DO setpoint, Constant KLa or
+Calculated KLa (default). DO setpoint initializes and holds all five tank oxygen
+states at the entered values; the three KLa parameters are retained without
+optimization. Constant KLa optimizes time-constant coefficients, while Calculated
+KLa scales those coefficients with uploaded airflow. Both calculate DO dynamically.
+The selected mode is used for fitting and before/after comparisons, and is included
+in saved parameter JSON. **Update parameters to Simulation** transfers parameter
+values only; Simulation retains its own operating controls.
+
 - `backend/steady_simulation.py`: steady-state simulation entry point.
 - `backend/dynamic_simulation.py`: dynamic simulation entry point.
 - `backend/models/asm_model.py`: ASM model implementation.

@@ -7,16 +7,17 @@ export interface CalibrationParametersProps {
   busy: boolean;
   onChange: (name: string, value: string) => void;
   onRetry: () => void;
+  description?: string;
 }
 
-export function CalibrationParameters({ parameters, loaded, error, busy, onChange, onRetry }: CalibrationParametersProps) {
+export function CalibrationParameters({ parameters, loaded, error, busy, onChange, onRetry, description = "Edit values, then Run simulation to apply." }: CalibrationParametersProps) {
 
   return (
     <div className="chart-card calibration-card">
       <div className="chart-head">
         <div>
           <h3>Kinetic parameter values</h3>
-          <p>Edit values, then Run simulation to apply.</p>
+          <p>{description}</p>
         </div>
       </div>
       {/* <p className="calibration-note">KLa parameters scale oxygen transfer from the reactor airflow series. DO is calculated dynamically.</p> */}

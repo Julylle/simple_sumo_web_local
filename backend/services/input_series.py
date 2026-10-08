@@ -48,6 +48,10 @@ def parse_excel(content):
 
 def default_profiles():
     frame = pd.read_excel(DYNAMIC_DATA_FILE, sheet_name="dyinput")
+    return profiles_from_frame(frame)
+
+
+def profiles_from_frame(frame):
     times = frame["t (min)"].to_numpy(dtype=float) / 60
     profiles = {
         "inflow": (frame["Effluent rate (L/s)"] + frame["WAS (L/s)"]) * 86.4 / 11,

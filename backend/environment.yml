@@ -6,3 +6,4 @@ dependencies:
   - pip
   - numpy=2.2.1
   - assimulo=3.8.0
+  - pygmo

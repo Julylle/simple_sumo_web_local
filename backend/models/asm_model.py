@@ -131,7 +131,9 @@ class GrowthCoupledProduction:
 
         if model_parameters['dynamicSwitch'] or model_parameters.get('time_series'):
 
-            self.dyInput = pd.read_excel(DYNAMIC_DATA_FILE, sheet_name='dyinput', header=0)
+            uploaded_inputs = model_parameters.get('dynamic_inputs')
+            self.dyInput = (pd.DataFrame(uploaded_inputs) if uploaded_inputs is not None
+                            else pd.read_excel(DYNAMIC_DATA_FILE, sheet_name='dyinput', header=0))
             # rawInlet.set_index('Time', inplace=True)
             # self.dyInput = rawInlet.resample('H').mean()
             # self.do_interpolators = {
@@ -161,9 +163,10 @@ class GrowthCoupledProduction:
             # Preserve the calibrated KLa/reference-airflow relationship. Use
             # the built-in reference, so changing uploaded airflow magnitude
             # changes oxygen transfer instead of normalizing itself away.
-            kla = [self.model_parameters[f'kla{i}O2'] / 1440 *
-                   (values[f'airflow{i}'] / self.model_parameters['airflow_reference'][i - 1]) ** 0.86
-                   for i in (1, 2, 3)]
+            kla = [self.model_parameters[f'kla{i}O2'] / 1440 for i in (1, 2, 3)]
+            if not self.model_parameters.get('constantKLa') and not self.model_parameters.get('DOSetpoint'):
+                kla = [value * (values[f'airflow{i}'] / self.model_parameters['airflow_reference'][i - 1]) ** 0.86
+                       for i, value in enumerate(kla, 1)]
             return (values['nh4'], 0, 0, 0, 0, row.SNO2, row.SNO3, 0,
                     values['bcod'], 0, 0, 0, row.XI, inflow,
                     inflow * self.model_parameters['qmlr_ratio'], ras, was, *kla)
