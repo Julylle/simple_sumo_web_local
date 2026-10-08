@@ -1,7 +1,7 @@
 services:
   backend:
     build: ./backend
-    expose: ["8000"]
+    network_mode: host
     restart: unless-stopped
     environment:
       PRIVATE_DATA_DIR: /private
@@ -9,22 +9,21 @@ services:
     volumes:
       - ./private:/private:ro
       - input-series:/home/mambauser/input-series
-    networks: [internal]
+
   frontend:
     build: ./frontend
-    expose: ["80"]
+    network_mode: host
     restart: unless-stopped
-    networks: [internal]
+
   nginx:
     image: nginx:alpine
-    ports: ["8080:80"]
+    network_mode: host
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on: [frontend, backend]
+    depends_on:
+      - frontend
+      - backend
     restart: unless-stopped
-    networks: [internal]
-networks:
-  internal:
-    driver: bridge
+
 volumes:
   input-series:
