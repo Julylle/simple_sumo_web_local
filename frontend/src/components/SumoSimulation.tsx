@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import Plot from 'react-plotly.js';
+import { SumoOutputDashboard } from './SumoOutputDashboard';
 
 type InputOption = { name: string; label: string; unit: string };
 type UploadedInput = { id: string; filename: string; count: number; end_h: number; columns: string[] };
 type Run = { id: string; status: 'running' | 'completed' | 'failed'; error?: string;
   phase?: string; progress_pct?: number; simulated_h?: number; duration_h?: number;
   result?: { time_h: number[]; variables: Record<string, number[]> } };
-const labels: Record<string, string> = { influent_nh4: 'Influent NH4-N', influent_tkn: 'Influent TKN',
-  influent_cod: 'Influent COD', effluent_nh4: 'Effluent NH4-N', effluent_nox: 'Effluent NOx-N' };
 async function request(url: string, init?: RequestInit): Promise<Run> {
   const response = await fetch(url, init);
   const body = await response.json().catch(() => null);
@@ -27,8 +25,6 @@ export function SumoSimulation() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [downloading, setDownloading] = useState(false);
-  const [selected, setSelected] = useState<string[]>(Object.keys(labels));
-  const [view, setView] = useState<'separate' | 'overlay'>('separate');
   const [duration, setDuration] = useState('168');
   const [run, setRun] = useState<Run | null>(null);
   const [starting, setStarting] = useState(false);
@@ -49,22 +45,6 @@ export function SumoSimulation() {
   const progress = starting ? 0 : run?.progress_pct ?? 0;
   const phase = starting ? 'Submitting simulation...' : ({ starting: 'Initializing SUMO...', simulating: 'Simulating',
     finalizing: 'Saving and validating results...', completed: 'Simulation complete', failed: 'Simulation failed' }[run?.phase ?? ''] ?? 'Ready to simulate');
-  const colors = ['#2563eb', '#7c3aed', '#d97706', '#059669', '#dc2626'];
-  function traces(keys: string[]) {
-    return keys.map(key => ({ x: run?.result?.time_h ?? [], y: run?.result?.variables[key] ?? [],
-      type: 'scatter' as const, mode: 'lines' as const, name: labels[key] ?? key,
-      line: { color: colors[Object.keys(labels).indexOf(key)], width: 2 },
-      hovertemplate: '%{x:.2f} h | %{y:.3f} mg/L<extra>%{fullData.name}</extra>' }));
-  }
-  function chart(keys: string[], overlay = false) {
-    return <Plot data={traces(keys)} layout={{ autosize: true, height: overlay ? 460 : 290,
-      xaxis: { title: { text: 'Time (h)' }, gridcolor: '#edf0f3' },
-      yaxis: { title: { text: 'Concentration (mg/L)' }, gridcolor: '#edf0f3', rangemode: 'tozero' },
-      showlegend: overlay, legend: { orientation: 'h' }, margin: { t: 20, b: overlay ? 100 : 55, l: 65, r: 20 },
-      hovermode: 'x unified' }} config={{ responsive: true, displaylogo: false,
-        toImageButtonOptions: { format: 'png', filename: `sumo-${keys.join('-')}`, scale: 2 } }}
-      useResizeHandler style={{ width: '100%' }} />;
-  }
   useEffect(() => {
     const controller = new AbortController();
     fetch('/api/sumo/input-options', { signal: controller.signal }).then(async response => {
@@ -238,25 +218,9 @@ export function SumoSimulation() {
           {downloading ? 'Downloading...' : 'Download results CSV'}
         </button></div>
       <p className="calibration-note">Download includes all recorded samples, timestamps, input assignments and output variables for the completed run.</p>
-      <div className="sumo-output-controls">
-        <fieldset><legend>Output variables (mg/L)</legend>
-          {Object.entries(labels).map(([key, label]) => <label key={key}>
-            <input type="checkbox" checked={selected.includes(key)} onChange={e => setSelected(current =>
-              e.target.checked ? [...current, key] : current.filter(item => item !== key))} />{label}
-          </label>)}
-        </fieldset>
-        <div className="measurement-actions" role="group" aria-label="Plot layout">
-          <button className={view === 'separate' ? 'primary' : 'secondary'} aria-pressed={view === 'separate'} onClick={() => setView('separate')}>Separate plots</button>
-          <button className={view === 'overlay' ? 'primary' : 'secondary'} aria-pressed={view === 'overlay'} onClick={() => setView('overlay')}>Overlay plots</button>
-        </div>
-      </div>
-      {!selected.length && <p role="status">Select at least one output variable to display.</p>}
-      {!!selected.length && !run?.result && <div className="empty"><b>{busy ? 'Waiting for simulation results' : 'No simulation results yet'}</b><span>Run SUMO to populate the selected output plots.</span></div>}
-      {run?.result && !!selected.length && (view === 'overlay' ? chart(selected, true) :
-        <div className="sumo-plots">{selected.map(key => <article className="chart-card" key={key}>
-          <div className="chart-head"><h3>{labels[key]}</h3><span className="chart-chip">mg/L</span></div>
-          {chart([key])}
-        </article>)}</div>)}
+      <SumoOutputDashboard influent={inputColumns.map(key => ({key,
+        label: `Influent ${key.split('__').pop()}`, unit: inputOptions.find(o => o.name === key)?.unit ?? ''}))}
+        result={run?.result} runId={run?.id ?? ''} />
     </section>
   </>;
 }

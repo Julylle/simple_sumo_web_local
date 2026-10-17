@@ -38,12 +38,11 @@ INPUT_COLUMN = [
                 
 INPUT_CSV = str(MODEL_DIR / 'Sumo__Plant__Influent__param.csv')
 OUTPUT_VARIABLES = [
-    "Sumo__Plant__Influent__SNHx",
-    "Sumo__Plant__Influent__TKN",
-    "Sumo__Plant__Influent__TCOD",
-    "Sumo__Plant__Effluent1__SNHx",
-    "Sumo__Plant__Effluent1__SNOx",
+    *(f"Sumo__Plant__{tank}__{pollutant}" for tank in ("Effluent1", "CSTR3_10", "CSTR4_10")
+      for pollutant in ("SNHx", "SNOx", "TCOD")),
+    *(f"Sumo__Plant__CSTR{line}_{tank}__SO2" for line in (3, 4) for tank in range(5, 11)),
 ]
+
 
 
 def load_input_rows(path, input_columns=None):
@@ -92,6 +91,9 @@ def run_dynamic(sumo_project_path, initial_state_path=INITIAL_STATE, output_stat
         input_metadata = next((row for row in fields if len(row) > 4 and row[1] == column), None)
         if input_metadata is None or input_metadata[4] not in {"Parameter", "SystemParameter", "Dimension"}:
             raise ValueError(f"Input variable is missing or not writable: {column}")
+    for variable in OUTPUT_VARIABLES:
+        if not any(len(row) > 1 and row[1] == variable for row in fields):
+            raise ValueError(f"Output variable is missing from model: {variable}")
     input_rows = load_input_rows(INPUT_CSV, input_columns)
     stop_time = round(SIM_STOPTIME_SECONDS * dtool.day)
     input_index = 0

@@ -7,29 +7,33 @@ import time
 from pathlib import Path
 
 MODEL_DIR = Path(__file__).resolve().parents[1] / 'real_sim_1202'
+# Use the actual model variable names, including TCOD.
 OUTPUTS = {
-    'influent_nh4': 'Sumo__Plant__Influent__SNHx',
-    'influent_tkn': 'Sumo__Plant__Influent__TKN',
-    'influent_cod': 'Sumo__Plant__Influent__TCOD',
-    'effluent_nh4': 'Sumo__Plant__Effluent1__SNHx',
-    'effluent_nox': 'Sumo__Plant__Effluent1__SNOx',
+    f'Sumo__Plant__{tank}__{pollutant}': f'Sumo__Plant__{tank}__{pollutant}'
+    for tank in ('Effluent1', 'CSTR3_10', 'CSTR4_10')
+    for pollutant in ('SNHx', 'SNOx', 'TCOD')
 }
+OUTPUTS.update({f'Sumo__Plant__CSTR{line}_{tank}__SO2': f'Sumo__Plant__CSTR{line}_{tank}__SO2'
+                for line in (3, 4) for tank in range(5, 11)})
 
 
-def read_result(path, duration_h):
+
+def read_result(path, duration_h, input_columns=()):
     with open(path, encoding='utf-8-sig', newline='') as source:
         rows = list(csv.DictReader(source))
     if not rows:
         raise ValueError('SUMO returned no samples')
     times = [float(row['sim_time_seconds']) / 3600 for row in rows]
-    values = {key: [float(row[column]) for row in rows] for key, column in OUTPUTS.items()}
+    sources = {**OUTPUTS, **{column: column for column in input_columns}}
+    values = {key: [float(row[column]) for row in rows] for key, column in sources.items()}
     if any(not math.isfinite(v) for series in [times, *values.values()] for v in series):
         raise ValueError('SUMO returned non-finite samples')
     if any(b < a for a, b in zip(times, times[1:])) or times[-1] < duration_h - 1e-6:
         raise ValueError('SUMO did not reach the requested end time')
     indices = sorted({round(i * (len(rows) - 1) / min(499, max(1, len(rows) - 1))) for i in range(min(500, len(rows)))})
     return {'time_h': [times[i] for i in indices],
-            'variables': {key: [series[i] for i in indices] for key, series in values.items()}}
+            'variables': {key: [series[i] for i in indices] for key, series in values.items()},
+            'sources': sources, 'input_columns': list(input_columns)}
 
 
 def main():
@@ -43,6 +47,7 @@ def main():
     runner.INPUT_CSV = str(Path.cwd() / 'input.csv' if Path('input.csv').is_file()
                            else MODEL_DIR / 'Sumo__Plant__Influent__param.csv')
     input_columns, _ = parse_input(Path(runner.INPUT_CSV).read_bytes())
+    runner.OUTPUT_VARIABLES = list(dict.fromkeys([*input_columns, *OUTPUTS.values()]))
     last_report = 0.0
 
     def report_progress(sim_time_ms, data):
@@ -58,7 +63,7 @@ def main():
     runner.run_dynamic(str(MODEL_DIR / 'Cixi Eastern WWTP_20260920.sumo'),
                        str(MODEL_DIR / 'sumo_steady_state.xml'),
                        str(Path.cwd() / 'final_state.xml'), output_dir=str(Path.cwd()), on_sample=report_progress, input_columns=input_columns)
-    result = read_result(next(Path.cwd().glob('dynamic_results_*.csv')), duration_h)
+    result = read_result(next(Path.cwd().glob('dynamic_results_*.csv')), duration_h, input_columns)
     Path('result.json').write_text(json.dumps(result, allow_nan=False), encoding='utf-8')
 
 

@@ -25,8 +25,27 @@ class SumoIntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             result = read_result(self.make_csv(directory), 1)
         self.assertEqual(result['time_h'], [0, 1])
-        self.assertEqual(result['variables']['effluent_nh4'], [2.5, 2.5])
+        self.assertEqual(result['variables']['Sumo__Plant__Effluent1__SNHx'], [2.5, 2.5])
         self.assertEqual(set(result['variables']), set(OUTPUTS))
+
+    def test_selected_inputs_and_all_output_sources(self):
+        from services.sumo_data import PREFIX
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.make_csv(directory)
+            with path.open() as source:
+                rows = list(csv.DictReader(source))
+            column = PREFIX + 'Q'
+            with path.open('w', newline='') as stream:
+                writer = csv.DictWriter(stream, fieldnames=[*rows[0], column])
+                writer.writeheader()
+                for i, row in enumerate(rows):
+                    writer.writerow({**row, column: 50000 + i * 1000})
+            result = read_result(path, 1, [column])
+        self.assertEqual(result['variables'][column], [50000, 51000])
+        self.assertEqual(result['input_columns'], [column])
+        self.assertEqual(len(OUTPUTS), 21)
+        self.assertEqual(sum(key.endswith('__SO2') for key in OUTPUTS), 12)
+        self.assertEqual(result['sources']['Sumo__Plant__Effluent1__TCOD'], 'Sumo__Plant__Effluent1__TCOD')
 
     def test_reject_partial_and_nonfinite_results(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -141,3 +141,28 @@
 .model-submenu .future-nav:hover { background:transparent; }
 
 .sumo-step-title { font-size:14px; margin:0 0 14px; }
+
+.sumo-chart-controls { padding:18px 0 0; }
+.sumo-series-picker label { border:1px solid #e2e8f0; border-radius:7px; padding:9px 11px; background:#f8fafc; cursor:pointer; }
+.sumo-series-picker label:has(input:checked) { background:#eff6ff; border-color:#bfdbfe; color:#1e3a8a; }
+.sumo-series-picker i { width:8px; height:8px; border-radius:50%; }
+.sumo-axis-settings { border:1px solid #dbe5f2; border-radius:9px; padding:15px 17px; margin-bottom:20px; background:#f8fafc; }
+.sumo-axis-settings label { display:inline-flex; align-items:center; gap:7px; font-size:12px; cursor:pointer; }
+.sumo-axis-toggle { font-weight:600; color:#334155; }
+.sumo-axis-settings fieldset { display:flex; flex-wrap:wrap; gap:14px; border:0; margin:13px 0 0; padding:0; }
+.sumo-axis-settings legend { font-size:11px; color:#64748b; margin-bottom:10px; }
+.sumo-axis-settings p { font-size:11px; color:#64748b; margin:10px 0 0; }
+.sumo-plot-frame { width:100%; min-width:0; overflow:hidden; }
+.sumo-overlay-card, .sumo-plots .chart-card { padding:18px 14px 8px; border:1px solid #e2e8f0; border-radius:12px; background:#fff; box-shadow:0 2px 8px #0f172a05; }
+.sumo-overlay-card .chart-head, .sumo-plots .chart-head { padding:0 8px; }
+.sumo-plot-frame .modebar { background:transparent !important; }
+.sumo-output-dashboard{display:grid;gap:24px}
+.sumo-group-dropdowns{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}
+.sumo-variable-dropdown{position:relative;min-width:240px;max-width:100%;font-size:13px}
+.sumo-variable-dropdown summary{cursor:pointer;border:1px solid #cbd5e1;border-radius:8px;padding:10px 14px;background:#f8fafc;color:#334155;font-weight:600}
+.sumo-variable-dropdown summary span{margin-left:14px;color:#64748b;font-weight:400}
+.sumo-variable-options{position:absolute;z-index:30;top:100%;left:0;min-width:100%;width:max-content;max-width:min(440px,80vw);max-height:320px;overflow:auto;background:white;border:1px solid #cbd5e1;box-shadow:0 8px 24px #0f172a20;border-radius:8px;padding:12px;display:grid;gap:8px}
+.sumo-variable-options label{display:flex;align-items:center;gap:8px;padding:6px;cursor:pointer}
+.sumo-variable-options label:hover{background:#eff6ff}
+.sumo-variable-options small{margin-left:auto;color:#64748b}
+.sumo-output-dashboard .sumo-axis-settings{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
