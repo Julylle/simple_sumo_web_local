@@ -1,3 +1,4 @@
+import { SumoSimulation } from "./components/SumoSimulation";
 import { CalibrationParameters } from "./components/CalibrationParameters";
 import { CalibrationComparison } from "./components/CalibrationComparison";
 import { useState } from "react";
@@ -17,6 +18,7 @@ const tabLabels: Record<WorkspaceTab, string> = {
   simulation: "Simulation",
   "auto-calibration": "Auto-Calibration",
   history: "Run history",
+  sumo: "SUMO",
 };
 
 export default function App() {
@@ -35,12 +37,13 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <Header />
+      <Header engine={tab === "sumo" ? "SUMO" : "Python"} />
       <Sidebar tab={tab} onTabChange={setTab} />
       <main className="workspace">
         <div className="breadcrumb">
-          Models <span>/</span> PyASM <span>/</span> {tabLabels[tab]}
+          Models <span>/</span> {tab === "sumo" ? "SUMO" : "PyASM"} <span>/</span> {tabLabels[tab]}
         </div>
+        <div hidden={tab !== "sumo"}><SumoSimulation /></div>
         {tab === "simulation" && (
           <>
             <section className="page-head">

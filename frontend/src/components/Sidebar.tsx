@@ -1,4 +1,4 @@
-export type WorkspaceTab = "simulation" | "auto-calibration" | "history";
+export type WorkspaceTab = "simulation" | "auto-calibration" | "history" | "sumo";
 
 interface SidebarProps {
   tab: WorkspaceTab;
@@ -10,12 +10,12 @@ export function Sidebar({ tab, onTabChange }: SidebarProps) {
     <aside className="sidebar">
       <div className="nav-section">
         <p>MODELS</p>
-        <button className="nav active">
+        <button className={"nav " + (tab !== "sumo" ? "active" : "")} onClick={() => onTabChange("simulation")}>
           <span className="nav-icon">∿</span>Python ASM
           <span className="active-dot" />
         </button>
-        <button className="nav disabled">
-          <span className="nav-icon">S</span>SUMO<span>Future</span>
+        <button className={"nav " + (tab === "sumo" ? "active" : "")} onClick={() => onTabChange("sumo")}>
+          <span className="nav-icon">S</span>SUMO
         </button>
         {/* <button className="nav disabled">
           <span className="nav-icon">C</span>CFD<span>Future</span>

@@ -1,4 +1,4 @@
-export function Header() {
+export function Header({ engine = "Python" }: { engine?: string }) {
   return (
     <header className="topbar">
       <div className="brand">
@@ -13,7 +13,7 @@ export function Header() {
           <i /> Backend connected
         </span>
         <span className="engine">
-          Engine <b>Python</b>
+          Engine <b>{engine}</b>
         </span>
         <button className="avatar" title="Local development">
           SW

@@ -162,3 +162,33 @@ Files are not written into the read-only private data mount.
 Steady initialization uses the first point of each profile. Dynamic DO is solved
 from oxygen transfer, not fixed. The existing calibrated KLa relationship uses
 (airflow / built-in reference airflow)^0.86, preserving independent air inputs.
+
+### SUMO integration (real_sim_1202)
+
+Select **SUMO** in the sidebar and run a dynamic simulation (1–168 hours).
+The adapter reuses `real_sim_1202/fixed_dynamic_run.py`, its saved
+`sumo_steady_state.xml`, and `Sumo__Plant__Influent__param.csv` (piecewise
+TKN/COD inputs at five-minute boundaries). It uses
+`Cixi Eastern WWTP_20260920.sumo`, matching the supplied runner; the separate
+`real_sim_1202.sumo` project is not selected implicitly. PyASM controls and
+calibration parameters do not apply to this model. The existing steady-state
+preparation script remains a server-side maintenance operation.
+
+The backend host needs a licensed **Dynamita SUMO 24** installation discoverable
+by the bundled scheduler and a compatible Python interpreter. Set `SUMO_PYTHON`
+to that interpreter's absolute path if it differs from the API interpreter.
+The supplied Windows model DLL does not run in the existing Linux Docker
+container: host this API on the SUMO Windows machine and point the frontend's
+`/api` proxy to it. Install the backend API dependencies there as usual.
+
+`POST /api/sumo/runs` accepts `{ "duration_h": 168 }` and returns a task ID;
+`GET /api/sumo/runs/{id}` returns running/completed/failed status and results.
+Use one API worker: tasks are in memory, capped at 20, and lost on restart.
+Only one SUMO task runs at a time. Each task uses a temporary working directory,
+leaving the supplied DLL, steady state and historical CSV files unchanged.
+Execution has a one-hour wall-clock limit. Native failures are logged server-side
+and surfaced in the SUMO page. Output curves contain at most 500 samples.
+
+Validation: `python -m unittest discover -s backend/tests -p test_sumo_integration.py`
+and `npm run build --prefix frontend`. An actual simulation additionally requires
+the SUMO runtime and license; mocked adapter tests do not validate model physics.
