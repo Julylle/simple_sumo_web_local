@@ -1,7 +1,0 @@
-﻿job,sim_time_ms,sim_time_seconds,sim_time_days,Sumo__Plant__Influent__param__SNHx__requested_before_sample,Sumo__Plant__Influent__param__SB__requested_before_sample,Sumo__Plant__Influent__param__SVFA__requested_before_sample,Sumo__Plant__Influent__SNHx,Sumo__Plant__Influent__TKN,Sumo__Plant__Influent__TCOD,Sumo__Plant__Effluent1__SNHx,Sumo__Plant__Effluent1__SNOx
-1,0.0,0.0,0.0,50.0,413.0,244.0,50.0,60.39700000000001,1012.1,0.0,0.0
-1,300000.0,300.0,0.003472222222222222,50.0,413.0,244.0,50.0,60.39700000000001,1012.1,0.0,0.0
-1,600000.0,600.0,0.006944444444444444,52.0,403.0,265.0,52.0,62.39700000000001,1023.1,0.0,0.0
-1,900000.0,900.0,0.010416666666666666,66.0,371.0,282.0,66.0,76.397,1008.1,0.0,0.0
-1,1200000.0,1200.0,0.013888888888888888,50.0,377.0,210.0,50.0,60.39700000000001,942.0999999999999,0.0,0.0
-1,1500000.0,1500.0,0.017361111111111112,54.0,418.0,297.0,54.0,64.397,1070.1,0.0,0.0
