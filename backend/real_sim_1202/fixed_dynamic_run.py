@@ -46,16 +46,17 @@ OUTPUT_VARIABLES = [
 ]
 
 
-def load_input_rows(path):
+def load_input_rows(path, input_columns=None):
     """Read a fixed CSV snapshot; each value takes effect at its timestamp."""
+    columns = INPUT_COLUMN if input_columns is None else list(input_columns)
     rows = []
     with open(path, newline="", encoding="utf-8-sig") as source:
         reader = csv.DictReader(source)
-        if not {"sim_time_ms", *INPUT_COLUMN}.issubset(reader.fieldnames or []):
-            raise ValueError(f"CSV must contain sim_time_ms and {INPUT_COLUMN}")
+        if not {"sim_time_ms", *columns}.issubset(reader.fieldnames or []):
+            raise ValueError(f"CSV must contain sim_time_ms and {columns}")
         for line, row in enumerate(reader, 2):
             timestamp = float(row["sim_time_ms"])
-            value = {column: float(row[column]) for column in INPUT_COLUMN}
+            value = {column: float(row[column]) for column in columns}
             if not math.isfinite(timestamp) or any(not math.isfinite(v) or v < 0 for v in value.values()):
                 raise ValueError(f"Invalid input at CSV line {line}")
             if timestamp < 0 or timestamp % (DATA_COMM_SECONDS * dtool.sec):
@@ -77,18 +78,21 @@ def validate_state_file(path):
         raise ValueError(f"Not a SUMO systemstate file: {path}")
 
 
-def run_dynamic(sumo_project_path, initial_state_path=INITIAL_STATE, output_state_path=OUTPUT_STATE, output_dir=None, on_sample=None):
+def run_dynamic(sumo_project_path, initial_state_path=INITIAL_STATE, output_state_path=OUTPUT_STATE, output_dir=None, on_sample=None, input_columns=None):
+    input_columns = list(INPUT_COLUMN if input_columns is None else input_columns)
+    if not input_columns or len(input_columns) != len(set(input_columns)):
+        raise ValueError("Input columns must be non-empty and unique")
     validate_state_file(initial_state_path)
     output_state_path = os.path.abspath(output_state_path)
     if os.path.normcase(os.path.realpath(initial_state_path)) == os.path.normcase(os.path.realpath(output_state_path)):
         raise ValueError("Initial and output state paths must differ")
     with zipfile.ZipFile(sumo_project_path) as project:
         fields = [line.split("\t") for line in project.read("variables.var").decode("utf-8-sig").splitlines()]
-    for column in INPUT_COLUMN:
+    for column in input_columns:
         input_metadata = next((row for row in fields if len(row) > 4 and row[1] == column), None)
         if input_metadata is None or input_metadata[4] not in {"Parameter", "SystemParameter", "Dimension"}:
             raise ValueError(f"Input variable is missing or not writable: {column}")
-    input_rows = load_input_rows(INPUT_CSV)
+    input_rows = load_input_rows(INPUT_CSV, input_columns)
     stop_time = round(SIM_STOPTIME_SECONDS * dtool.day)
     input_index = 0
     applied_input = input_rows[0][1]
@@ -150,7 +154,7 @@ def run_dynamic(sumo_project_path, initial_state_path=INITIAL_STATE, output_stat
             if not state_loaded:
                 raise RuntimeError("SUMO did not confirm loading the initial state; see dynamic_run.log")
             if sim_time_ms is not None and sim_time_ms > 0:
-                for column in INPUT_COLUMN:
+                for column in input_columns:
                     actual_input = data.get(column)
                     if actual_input is None:
                         raise RuntimeError(f"Missing subscribed input variable in SUMO data: {column}")
@@ -164,7 +168,7 @@ def run_dynamic(sumo_project_path, initial_state_path=INITIAL_STATE, output_stat
                 sim_time_ms,
                 sim_time_ms / dtool.sec if sim_time_ms is not None else None,
                 sim_time_ms / dtool.day if sim_time_ms is not None else None,
-                *(applied_input[column] for column in INPUT_COLUMN),
+                *(applied_input[column] for column in input_columns),
                 *(data.get(variable) for variable in OUTPUT_VARIABLES),
             ])
             csv_file.flush()
@@ -187,7 +191,7 @@ def run_dynamic(sumo_project_path, initial_state_path=INITIAL_STATE, output_stat
                         if input_index + 1 < len(input_rows) else stop_time
                     )
                     # Update input before releasing the next simulation interval.
-                    for column in INPUT_COLUMN:
+                    for column in input_columns:
                         ds.sumo.sendCommand(job, f"set {column} {next_value[column]};")
                     applied_input = next_value
                     ds.sumo.sendCommand(job, f"set Sumo__LimitTime {next_limit};")
@@ -213,7 +217,7 @@ def run_dynamic(sumo_project_path, initial_state_path=INITIAL_STATE, output_stat
         csv_writer = csv.writer(csv_file)
         csv_writer.writerow([
             "job", "sim_time_ms", "sim_time_seconds", "sim_time_days",
-            *(f"{column}__requested_before_sample" for column in INPUT_COLUMN),
+            *(f"{column}__requested_before_sample" for column in input_columns),
             *OUTPUT_VARIABLES,
         ])
         csv_file.flush()
@@ -225,7 +229,7 @@ def run_dynamic(sumo_project_path, initial_state_path=INITIAL_STATE, output_stat
             f"set Sumo__StopTime {stop_time};",
             f"set Sumo__DataComm {DATA_COMM_SECONDS * dtool.sec};",
             "mode dynamic;",
-            *(f"set {column} {applied_input[column]};" for column in INPUT_COLUMN),
+            *(f"set {column} {applied_input[column]};" for column in input_columns),
             f"set Sumo__LimitTime {first_limit};",
             "start;",
         ]
@@ -234,7 +238,7 @@ def run_dynamic(sumo_project_path, initial_state_path=INITIAL_STATE, output_stat
             commands=commands,
             # Always subscribe to the input parameter needed for verification,
             # even when it is omitted from the user-facing output columns.
-            variables=list(dict.fromkeys(["Sumo__Time", *INPUT_COLUMN, *OUTPUT_VARIABLES])),
+            variables=list(dict.fromkeys(["Sumo__Time", *input_columns, *OUTPUT_VARIABLES])),
             jobData=job_data,
         )
 

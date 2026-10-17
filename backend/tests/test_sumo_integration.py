@@ -115,6 +115,34 @@ class SumoIntegrationTests(unittest.TestCase):
             self.assertEqual(sumo_engine.get_export('test'), 'full csv')
             self.assertNotIn('_csv', sumo_engine.get_run('test')['result'])
 
+    def test_template_subset_and_uploaded_columns_match(self):
+        from services.sumo_data import PREFIX, template_csv, parse_input, save_input
+        selected = [PREFIX + 'Q', PREFIX + 'pH', PREFIX + 'T']
+        template = list(csv.reader(template_csv(selected).splitlines()))
+        self.assertEqual(template[0], ['sim_time_ms', *selected])
+        self.assertEqual(template[1], ['0', '', '', ''])
+        content = (','.join(template[0]) + '\n0,50000,7.2,20\n300000,51000,7.3,21\n').encode()
+        info = save_input(content, 'inputs.csv', selected)
+        self.assertEqual(info['columns'], selected)
+        self.assertEqual(parse_input(content)[1][-1], [300000, 51000, 7.3, 21])
+        with self.assertRaises(ValueError):
+            parse_input(content, selected[::-1])
+        with self.assertRaises(ValueError):
+            parse_input(template_csv(selected).encode())
+
+    def test_all_supported_parameters_and_invalid_columns(self):
+        from services.sumo_data import ALLOWED_COLUMNS, PREFIX, parse_input, template_csv
+        self.assertEqual(len(ALLOWED_COLUMNS), 12)
+        valid_values = [50000, 7, 20, 30, 300, 40, 30, 200, 30, 300, 40, 5]
+        content = (','.join(['sim_time_ms', *ALLOWED_COLUMNS]) + '\n0,' + ','.join(map(str, valid_values)) + '\n').encode()
+        self.assertEqual(parse_input(content)[0], list(ALLOWED_COLUMNS))
+        for selected in [[], [PREFIX + 'Q'] * 2, ['Sumo__StopTime']]:
+            with self.assertRaises(ValueError):
+                template_csv(selected)
+        for name, value in [('pH', 15), ('T', 101), ('Q', 0)]:
+            with self.assertRaises(ValueError):
+                parse_input(f'sim_time_ms,{PREFIX}{name}\n0,{value}\n'.encode())
+
     def test_failures_visible_to_client(self):
         with patch.object(sumo_engine, '_jobs', {'test': {'status': 'running'}}), patch.object(sumo_engine, 'execute', side_effect=RuntimeError('License unavailable')):
             with self.assertLogs(level='ERROR'):

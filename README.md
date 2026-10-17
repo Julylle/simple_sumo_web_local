@@ -222,18 +222,33 @@ an automatic startup service. Logs and the launcher PID are in `backend/runtime/
 One worker is required because task state is in memory. Restarting the Windows
 service loses task history; avoid restarting it while a simulation is running.
 
-The **Offline sumo** page supports UTF-8 influent CSV uploads (up to 1 MB).
-Required columns, in order: `sim_time_ms`,
-`Sumo__Plant__Influent__param__TKN`, `Sumo__Plant__Influent__param__TCOD`.
-Times start at zero and strictly increase on 300000 ms boundaries; concentrations
-must be finite and non-negative. The last input value is held for the remaining
-simulation. Uploads are stored separately from the default model CSV and are
-snapshotted for each run. The service retains the latest 20 uploads in memory;
-restart clears them. Use **Use default CSV** to return to the supplied data.
+The **Offline SUMO** page offers twelve influent parameters under **Upload
+Influent Wastewater Characteristics**. Select the required parameters, download
+**data template**, fill the blank values, and upload the UTF-8 CSV (up to 1 MB).
+The first column is `sim_time_ms`; the remaining columns match the selected
+parameters in template order. Times start at zero and strictly increase on
+300000 ms boundaries. Changing selection invalidates the previous upload.
+The UI requires a matching upload before simulation; there is no default-CSV
+button. Unselected parameters retain their saved model values.
 
-`POST /api/sumo/input?filename=...csv` accepts the CSV body and returns an input
-ID. Include `input_id` in `POST /api/sumo/runs` to use it. After successful
-completion, **Download results CSV** calls
-`GET /api/sumo/runs/{id}/download` and downloads every recorded sample, including
-time columns, requested input values and SUMO output variables. Downloads share
-the 20-task in-memory retention limit; they are not the downsampled plot data.
+Supported suffixes under `Sumo__Plant__Influent__param__`: `Q`, `pH`, `T`,
+`Ammonia_sensor_Horiba`, `COD_lab`, `TKN_lab`, `Ammonia_lab`, `TSS_sensor`,
+`Ammonia_analyzer`, `TCOD`, `TKN`, `TP`. Units are displayed next to each option.
+Values must be finite and non-negative; Q must be positive, pH between 0 and 14,
+and T between 0 and 100 deg C. The last input values are held until the end.
+
+`GET /api/sumo/input-options` returns the parameter catalog.
+`POST /api/sumo/input-template` accepts `{ "columns": ["full parameter name"] }`.
+`POST /api/sumo/input?filename=...csv&columns=...&columns=...` validates the CSV
+against the selection and returns an input ID plus its column list. Include
+`input_id` and `input_columns` in `POST /api/sumo/runs`. The worker passes the
+validated column list to `fixed_dynamic_run.run_dynamic(input_columns=...)`,
+which uses it for subscriptions, assignments, verification, and CSV recording.
+The source script is not rewritten per request. Standalone runs retain their
+TKN/TCOD defaults. Uploads are isolated and the latest 20 are retained in memory.
+
+After successful completion, **Download results CSV** calls
+`GET /api/sumo/runs/{id}/download` and downloads all recorded samples, including
+timestamps, requested input values and outputs. Downloads share the 20-task
+in-memory retention limit; they are not the downsampled plot data.
+

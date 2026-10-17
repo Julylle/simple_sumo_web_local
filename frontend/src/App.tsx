@@ -18,11 +18,11 @@ const tabLabels: Record<WorkspaceTab, string> = {
   simulation: "Simulation",
   "auto-calibration": "Auto-Calibration",
   history: "Run history",
-  sumo: "SUMO",
+  sumo: "Offline SUMO",
 };
 
 export default function App() {
-  const [tab, setTab] = useState<WorkspaceTab>("simulation");
+  const [tab, setTab] = useState<WorkspaceTab>("sumo");
   const { inputSeries, parameters, data, busy, error, dirty, updateParameter, run, reset, calibration, calibrationError, calibrationLoaded, updateCalibration, retryCalibration,
     runAutoCalibration, autoCalibrationBusy, autoCalibrationError, autoCalibrationComplete,
     measurements, measurementBusy, measurementError, uploadMeasurements, comparison,
@@ -41,7 +41,7 @@ export default function App() {
       <Sidebar tab={tab} onTabChange={setTab} />
       <main className="workspace">
         <div className="breadcrumb">
-          Models <span>/</span> {tab === "sumo" ? "SUMO" : "PyASM"} <span>/</span> {tabLabels[tab]}
+          Models <span>/</span> {tab === "sumo" ? "SUMO" : "Python ASM"} <span>/</span> {tabLabels[tab]}
         </div>
         <div hidden={tab !== "sumo"}><SumoSimulation /></div>
         {tab === "simulation" && (

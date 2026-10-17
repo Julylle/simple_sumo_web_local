@@ -35,11 +35,14 @@ def read_result(path, duration_h):
 def main():
     duration_h = float(sys.argv[1])
     sys.dont_write_bytecode = True  # Keep model assets free of generated caches.
+    sys.path.insert(0, str(MODEL_DIR.parent))
+    from services.sumo_data import parse_input
     sys.path.insert(0, str(MODEL_DIR))
     import fixed_dynamic_run as runner
     runner.SIM_STOPTIME_SECONDS = duration_h / 24
     runner.INPUT_CSV = str(Path.cwd() / 'input.csv' if Path('input.csv').is_file()
                            else MODEL_DIR / 'Sumo__Plant__Influent__param.csv')
+    input_columns, _ = parse_input(Path(runner.INPUT_CSV).read_bytes())
     last_report = 0.0
 
     def report_progress(sim_time_ms, data):
@@ -54,7 +57,7 @@ def main():
 
     runner.run_dynamic(str(MODEL_DIR / 'Cixi Eastern WWTP_20260920.sumo'),
                        str(MODEL_DIR / 'sumo_steady_state.xml'),
-                       str(Path.cwd() / 'final_state.xml'), output_dir=str(Path.cwd()), on_sample=report_progress)
+                       str(Path.cwd() / 'final_state.xml'), output_dir=str(Path.cwd()), on_sample=report_progress, input_columns=input_columns)
     result = read_result(next(Path.cwd().glob('dynamic_results_*.csv')), duration_h)
     Path('result.json').write_text(json.dumps(result, allow_nan=False), encoding='utf-8')
 

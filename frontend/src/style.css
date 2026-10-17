@@ -114,3 +114,30 @@
   .model-menu { display:flex; align-items:flex-start; gap:12px; }
   .model-submenu .nav { width:100%; }
 }
+
+.sumo-influent-inputs { margin:20px 0; }
+.sumo-influent-inputs h3 { font-size:14px; margin:0 0 14px; }
+.sumo-input-options { margin:0; padding:14px; border:1px solid #e4e7ec; border-radius:8px; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.sumo-input-options legend { padding:0 6px; font-size:12px; color:#475467; }
+.sumo-input-options label { display:flex; align-items:flex-start; gap:8px; min-width:0; cursor:pointer; }
+.sumo-input-options input { margin-top:2px; flex-shrink:0; }
+.sumo-input-options code { font-size:11px; overflow-wrap:anywhere; }
+.sumo-input-options small { display:block; margin-top:3px; font-size:10px; color:#667085; }
+@media(max-width:1000px) { .sumo-input-options { grid-template-columns:1fr; } }
+
+.sumo-input-dropdown { position:relative; width:100%; max-width:560px; }
+.sumo-input-trigger { width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 13px; background:#fff; color:#344054; border:1px solid #d0d5dd; border-radius:6px; font:inherit; font-size:12px; text-align:left; cursor:pointer; }
+.sumo-input-trigger:focus-visible { outline:2px solid #84adff; outline-offset:2px; }
+.sumo-input-trigger:disabled { opacity:.55; cursor:default; }
+.sumo-input-dropdown .sumo-input-options { position:absolute; top:calc(100% + 6px); left:0; right:0; z-index:30; grid-template-columns:minmax(0,1fr); max-height:340px; overflow-y:auto; background:#fff; box-shadow:0 8px 24px #10182826; }
+.sumo-input-dropdown .sumo-input-options legend { background:#fff; }
+
+.sumo-input-toolbar { display:flex; align-items:center; gap:12px; }
+.sumo-input-toolbar .sumo-input-dropdown { flex:1; min-width:0; }
+.sumo-input-toolbar > .secondary { flex-shrink:0; white-space:nowrap; }
+@media(max-width:520px) { .sumo-input-toolbar { flex-wrap:wrap; } .sumo-input-toolbar .sumo-input-dropdown { flex-basis:100%; } }
+
+.model-submenu .future-nav { opacity:.55; cursor:not-allowed; height:auto; min-height:35px; white-space:normal; line-height:1.4; padding-top:7px; padding-bottom:7px; }
+.model-submenu .future-nav:hover { background:transparent; }
+
+.sumo-step-title { font-size:14px; margin:0 0 14px; }
