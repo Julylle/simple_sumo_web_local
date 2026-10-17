@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+from pathlib import Path
 import time
 import threading
 import logging
@@ -19,16 +20,15 @@ logging.basicConfig(
     filemode="a",
 )
 
-CURRENT_WORKING_DIR = os.getcwd()
-print(CURRENT_WORKING_DIR)
+MODEL_DIR = Path(__file__).resolve().parent
 
-SUMO_PROJECT = os.path.join(CURRENT_WORKING_DIR, "Cixi Eastern WWTP_20260920.sumo")
+SUMO_PROJECT = os.path.join(MODEL_DIR, "Cixi Eastern WWTP_20260920.sumo")
 # Change the initial state of the dynamic simulation 
 INITIAL_STATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sumo_steady_state.xml")
 OUTPUT_STATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sumo_dynamic_state.xml")
 STATE_SAVE_TIMEOUT_SECONDS = 60
 
-SIM_STOPTIME_SECONDS = 1 # in day
+SIM_STOPTIME_SECONDS = 7 # in day
 DATA_COMM_SECONDS = 300
 # CSV column names are also the model input parameter names.
 INPUT_COLUMN = [
@@ -36,7 +36,7 @@ INPUT_COLUMN = [
     "Sumo__Plant__Influent__param__TCOD",
 ]
                 
-INPUT_CSV = 'Sumo__Plant__Influent__param.csv'
+INPUT_CSV = str(MODEL_DIR / 'Sumo__Plant__Influent__param.csv')
 OUTPUT_VARIABLES = [
     "Sumo__Plant__Influent__SNHx",
     "Sumo__Plant__Influent__TKN",
@@ -89,14 +89,14 @@ def run_dynamic(sumo_project_path, initial_state_path=INITIAL_STATE, output_stat
         if input_metadata is None or input_metadata[4] not in {"Parameter", "SystemParameter", "Dimension"}:
             raise ValueError(f"Input variable is missing or not writable: {column}")
     input_rows = load_input_rows(INPUT_CSV)
-    stop_time = SIM_STOPTIME_SECONDS * dtool.day
+    stop_time = round(SIM_STOPTIME_SECONDS * dtool.day)
     input_index = 0
     applied_input = input_rows[0][1]
     first_limit = min(input_rows[1][0], stop_time) if len(input_rows) > 1 else stop_time
     def norm(p):
         return os.path.abspath(p).replace("\\", "/")
 
-    model = norm(os.path.join(CURRENT_WORKING_DIR, "dynamic_headless.dll"))
+    model = norm(os.path.join(output_dir or MODEL_DIR, "dynamic_headless.dll"))
     dtool.extract_dll_from_project(sumo_project_path, model)
 
     ds.sumo.setParallelJobs(1)
@@ -116,7 +116,7 @@ def run_dynamic(sumo_project_path, initial_state_path=INITIAL_STATE, output_stat
         logging.info("SUMO job %s: %s", job, msg)
         if msg.startswith("530041"):
             state_loaded = True
-        if msg.startswith("230046"):
+        if msg.startswith(("230046", "230008")):
             csv_errors.append(RuntimeError(f"SUMO rejected input assignment: {msg}"))
             done_event.set()
             return
@@ -172,6 +172,10 @@ def run_dynamic(sumo_project_path, initial_state_path=INITIAL_STATE, output_stat
                 on_sample(sim_time_ms, data)
             if sim_time_ms is None:
                 raise ValueError("Missing Sumo__Time; cannot synchronize CSV input")
+            if sim_time_ms >= stop_time:
+                # Release the final input boundary so SUMO can emit its finish
+                # message and process the subsequent state-save command.
+                ds.sumo.sendCommand(job, f"set Sumo__LimitTime {stop_time + DATA_COMM_SECONDS * dtool.sec};")
             if input_index + 1 < len(input_rows) and sim_time_ms < stop_time:
                 next_time, next_value = input_rows[input_index + 1]
                 if sim_time_ms > next_time:
@@ -218,7 +222,7 @@ def run_dynamic(sumo_project_path, initial_state_path=INITIAL_STATE, output_stat
             f'load "{initial_state_path}";',
             "maptoic;",
             "set Sumo__Time 0;",
-            f"set Sumo__StopTime {SIM_STOPTIME_SECONDS * dtool.day};",
+            f"set Sumo__StopTime {stop_time};",
             f"set Sumo__DataComm {DATA_COMM_SECONDS * dtool.sec};",
             "mode dynamic;",
             *(f"set {column} {applied_input[column]};" for column in INPUT_COLUMN),

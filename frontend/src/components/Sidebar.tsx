@@ -6,49 +6,54 @@ interface SidebarProps {
 }
 
 export function Sidebar({ tab, onTabChange }: SidebarProps) {
+  const pythonActive = tab !== "sumo";
+
   return (
     <aside className="sidebar">
-      <div className="nav-section">
+      <nav className="nav-section model-navigation" aria-label="Models">
         <p>MODELS</p>
-        <button className={"nav " + (tab !== "sumo" ? "active" : "")} onClick={() => onTabChange("simulation")}>
-          <span className="nav-icon">∿</span>Python ASM
-          <span className="active-dot" />
-        </button>
-        <button className={"nav " + (tab === "sumo" ? "active" : "")} onClick={() => onTabChange("sumo")}>
-          <span className="nav-icon">S</span>SUMO
-        </button>
-        {/* <button className="nav disabled">
-          <span className="nav-icon">C</span>CFD<span>Future</span>
-        </button> */}
-      </div>
-      <div className="nav-section">
-        <p>WORKSPACE</p>
-        <button
-          className={"nav " + (tab === "simulation" ? "active" : "")}
-          onClick={() => onTabChange("simulation")}
-        >
-          <span className="nav-icon">▥</span>Simulation
-        </button>
-        <button
-          className={"nav " + (tab === "auto-calibration" ? "active" : "")}
-          onClick={() => onTabChange("auto-calibration")}
-        >
-          <span className="nav-icon">⇄</span>Auto-Calibration
-        </button>
-        {/* <button
-          className={"nav " + (tab === "history" ? "active" : "")}
-          onClick={() => onTabChange("history")}
-        >
-          <span className="nav-icon">◷</span>Run history
-        </button> */}
-      </div>
-      {/* <div className="sidebar-bottom">
-        <div className="security-note">
-          <b>Protected execution</b>
-          <span>Models and raw data remain server-side.</span>
-        </div>
-        <div className="version">MVP · ODE adapter</div>
-      </div> */}
+        <ul className="model-menu">
+          <li>
+            <button
+              className={"nav " + (pythonActive ? "active" : "")}
+              onClick={() => onTabChange("simulation")}
+            >
+              <span className="nav-icon" aria-hidden="true">&#8767;</span>Python ASM
+              {pythonActive && <span className="active-dot" />}
+            </button>
+            <ul className="model-submenu" aria-label="Python ASM pages">
+              <li>
+                <button
+                  className={"nav " + (tab === "simulation" ? "active" : "")}
+                  aria-current={tab === "simulation" ? "page" : undefined}
+                  onClick={() => onTabChange("simulation")}
+                >
+                  Simulation
+                </button>
+              </li>
+              <li>
+                <button
+                  className={"nav " + (tab === "auto-calibration" ? "active" : "")}
+                  aria-current={tab === "auto-calibration" ? "page" : undefined}
+                  onClick={() => onTabChange("auto-calibration")}
+                >
+                  Auto-Calibration
+                </button>
+              </li>
+            </ul>
+          </li>
+          <li>
+            <button
+              className={"nav " + (tab === "sumo" ? "active" : "")}
+              aria-current={tab === "sumo" ? "page" : undefined}
+              onClick={() => onTabChange("sumo")}
+            >
+              <span className="nav-icon" aria-hidden="true">S</span>Offline SUMO
+              {tab === "sumo" && <span className="active-dot" />}
+            </button>
+          </li>
+        </ul>
+      </nav>
     </aside>
   );
 }

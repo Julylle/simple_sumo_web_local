@@ -34,10 +34,12 @@ def read_result(path, duration_h):
 
 def main():
     duration_h = float(sys.argv[1])
+    sys.dont_write_bytecode = True  # Keep model assets free of generated caches.
     sys.path.insert(0, str(MODEL_DIR))
     import fixed_dynamic_run as runner
     runner.SIM_STOPTIME_SECONDS = duration_h / 24
-    runner.INPUT_CSV = str(MODEL_DIR / 'Sumo__Plant__Influent__param.csv')
+    runner.INPUT_CSV = str(Path.cwd() / 'input.csv' if Path('input.csv').is_file()
+                           else MODEL_DIR / 'Sumo__Plant__Influent__param.csv')
     last_report = 0.0
 
     def report_progress(sim_time_ms, data):

@@ -15,6 +15,7 @@ BACKEND = Path(__file__).resolve().parents[1]
 _pool = ThreadPoolExecutor(max_workers=1)
 _lock = Lock()
 _jobs = {}
+_exports = {}
 
 
 def _watch_progress(directory, stop, on_progress):
@@ -27,8 +28,10 @@ def _watch_progress(directory, stop, on_progress):
             continue
 
 
-def execute(duration_h, on_progress=lambda value: None):
+def execute(duration_h, on_progress=lambda value: None, input_csv=None):
     with tempfile.TemporaryDirectory(prefix='sumo_') as directory:
+        if input_csv is not None:
+            (Path(directory) / 'input.csv').write_text(input_csv, encoding='utf-8')
         stop = Event()
         watcher = Thread(target=_watch_progress, args=(directory, stop, on_progress), daemon=True)
         watcher.start()
@@ -46,17 +49,25 @@ def execute(duration_h, on_progress=lambda value: None):
                 log.seek(0)
                 logging.error('SUMO worker failed: %s', log.read()[-12000:])
                 raise RuntimeError('SUMO execution failed. Check the server SUMO installation, license and logs.')
-        return json.loads((Path(directory) / 'result.json').read_text(encoding='utf-8'))
+        result = json.loads((Path(directory) / 'result.json').read_text(encoding='utf-8'))
+        csv_files = list(Path(directory).glob('dynamic_results_*.csv'))
+        if csv_files:
+            result['_csv'] = csv_files[0].read_text(encoding='utf-8-sig')
+        return result
 
 
-def _run(job_id, duration_h):
+def _run(job_id, duration_h, input_csv=None):
     try:
         def progress(simulated_h):
             with _lock:
                 current = max(_jobs[job_id].get('simulated_h', 0), min(duration_h, simulated_h))
                 _jobs[job_id].update(simulated_h=current, progress_pct=min(99, current / duration_h * 100),
                                      phase='finalizing' if current >= duration_h else 'simulating')
-        result = execute(duration_h, progress)
+        result = execute(duration_h, progress, input_csv) if input_csv is not None else execute(duration_h, progress)
+        csv_output = result.pop('_csv', None)
+        if csv_output is not None:
+            with _lock:
+                _exports[job_id] = csv_output
         update = {'status': 'completed', 'phase': 'completed', 'progress_pct': 100,
                   'simulated_h': duration_h, 'result': result}
     except Exception as exc:
@@ -66,19 +77,26 @@ def _run(job_id, duration_h):
         _jobs[job_id].update(update)
 
 
-def start_run(duration_h):
+def start_run(duration_h, input_csv=None):
     with _lock:
         if any(job['status'] == 'running' for job in _jobs.values()):
             raise RuntimeError('A SUMO simulation is already running. Try again when it finishes.')
         while len(_jobs) >= 20:
-            del _jobs[next(iter(_jobs))]
+            expired = next(iter(_jobs))
+            del _jobs[expired]
+            _exports.pop(expired, None)
         job_id = str(uuid4())
         _jobs[job_id] = {'id': job_id, 'status': 'running', 'phase': 'starting', 'progress_pct': 0,
                          'simulated_h': 0, 'duration_h': duration_h}
-        _pool.submit(_run, job_id, duration_h)
+        _pool.submit(_run, job_id, duration_h, input_csv)
         return dict(_jobs[job_id])
 
 
 def get_run(job_id):
     with _lock:
         return dict(_jobs[job_id]) if job_id in _jobs else None
+
+
+def get_export(job_id):
+    with _lock:
+        return _exports.get(job_id) if _jobs.get(job_id, {}).get('status') == 'completed' else None

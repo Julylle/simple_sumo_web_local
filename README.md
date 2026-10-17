@@ -169,17 +169,16 @@ Select **SUMO** in the sidebar and run a dynamic simulation (1–168 hours).
 The adapter reuses `real_sim_1202/fixed_dynamic_run.py`, its saved
 `sumo_steady_state.xml`, and `Sumo__Plant__Influent__param.csv` (piecewise
 TKN/COD inputs at five-minute boundaries). It uses
-`Cixi Eastern WWTP_20260920.sumo`, matching the supplied runner; the separate
-`real_sim_1202.sumo` project is not selected implicitly. PyASM controls and
-calibration parameters do not apply to this model. The existing steady-state
-preparation script remains a server-side maintenance operation.
+`Cixi Eastern WWTP_20260920.sumo`, matching the supplied runner. PyASM controls and
+calibration parameters do not apply to this model. The saved steady state is a required input; its preparation script is not part
+of the deployed calculation assets.
 
 The backend host needs a licensed **Dynamita SUMO 24** installation discoverable
 by the bundled scheduler and a compatible Python interpreter. Set `SUMO_PYTHON`
 to that interpreter's absolute path if it differs from the API interpreter.
 The supplied Windows model DLL does not run in the existing Linux Docker
-container: host this API on the SUMO Windows machine and point the frontend's
-`/api` proxy to it. Install the backend API dependencies there as usual.
+container: use the separate Windows service described below. Only `/api/sumo/` is
+forwarded to Windows; the PyASM API remains in Docker.
 
 `POST /api/sumo/runs` accepts `{ "duration_h": 168 }` and returns a task ID;
 `GET /api/sumo/runs/{id}` returns running/completed/failed status and results.
@@ -192,3 +191,49 @@ and surfaced in the SUMO page. Output curves contain at most 500 samples.
 Validation: `python -m unittest discover -s backend/tests -p test_sumo_integration.py`
 and `npm run build --prefix frontend`. An actual simulation additionally requires
 the SUMO runtime and license; mocked adapter tests do not validate model physics.
+
+
+### Windows SUMO service with Docker frontend
+
+Run the service as the Windows user who has the SUMO installation and license.
+The service binds to loopback `127.0.0.1:8001`; Docker Desktop reaches it through
+`host.docker.internal`. Do not change the binding to a public interface without
+adding access control. No license files are copied to the container.
+
+First-time setup from the repository root:
+
+```powershell
+python -m venv backend/runtime/sumo-venv
+./backend/runtime/sumo-venv/Scripts/python.exe -m pip install -r backend/requirements-sumo.txt
+```
+
+Start after Windows login/restart:
+
+```powershell
+./backend/scripts/start-sumo-service.ps1
+docker compose -f docker-compose.windows-sumo.yml -p model-platform up -d
+```
+
+Use this Compose file for subsequent deployments so the Windows SUMO proxy is
+preserved. It mounts `nginx/nginx-windows-sumo.conf`. SUMO health is available at
+`http://localhost:8080/api/sumo/health`; PyASM health remains `/api/health`.
+The Windows service runs independently of the terminal, but is not registered as
+an automatic startup service. Logs and the launcher PID are in `backend/runtime/`.
+One worker is required because task state is in memory. Restarting the Windows
+service loses task history; avoid restarting it while a simulation is running.
+
+The **Offline sumo** page supports UTF-8 influent CSV uploads (up to 1 MB).
+Required columns, in order: `sim_time_ms`,
+`Sumo__Plant__Influent__param__TKN`, `Sumo__Plant__Influent__param__TCOD`.
+Times start at zero and strictly increase on 300000 ms boundaries; concentrations
+must be finite and non-negative. The last input value is held for the remaining
+simulation. Uploads are stored separately from the default model CSV and are
+snapshotted for each run. The service retains the latest 20 uploads in memory;
+restart clears them. Use **Use default CSV** to return to the supplied data.
+
+`POST /api/sumo/input?filename=...csv` accepts the CSV body and returns an input
+ID. Include `input_id` in `POST /api/sumo/runs` to use it. After successful
+completion, **Download results CSV** calls
+`GET /api/sumo/runs/{id}/download` and downloads every recorded sample, including
+time columns, requested input values and SUMO output variables. Downloads share
+the 20-task in-memory retention limit; they are not the downsampled plot data.
