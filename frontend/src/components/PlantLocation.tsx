@@ -1,7 +1,9 @@
+import { t, useLanguage } from '../i18n';
 import { useState } from "react";
 import { googleEarthUrl, plant, reactorLocations } from "../config/plant";
 
 export function PlantLocation() {
+  useLanguage();
   const [selectedId, setSelectedId] = useState("plant");
   const selected = reactorLocations.find((reactor) => reactor.id === selectedId);
   const { latitude, longitude } = selected ?? plant;
@@ -12,13 +14,11 @@ export function PlantLocation() {
     <section className="plant-location" aria-labelledby="plant-location-title">
       <div className="plant-location-header">
         <div>
-          <h2 id="plant-location-title">Plant location</h2>
-          <p>{plant.name}</p>
-          <address>{plant.address}</address>
+          <h2 id="plant-location-title">{t("Plant location")}</h2>
+          <p>{t(plant.name)}</p>
+          <address>{t(plant.address)}</address>
         </div>
-        <a className="secondary" href={googleEarthUrl(latitude, longitude)} target="_blank" rel="noopener noreferrer">
-          Open in Google Earth
-        </a>
+        <a className="secondary" href={googleEarthUrl(latitude, longitude)} target="_blank" rel="noopener noreferrer"> {t("Open in Google Earth")} </a>
       </div>
       <div className="plant-location-content">
         <iframe
@@ -29,21 +29,19 @@ export function PlantLocation() {
           allowFullScreen
           referrerPolicy="no-referrer-when-downgrade"
         />
-        <aside className="plant-reactors" aria-label="Reactor locations">
-          <h3>Reactor locations</h3>
-          <button type="button" aria-pressed={selectedId === "plant"} onClick={() => setSelectedId("plant")}>
-            Plant overview
-          </button>
+        <aside className="plant-reactors" aria-label={t("Reactor locations")}>
+          <h3>{t("Reactor locations")}</h3>
+          <button type="button" aria-pressed={selectedId === "plant"} onClick={() => setSelectedId("plant")}> {t("Plant overview")} </button>
           {reactorLocations.map((reactor) => (
             <button type="button" key={reactor.id} aria-pressed={selectedId === reactor.id} onClick={() => setSelectedId(reactor.id)}>
-              {reactor.label}
+              {t(reactor.label)}
             </button>
           ))}
           {reactorLocations.length === 0 && (
-            <p>The locations of model reactors 1–5 are awaiting confirmation.</p>
+            <p>{t("The locations of model reactors 1–5 are awaiting confirmation.")}</p>
           )}
-          <p>Satellite view: Google Maps. Open Google Earth for the Earth view.</p>
-          <a href={plant.addressSource} target="_blank" rel="noopener noreferrer">Facility address source</a>
+          <p>{t("Satellite view: Google Maps. Open Google Earth for the Earth view.")}</p>
+          <a href={plant.addressSource} target="_blank" rel="noopener noreferrer">{t("Facility address source")}</a>
         </aside>
       </div>
     </section>

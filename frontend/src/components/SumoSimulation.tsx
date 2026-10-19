@@ -1,3 +1,4 @@
+import { t, useLanguage } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { SumoOutputDashboard } from './SumoOutputDashboard';
 
@@ -13,6 +14,7 @@ async function request(url: string, init?: RequestInit): Promise<Run> {
   return body;
 }
 export function SumoSimulation() {
+  useLanguage();
   const [inputMenuOpen, setInputMenuOpen] = useState(false);
   const inputMenuRef = useRef<HTMLDivElement>(null);
   const [inputOptions, setInputOptions] = useState<InputOption[]>([]);
@@ -43,8 +45,8 @@ export function SumoSimulation() {
     return () => document.removeEventListener('pointerdown', closeOutside);
   }, [inputMenuOpen]);
   const progress = starting ? 0 : run?.progress_pct ?? 0;
-  const phase = starting ? 'Submitting simulation...' : ({ starting: 'Initializing SUMO...', simulating: 'Simulating',
-    finalizing: 'Saving and validating results...', completed: 'Simulation complete', failed: 'Simulation failed' }[run?.phase ?? ''] ?? 'Ready to simulate');
+  const phase = starting ? t('Submitting simulation...') : ({ starting: t('Initializing SUMO...'), simulating: t('Simulating'),
+    finalizing: t('Saving and validating results...'), completed: t('Simulation complete'), failed: t('Simulation failed') }[run?.phase ?? ''] ?? t('Ready to simulate'));
   useEffect(() => {
     const controller = new AbortController();
     fetch('/api/sumo/input-options', { signal: controller.signal }).then(async response => {
@@ -142,18 +144,18 @@ export function SumoSimulation() {
     finally { setStarting(false); }
   }
   return <>
-    <section className="page-head"><div><h1>SUMO Offline Simulation</h1><p>Cixi Eastern WWTP </p></div></section>
+    <section className="page-head"><div><h1>{t("SUMO Offline Simulation")}</h1><p>{t("Cixi Eastern WWTP")} </p></div></section>
     <section className="config-card">
       <div className="section-title">
-        <div><h2>Simulation settings</h2>
+        <div><h2>{t("Simulation settings")}</h2>
       {/* <p>Uses the model's saved operating parameters and the supplied influent TKN / COD time series.</p> */}
         </div>
       </div>
       {/* <p className="calibration-note">Results include influent NH4-N, TKN and COD, and effluent NH4-N and NOx-N. Concentrations are in mg/L.</p> */}
       <section className="sumo-influent-inputs" aria-labelledby="sumo-influent-title">
-        <h3 id="sumo-influent-title">Step1: Select parameters and download the template</h3>
+        <h3 id="sumo-influent-title">{t("Step1: Select parameters and download the template")}</h3>
         <div className="calibration-note">
-          <p>Upload a completed template for the selected parameters before running. Changing the selection requires a new upload.</p>
+          <p>{t("Upload a completed template for the selected parameters before running. Changing the selection requires a new upload.")}</p>
         </div>
         <div className="sumo-input-toolbar">
         <div className="sumo-input-dropdown" ref={inputMenuRef}
@@ -168,58 +170,59 @@ export function SumoSimulation() {
           <button type="button" className="sumo-input-trigger" disabled={inputMenuDisabled}
             aria-expanded={inputMenuOpen} aria-controls="sumo-influent-options"
             onClick={() => setInputMenuOpen(current => !current)}>
-            <span>{inputColumns.length ? `${inputColumns.length} influent parameters selected` : 'Select influent parameters to update'}</span>
-            <span aria-hidden="true">{inputMenuOpen ? '\u25B4' : '\u25BE'}</span>
+            <span>{t(inputColumns.length ? t(`${inputColumns.length} influent parameters selected`) : t('Select influent parameters to update'))}</span>
+            <span aria-hidden="true">{t(inputMenuOpen ? '\u25B4' : '\u25BE')}</span>
           </button>
           {inputMenuOpen && <fieldset id="sumo-influent-options" className="sumo-input-options" disabled={inputMenuDisabled}>
-            <legend>Select influent parameters to update</legend>
+            <legend>{t("Select influent parameters to update")}</legend>
             {inputOptions.map(option => <label key={option.name}>
               <input type="checkbox" checked={inputColumns.includes(option.name)}
                 onChange={event => selectInput(option.name, event.target.checked)} />
-              <span><code>{option.name}</code><small>{option.unit}</small></span>
+              <span><code>{t(option.name)}</code><small>{option.unit}</small></span>
             </label>)}
           </fieldset>}
         </div>
           <button className="secondary" disabled={busy || uploading || templateBusy || !inputColumns.length || !inputOptions.length}
-            onClick={downloadTemplate}>{templateBusy ? 'Generating template...' : 'Download data template'}</button>
+            onClick={downloadTemplate}>{t(templateBusy ? t('Generating template...') : t('Download data template'))}</button>
         </div>
-        {!!inputColumns.length && <p className="calibration-note">Selected: {inputColumns.map(name => name.split('__').pop()).join(', ')}</p>}
-        {optionsError && <div className="alert" role="alert">{optionsError}</div>}
-        {!inputOptions.length && !optionsError && <p role="status">Loading influent parameters...</p>}
-        <h3 id="sumo-upload-title" className="sumo-step-title">Step2: Upload completed CSV template</h3>
+        {!!inputColumns.length && <p className="calibration-note">{t("Selected:")} {t(inputColumns.map(name => name.split('__').pop()).join(', '))}</p>}
+        {optionsError && <div className="alert" role="alert">{t(optionsError)}</div>}
+        {!inputOptions.length && !optionsError && <p role="status">{t("Loading influent parameters...")}</p>}
+        <h3 id="sumo-upload-title" className="sumo-step-title">{t("Step2: Upload completed CSV template")}</h3>
         <div className="measurement-actions">
-          <label htmlFor="sumo-influent-csv">
+          <label htmlFor="sumo-influent-csv" className="secondary sumo-file-picker">
+            {t("Choose CSV file")}
             <input id="sumo-influent-csv" type="file" accept=".csv,text/csv"
               disabled={busy || uploading || templateBusy || !inputColumns.length || !inputOptions.length}
               onChange={event => { const file = event.target.files?.[0]; if (file) void upload(file); event.target.value = ''; }} />
           </label>
         </div>
-        {!inputColumns.length && <p role="status">Select at least one influent parameter.</p>}
+        {!inputColumns.length && <p role="status">{t("Select at least one influent parameter.")}</p>}
       </section>
-      {uploading ? <p role="status">Uploading and validating CSV...</p> : uploaded
-        ? <p className="measurement-ready" role="status">Selected: {uploaded.filename} | {uploaded.count} rows | Last input: {uploaded.end_h.toFixed(2)} h</p>
+      {uploading ? <p role="status">{t("Uploading and validating CSV...")}</p> : uploaded
+        ? <p className="measurement-ready" role="status">{t("Selected:")} {uploaded.filename} | {t(uploaded.count)} {t("rows | Last input:")} {t(uploaded.end_h.toFixed(2))} h</p>
         : null}
-      {uploadError && <div className="alert" role="alert">{uploadError}</div>}
-        <h3 id="sumo-duration-title" className="sumo-step-title">Step3: Set up simulation duration</h3>
-      <label className="field"><span className="field-label">Duration (hours)</span>
+      {uploadError && <div className="alert" role="alert">{t(uploadError)}</div>}
+        <h3 id="sumo-duration-title" className="sumo-step-title">{t("Step3: Set up simulation duration")}</h3>
+      <label className="field"><span className="field-label">{t("Duration (hours)")}</span>
         <div className="input-wrap"><input type="number" min="1" max="168" step="any" value={duration} disabled={busy} onChange={e => setDuration(e.target.value)} /></div></label>
-      <p><button className="primary" onClick={start} disabled={busy || uploading || !!uploadError || !uploaded || !duration.trim() || !Number.isFinite(Number(duration)) || Number(duration) < 1 || Number(duration) > 168}>{busy ? 'Running SUMO…' : 'Run SUMO'}</button></p>
+      <p><button className="primary" onClick={start} disabled={busy || uploading || !!uploadError || !uploaded || !duration.trim() || !Number.isFinite(Number(duration)) || Number(duration) < 1 || Number(duration) > 168}>{t(busy ? t('Running SUMO…') : t('Run SUMO'))}</button></p>
       <div className="sumo-progress">
-        <div className="sumo-progress-label"><span role="status">{phase}</span><b>{Math.floor(progress)}%</b></div>
-        <progress max="100" value={progress} aria-label="Simulation progress" />
-        <p>{(starting ? 0 : run?.simulated_h ?? 0).toFixed(2)} / {starting ? Number(duration) : run?.duration_h ?? Number(duration)} simulated hours</p>
-        <small>Progress follows model simulation time. Results appear after saving and validation.</small>
+        <div className="sumo-progress-label"><span role="status">{t(phase)}</span><b>{t(Math.floor(progress))}%</b></div>
+        <progress max="100" value={progress} aria-label={t("Simulation progress")} />
+        <p>{t((starting ? 0 : run?.simulated_h ?? 0).toFixed(2))} / {t(starting ? Number(duration) : run?.duration_h ?? Number(duration))} {t("simulated hours")}</p>
+        <small>{t("Progress follows model simulation time. Results appear after saving and validation.")}</small>
       </div>
-      {(error || run?.error) && <div className="alert" role="alert">{error || run?.error}</div>}
+      {(error || run?.error) && <div className="alert" role="alert">{t(error || run?.error)}</div>}
     </section>
     <section className="config-card">
-      <div className="section-title"><div><h2>Output variables visualisation</h2><p>Select output variables and compare their changes over simulation time.</p></div>
+      <div className="section-title"><div><h2>{t("Output variables visualisation")}</h2><p>{t("Select output variables and compare their changes over simulation time.")}</p></div>
         <button className="secondary" disabled={run?.status !== 'completed' || starting || downloading} onClick={download}>
-          {downloading ? 'Downloading...' : 'Download results CSV'}
+          {t(downloading ? t('Downloading...') : t('Download results CSV'))}
         </button></div>
-      <p className="calibration-note">Download includes all recorded samples, timestamps, input assignments and output variables for the completed run.</p>
+      <p className="calibration-note">{t("Download includes all recorded samples, timestamps, input assignments and output variables for the completed run.")}</p>
       <SumoOutputDashboard influent={inputColumns.map(key => ({key,
-        label: `Influent ${key.split('__').pop()}`, unit: inputOptions.find(o => o.name === key)?.unit ?? ''}))}
+        label: t(`Influent ${key.split('__').pop()}`), unit: inputOptions.find(o => o.name === key)?.unit ?? ''}))}
         result={run?.result} runId={run?.id ?? ''} />
     </section>
   </>;

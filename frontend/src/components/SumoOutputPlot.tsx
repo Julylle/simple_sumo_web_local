@@ -1,4 +1,6 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { plotLocale } from '../plotLocale';
+import { t, useLanguage } from '../i18n';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Plot from 'react-plotly.js';
 import type { Data, Layout } from 'plotly.js';
 
@@ -8,6 +10,7 @@ export function SumoOutputPlot({ result, variables, rightAxis, overlay, runId, o
   result: { time_h: number[]; variables: Record<string, number[]> };
   options: OutputOption[]; variables: string[]; rightAxis: string[]; overlay: boolean; runId: string;
 }) {
+  const language = useLanguage();
   const frame = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const height = overlay ? 480 : 320;
@@ -27,15 +30,15 @@ export function SumoOutputPlot({ result, variables, rightAxis, overlay, runId, o
     const right = overlay && rightAxis.includes(key);
     return {
       x: result.time_h, y: result.variables[key], type: 'scatter', mode: 'lines',
-      name: `${options.find(o => o.key === key)?.label ?? key} (${options.find(o => o.key === key)?.unit ?? ''})${right ? ' [right]' : ''}`,
+      name: `${t(options.find(o => o.key === key)?.label ?? key)} (${options.find(o => o.key === key)?.unit ?? ''})${right ? t(' [right]') : ''}`,
       yaxis: right ? 'y2' : 'y',
       line: { color: sumoOutputColors[Math.max(0, options.findIndex(o => o.key === key)) % sumoOutputColors.length], width: 2.5, dash: right ? 'dash' : 'solid' },
       hovertemplate: `%{x:.2f} h<br>%{y:.3f} ${options.find(o => o.key === key)?.unit ?? ''}<extra>%{fullData.name}</extra>`,
     };
-  }), [result, variables, rightAxis, overlay, options]);
+  }), [result, variables, rightAxis, overlay, options, language]);
   const axisTitle = (right: boolean) => {
     const units = [...new Set(options.filter(o => variables.includes(o.key) && (overlay && rightAxis.includes(o.key)) === right).map(o => o.unit))];
-    return `${right ? 'Right axis' : 'Value'}${units.length === 1 ? ` (${units[0]})` : ' (see legend / hover units)'}`;
+    return `${right ? t('Right axis') : t('Value')}${units.length === 1 ? ` (${units[0]})` : t(' (see legend / hover units)')}`;
   };
   const leftTitle = axisTitle(false), rightTitle = axisTitle(true);
   const layout = useMemo<Partial<Layout>>(() => ({
@@ -45,7 +48,7 @@ export function SumoOutputPlot({ result, variables, rightAxis, overlay, runId, o
     uirevision: `${runId}:${overlay}:${variables.join(',')}:${axisKey}`,
     paper_bgcolor: '#ffffff', plot_bgcolor: '#ffffff',
     font: { family: 'Inter, Segoe UI, sans-serif', size: 11, color: '#64748b' },
-    xaxis: { title: { text: 'Time (h)', standoff: 12 }, gridcolor: '#f1f5f9',
+    xaxis: { title: { text: t('Time (h)'), standoff: 12 }, gridcolor: '#f1f5f9',
       zeroline: false, showline: true, linecolor: '#cbd5e1', ticks: 'outside', tickcolor: '#cbd5e1', automargin: false },
     yaxis: { title: { text: leftTitle, standoff: 12 },
       gridcolor: '#e8edf3', zeroline: false, rangemode: 'tozero', tickformat: '~g', automargin: false },
@@ -55,10 +58,10 @@ export function SumoOutputPlot({ result, variables, rightAxis, overlay, runId, o
     margin: { t: 35, b: overlay ? 110 : 60, l: 75, r: overlay ? 75 : 25, autoexpand: false },
     hovermode: 'x unified', hoverlabel: { bgcolor: '#ffffff', bordercolor: '#e2e8f0', font: { size: 12 } },
     dragmode: 'zoom',
-  }), [width, height, runId, overlay, variables, axisKey, hasRight, leftTitle, rightTitle]);
+  }), [width, height, runId, overlay, variables, axisKey, hasRight, leftTitle, rightTitle, language]);
   return <div ref={frame} className="sumo-plot-frame" style={{ height }}>
     {width > 0 && <Plot data={data} layout={layout}
-      config={{ responsive: false, displaylogo: false, displayModeBar: true, doubleClick: 'reset',
+      config={{ ...plotLocale(language), responsive: false, displaylogo: false, displayModeBar: true, doubleClick: 'reset',
         modeBarButtonsToRemove: ['lasso2d', 'select2d'],
         toImageButtonOptions: { format: 'png', filename: 'sumo-comparison', scale: 2 } }}
       style={{ width: '100%', height: '100%' }} />}

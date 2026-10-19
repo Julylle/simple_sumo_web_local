@@ -1,3 +1,4 @@
+import { t, useLanguage } from '../i18n';
 import type { Params } from "../api/client";
 import type { KeyboardEvent } from "react";
 
@@ -12,6 +13,7 @@ const stages = [
 ];
 
 function Pipe({ d, sludge = false }: { d: string; sludge?: boolean }) {
+  useLanguage();
   return <g fill="none" strokeLinecap="round" strokeLinejoin="round">
     <path d={d} stroke={sludge ? "#633782" : "#17628e"} strokeWidth="13" />
     <path d={d} stroke={sludge ? "#ad73cd" : "#39b7ec"} strokeWidth="9" />
@@ -20,6 +22,7 @@ function Pipe({ d, sludge = false }: { d: string; sludge?: boolean }) {
 }
 
 function Tank({ aerobic }: { aerobic: boolean }) {
+  useLanguage();
   return <g>
     <ellipse cx="77" cy="192" rx="88" ry="15" fill="#dce5d2" />
     <path d="M 8 168 L 32 64 H 150 L 169 168 Z" fill="#e9e6d9" stroke="#8f968b" strokeWidth="2" />
@@ -52,6 +55,7 @@ function Tank({ aerobic }: { aerobic: boolean }) {
 export function ProcessFlowDiagram({ parameters, selected, onSelect }: {
   parameters: Params; selected: string; onSelect: (id: string) => void;
 }) {
+  useLanguage();
   const interaction = (id: string, label: string) => ({
     role: "button", tabIndex: 0, "aria-label": label, "aria-pressed": selected === id,
     className: `plant-target ${selected === id ? "is-selected" : ""}`,
@@ -60,7 +64,7 @@ export function ProcessFlowDiagram({ parameters, selected, onSelect }: {
       if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(id); }
     },
   });
-  return <svg className="plant-diagram" viewBox="0 0 1580 435" aria-label="Interactive MLE treatment plant with two anoxic tanks, three aerated tanks, clarifier and recycle pipes">
+  return <svg className="plant-diagram" viewBox="0 0 1580 435" aria-label={t("Interactive MLE treatment plant with two anoxic tanks, three aerated tanks, clarifier and recycle pipes")}>
     <defs>
       <linearGradient id="mle-water" x2="0" y2="1"><stop stopColor="#236788" /><stop offset="1" stopColor="#8dddf3" /></linearGradient>
       <linearGradient id="mle-anoxic" x2="0" y2="1"><stop stopColor="#526f65" /><stop offset="1" stopColor="#a3b391" /></linearGradient>
@@ -91,22 +95,22 @@ export function ProcessFlowDiagram({ parameters, selected, onSelect }: {
         <path d="M 106 120 L 195 150 L 195 138 L 106 108 Z" fill="#bac4b1" stroke="#788b7d" />
         <path d="M 107 105 V 89 L 197 120 V 139 M 108 98 L 196 130 M 137 100 V 121 M 166 110 V 132" stroke="#d2a12d" strokeWidth="2" fill="none" />
         <path d="M 20 117 V 99 Q 110 35 201 99 V 117" fill="none" stroke="#d2a12d" strokeWidth="3" />
-        <text x="110" y="37" className="plant-name">Secondary clarifier</text>
+        <text x="110" y="37" className="plant-name">{t("Secondary clarifier")}</text>
       </g> : <Tank aerobic={Number(stage.id) >= 3} />}
-      <text x={stage.id === "sst" ? 110 : 85} y="246" className="plant-name">{stage.label === "SST" ? "RAS / WAS" : stage.label}</text>
-      <text x={stage.id === "sst" ? 110 : 85} y="266" className="plant-detail">{Number(stage.id) > 0 ? `${parameters[`tank${stage.id}_volume_m3` as keyof Params].toFixed(1)} m³ / lane` : "Excel time series"}</text>
-      {Number(stage.id) >= 3 && <text x="85" y="285" className="plant-detail">Airflow: Excel time series</text>}
+      <text x={stage.id === "sst" ? 110 : 85} y="246" className="plant-name">{t(stage.label === "SST" ? "RAS / WAS" : stage.label)}</text>
+      <text x={stage.id === "sst" ? 110 : 85} y="266" className="plant-detail">{t(Number(stage.id) > 0 ? `${parameters[`tank${stage.id}_volume_m3` as keyof Params].toFixed(1)} m³ / lane` : "Excel time series")}</text>
+      {Number(stage.id) >= 3 && <text x="85" y="285" className="plant-detail">{t("Airflow: Excel time series")}</text>}
     </g>)}
     <g transform="translate(1460 0)">
       <path d="M 0 146 L 12 101 H 63 L 78 146 Z" fill="url(#mle-water)" stroke="#a3ad9e" strokeWidth="6" />
       <path d="M 5 143 Q 39 154 74 143 M 10 132 Q 39 141 69 132" fill="none" stroke="#e1faff" strokeWidth="2" />
-      <text x="43" y="83" className="plant-name">Final effluent</text>
+      <text x="43" y="83" className="plant-name">{t("Final effluent")}</text>
     </g>
-    <g {...interaction("mlr", "Edit internal recycle ratio")}>
+    <g {...interaction("mlr", t("Edit internal recycle ratio"))}>
       <rect className="plant-badge" x="624" y="307" width="272" height="36" rx="10" />
-      <text x="760" y="331" className="plant-name">← MLR · {parameters.mlr_ratio} × Q</text>
+      <text x="760" y="331" className="plant-name">← MLR · {t(parameters.mlr_ratio)} × Q</text>
     </g>
-    <g {...interaction("sst", "Edit return and waste sludge time series")}>
+    <g {...interaction("sst", t("Edit return and waste sludge time series"))}>
       <rect className="plant-badge sludge-badge" x="595" y="371" width="330" height="36" rx="10" />
       <text x="760" y="395" className="plant-name">← Return activated sludge (RAS)</text>
     </g>

@@ -1,3 +1,4 @@
+import { t, useLanguage } from '../i18n';
 import type { ReactNode } from "react";
 import type { Params } from "../api/client";
 import type { SimulationRun } from "../hooks/useSimulation";
@@ -23,6 +24,7 @@ export function SimulationResults({
   calibrationPanel,
   measurements,
 }: SimulationResultsProps) {
+  useLanguage();
   const final = data
     ? {
         cod: data.cod_mg_l.slice(-1)[0],
@@ -35,17 +37,17 @@ export function SimulationResults({
     <>
       <section className="results-head">
         <div>
-          <h2>Results</h2>
+          <h2>{t("Results")}</h2>
           <p>
-            {data
-              ? "Latest approved simulation outputs"
-              : "Run the model to generate results"}
+            {t(data
+              ? t("Latest approved simulation outputs")
+              : t("Run the model to generate results"))}
           </p>
         </div>
         {data && (
           <div className="result-meta">
-            <span>● Completed</span>
-            <b>{data.time_h.length} displayed points</b>
+            <span>{t("● Completed")}</span>
+            <b>{data.time_h.length} {t("displayed points")}</b>
           </div>
         )}
       </section>
@@ -53,40 +55,40 @@ export function SimulationResults({
         {(
           [
             [
-              "Final COD",
+              t("Final COD"),
               final?.cod,
               "mg/L",
-              data ? "Measured dynamic influent" : "Awaiting run",
+              data ? t("Measured dynamic influent") : t("Awaiting run"),
             ],
             [
-              "Final NH₄-N",
+              t("Final NH₄-N"),
               final?.nh4,
               "mg/L",
-              data ? "Measured dynamic influent" : "Awaiting run",
+              data ? t("Measured dynamic influent") : t("Awaiting run"),
             ],
             [
-              "Peak N₂O index",
+              t("Peak N₂O index"),
               final?.n2o,
               "index",
-              data ? "Synthetic demo indicator" : "Awaiting run",
+              data ? t("Synthetic demo indicator") : t("Awaiting run"),
             ],
             [
-              "Runtime",
+              t("Runtime"),
               data ? data.runtimeSeconds : undefined,
               "s",
-              data ? "API round-trip time" : "Awaiting run",
+              data ? t("API round-trip time") : t("Awaiting run"),
             ],
           ] as [string, number | undefined, string, string][]
         ).map(([name, val, unit, sub]) => (
           <div className="kpi" key={name}>
-            <span>{name}</span>
+            <span>{t(name)}</span>
             <div>
               <b>
-                {val === undefined ? "—" : formatNumber(val, val < 10 ? 3 : 1)}
+                {t(val === undefined ? "—" : formatNumber(val, val < 10 ? 3 : 1))}
               </b>
-              <small>{unit}</small>
+              <small>{t(unit)}</small>
             </div>
-            <p>{sub}</p>
+            <p>{t(sub)}</p>
           </div>
         ))}
       </section>
