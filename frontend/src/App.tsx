@@ -8,7 +8,6 @@ import { Sidebar } from "./components/Sidebar";
 import type { WorkspaceTab } from "./components/Sidebar";
 import { Placeholder } from "./components/EmptyState";
 import { SimulationConfiguration } from "./components/SimulationConfiguration";
-import { PlantLocation } from "./components/PlantLocation";
 import { ProcessConfiguration } from "./components/ProcessConfiguration";
 import { SimulationResults } from "./components/SimulationResults";
 import { useSimulation } from "./hooks/useSimulation";
@@ -60,7 +59,6 @@ export default function App() {
               </div>
             )}
 
-            <PlantLocation />
             <ProcessConfiguration parameters={parameters} onChange={updateParameter} inputSeries={inputSeries} busy={busy} />
             <SimulationConfiguration
               parameters={parameters}

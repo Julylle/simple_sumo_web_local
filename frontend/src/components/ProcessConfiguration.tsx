@@ -23,7 +23,6 @@ export function ProcessConfiguration({ parameters, onChange, inputSeries, busy }
   onChange: (key: keyof Params, value: number) => void;
 }) {
   useLanguage();
-  const [expanded, setExpanded] = useState(false);
   const [selected, setSelected] = useState("1");
   const tank = Number(selected);
   const title = nodes.find((node) => node.id === selected)?.label ?? t("Internal recycle (MLR)");
@@ -38,11 +37,8 @@ export function ProcessConfiguration({ parameters, onChange, inputSeries, busy }
     <section className="process-config" aria-labelledby="process-title">
       <div className="process-heading">
         <div><h2 id="process-title">{t("MLE configuration")}</h2><p>{t("11 parallel lanes · One representative treatment line")}</p></div>
-        <button type="button" className="secondary" aria-expanded={expanded} aria-controls="process-diagram" onClick={() => setExpanded(!expanded)}>
-          {t(expanded ? t("Hide flow diagram") : t("Simplify configuration"))}
-        </button>
       </div>
-      {expanded && <div id="process-diagram">
+      <div id="process-diagram">
         <p className="process-help">{t("Select a reactor or flow to edit its parameters. Import each input from Excel: first sheet, time_h and value columns, starting at 0 h. All flows are per lane. Each value is held until the next time point, and the last value is held after the series ends. Imports persist after refresh; Reset keeps imported files.")}</p>
         <div className="process-scroll">
           <ProcessFlowDiagram parameters={parameters} selected={selected} onSelect={setSelected} />
@@ -76,7 +72,7 @@ export function ProcessConfiguration({ parameters, onChange, inputSeries, busy }
             </>}
           </div>
         </div>
-      </div>}
+      </div>
     </section>
   );
 }
