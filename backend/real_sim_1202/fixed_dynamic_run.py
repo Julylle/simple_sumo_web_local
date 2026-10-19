@@ -39,7 +39,7 @@ INPUT_COLUMN = [
 INPUT_CSV = str(MODEL_DIR / 'Sumo__Plant__Influent__param.csv')
 OUTPUT_VARIABLES = [
     *(f"Sumo__Plant__{tank}__{pollutant}" for tank in ("Effluent1", "CSTR3_10", "CSTR4_10")
-      for pollutant in ("SNHx", "SNOx", "TCOD")),
+      for pollutant in ("SNHx", "SNOx", "TCOD", "TP")),
     *(f"Sumo__Plant__CSTR{line}_{tank}__SO2" for line in (3, 4) for tank in range(5, 11)),
 ]
 

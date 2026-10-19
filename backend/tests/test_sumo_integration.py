@@ -43,7 +43,9 @@ class SumoIntegrationTests(unittest.TestCase):
             result = read_result(path, 1, [column])
         self.assertEqual(result['variables'][column], [50000, 51000])
         self.assertEqual(result['input_columns'], [column])
-        self.assertEqual(len(OUTPUTS), 21)
+        self.assertEqual(len(OUTPUTS), 24)
+        for tank in ('Effluent1', 'CSTR3_10', 'CSTR4_10'):
+            self.assertEqual(result['variables'][f'Sumo__Plant__{tank}__TP'], [2.5, 2.5])
         self.assertEqual(sum(key.endswith('__SO2') for key in OUTPUTS), 12)
         self.assertEqual(result['sources']['Sumo__Plant__Effluent1__TCOD'], 'Sumo__Plant__Effluent1__TCOD')
 

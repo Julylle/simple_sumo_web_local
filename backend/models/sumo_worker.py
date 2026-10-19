@@ -11,7 +11,7 @@ MODEL_DIR = Path(__file__).resolve().parents[1] / 'real_sim_1202'
 OUTPUTS = {
     f'Sumo__Plant__{tank}__{pollutant}': f'Sumo__Plant__{tank}__{pollutant}'
     for tank in ('Effluent1', 'CSTR3_10', 'CSTR4_10')
-    for pollutant in ('SNHx', 'SNOx', 'TCOD')
+    for pollutant in ('SNHx', 'SNOx', 'TCOD', 'TP')
 }
 OUTPUTS.update({f'Sumo__Plant__CSTR{line}_{tank}__SO2': f'Sumo__Plant__CSTR{line}_{tank}__SO2'
                 for line in (3, 4) for tank in range(5, 11)})
