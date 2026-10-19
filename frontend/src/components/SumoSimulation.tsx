@@ -190,7 +190,7 @@ export function SumoSimulation() {
         {!inputOptions.length && !optionsError && <p role="status">{t("Loading influent parameters...")}</p>}
         <h3 id="sumo-upload-title" className="sumo-step-title">{t("Step2: Upload completed CSV template")}</h3>
         <div className="measurement-actions">
-          <label htmlFor="sumo-influent-csv" className="secondary sumo-file-picker">
+          <label htmlFor="sumo-influent-csv" className="primary sumo-file-picker">
             {t("Choose CSV file")}
             <input id="sumo-influent-csv" type="file" accept=".csv,text/csv"
               disabled={busy || uploading || templateBusy || !inputColumns.length || !inputOptions.length}

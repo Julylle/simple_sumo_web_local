@@ -29,8 +29,8 @@ function OutputCard({title, groups, result, runId, remove}: {
   return <article className="sumo-overlay-card">
     <div className="chart-head"><h3>{t(title)}</h3>{remove && <button className="secondary" onClick={remove}>{t("Remove plot")}</button>}</div>
     <div className="sumo-group-dropdowns">{groups.map(group => <VariableDropdown key={group.title} {...group}
-      selected={selected.filter(k => group.options.some(o => o.key === k))} onChange={keys => setSelection([...selected.filter(k => !group.options.some(o => o.key === k)), ...keys])} />)}</div>
-    <div className="sumo-axis-settings"><label className="sumo-axis-toggle"><input type="checkbox" checked={secondary} onChange={e => setSecondary(e.target.checked)} />{t("Enable secondary Y axis")}</label>
+      selected={selected.filter(k => group.options.some(o => o.key === k))} onChange={keys => setSelection([...selected.filter(k => !group.options.some(o => o.key === k)), ...keys])} />)}
+      <label className="sumo-axis-toggle"><input type="checkbox" checked={secondary} onChange={e => setSecondary(e.target.checked)} />{t("Enable secondary Y axis")}</label>
       {secondary && <VariableDropdown title={t("Right Y axis")} options={options.filter(o => selected.includes(o.key))} selected={right} onChange={setRight} />}
     </div>
     {!selected.length ? <div className="empty"><b>{t("Select variables to build this plot")}</b><span>{t("Choose one or more variables from the dropdowns above.")}</span></div> : !result ?
