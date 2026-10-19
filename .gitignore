@@ -1,9 +1,21 @@
-.env
+# Python
 __pycache__/
 *.pyc
+.venv/
+venv/
+
+# Node.js
 node_modules/
 frontend/dist/
-private/*
-!private/README.md
 
-backend/runtime/
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Local simulation outputs
+results/
+outputs/
