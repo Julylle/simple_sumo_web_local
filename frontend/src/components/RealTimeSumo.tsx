@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import Plot from 'react-plotly.js';
 import { SumoOutputDashboard } from './SumoOutputDashboard';
 
 type Option = {name:string;label:string;unit:string};
 type Reading = {column:string;node_id:string;value:number;timestamp:string};
+type Sample = Reading & { receivedAt: number };
 type Run = {id:string;status:'running'|'completed'|'failed';error?:string;progress_pct?:number;phase?:string;result?:{time_h:number[];variables:Record<string,number[]>}};
 const defaultNode = 'ns=2;s=GEeth.PLC128.Influent_ammonia_sensor';
 const defaultColumn = 'Sumo__Plant__Influent__param__Ammonia_sensor_Horiba';
@@ -16,6 +18,12 @@ export function RealTimeSumo(){
   const [options,setOptions]=useState<Option[]>([]);
   const [mapping,setMapping]=useState<Record<string,string>>({[defaultColumn]:defaultNode});
   const [readings,setReadings]=useState<Reading[]>([]);
+  const [history,setHistory]=useState<Sample[]>([]);
+  const [connected,setConnected]=useState(false);
+  const [sensorError,setSensorError]=useState('');
+  const pollingRef=useRef(false);
+  const mappingRef=useRef(mapping);
+  mappingRef.current=mapping;
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
   const [duration,setDuration]=useState('168');
@@ -28,11 +36,34 @@ export function RealTimeSumo(){
     const timer=setInterval(()=>{json(`/api/sumo/runs/${run.id}`).then(next=>{if(active)setRun(next);}).catch(e=>{if(active)setError(String(e));});},2000);
     return ()=>{active=false;clearInterval(timer);};
   },[run?.id,run?.status]);
+  useEffect(()=>{
+    if(!connected)return;
+    let cancelled=false;
+    const poll=async()=>{
+      if(pollingRef.current)return;
+      pollingRef.current=true;
+      try{
+        const selected=Object.fromEntries(Object.entries(mappingRef.current).filter(([,node])=>node.trim()));
+        const result=await json('/api/kepserver/snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mapping:selected})});
+        if(cancelled)return;
+        const receivedAt=Date.now();
+        setReadings(result.readings);
+      setHistory((result.readings as Reading[]).map(r=>({...r,receivedAt:Date.now()})));
+      setConnected(true);
+        setHistory(old=>[...old,...(result.readings as Reading[]).map(r=>({...r,receivedAt}))].filter(s=>s.receivedAt>=receivedAt-3600000).slice(-7200));
+        setSensorError('');
+      }catch(e){if(!cancelled)setSensorError(String(e));}
+      finally{pollingRef.current=false;}
+    };
+    const timer=setInterval(()=>{void poll();},5000);
+    return()=>{cancelled=true;clearInterval(timer);};
+  },[connected]);
   function changeMapping(column:string,node:string){
+    setConnected(false);setHistory([]);setSensorError('');
     setMapping(old=>({...old,[column]:node}));setReadings([]);setRun(null);
   }
   async function refresh(){
-    setBusy(true);setError('');setReadings([]);setRun(null);
+    setConnected(false);setBusy(true);setError('');setSensorError('');setReadings([]);setHistory([]);setRun(null);
     try {
       const selected=Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()));
       const result=await json('/api/kepserver/snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mapping:selected})});
@@ -71,12 +102,13 @@ export function RealTimeSumo(){
           <div className="input-wrap"><input type="text" value={mapping[option.name]||''} disabled={running} placeholder="ns=2;s=..." onChange={e=>changeMapping(option.name,e.target.value)}/></div>
         </label>)}
       </div>
-      <p><button className="secondary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{busy?'Reading sensors...':'Connect / Refresh sensor data'}</button></p>
+      <p><button className="secondary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{busy?'Reading sensors...':'Connect / Refresh sensor data'}</button> <button className="secondary" disabled={!connected} onClick={()=>setConnected(false)}>Disconnect</button> <span role="status">{connected?'Connected · sampling every 5 s':'Disconnected'}</span></p>
+      {sensorError&&<div className="alert" role="alert">Sensor update failed: {sensorError}</div>}
       <h3 className="sumo-step-title">Step2: Review sensor snapshot and model inputs</h3>
       {readings.length>0?<table><thead><tr><th>SUMO parameter</th><th>Sensor value</th><th>UTC timestamp</th></tr></thead><tbody>
         {readings.map(r=><tr key={r.column}><td>{r.column.split('__').pop()}</td><td>{r.value} {options.find(o=>o.name===r.column)?.unit}</td><td>{r.timestamp}</td></tr>)}
       </tbody></table>:<p className="calibration-note">No sensor snapshot loaded. Read sensors before starting a simulation.</p>}
-      <p className="calibration-note">The latest manually fetched snapshot is held constant throughout the simulation. No automatic polling or scheduling is enabled.</p>
+      <p className="calibration-note">Sensor chart updates every 5 seconds while connected. Run SUMO still uses the latest snapshot as constant model input; live Scheduler integration is separate.</p>
       <h3 className="sumo-step-title">Step3: Set up simulation duration</h3>
       <label className="field"><span className="field-label">Duration (hours)</span><div className="input-wrap"><input type="number" min="1" max="168" step="any" value={duration} disabled={running} onChange={e=>setDuration(e.target.value)}/></div></label>
       <p><button className="primary" disabled={running||!readings.length||!(Number(duration)>=1&&Number(duration)<=168)} onClick={start}>{running?'Running / preparing...':'Run SUMO'}</button></p>
@@ -84,6 +116,9 @@ export function RealTimeSumo(){
       {(error||run?.error)&&<div className="alert" role="alert">{error||run?.error}</div>}
     </section>
     <section className="config-card"><div className="section-title"><div><h2>Output variables visualisation</h2></div><button className="secondary" disabled={run?.status!=='completed'||downloading} onClick={download}>Download results CSV</button></div>
+      <section className="sumo-overlay-card"><div className="chart-head"><h3>Influent variables · live sensor trends</h3></div>
+        {history.length?<Plot style={{width:'100%',height:380}} useResizeHandler data={Object.keys(mapping).filter(key=>history.some(s=>s.column===key)).map(key=>({x:history.filter(s=>s.column===key).map(s=>new Date(s.receivedAt)),y:history.filter(s=>s.column===key).map(s=>s.value),type:'scatter' as const,mode:'lines+markers' as const,name:key.split('__').pop()||key}))} layout={{autosize:true,height:380,margin:{t:20,b:65,l:65,r:20},xaxis:{title:{text:'Sensor timestamp'}},yaxis:{title:{text:'Sensor reading (see units in Step 1)'}},showlegend:true}} config={{responsive:true,displaylogo:false}}/>:<p className="calibration-note">Connect KEPServer to display live influent sensor trends.</p>}
+      </section>
       <SumoOutputDashboard influent={readings.map(r=>({key:r.column,label:`Influent ${r.column.split('__').pop()}`,unit:options.find(o=>o.name===r.column)?.unit||''}))} result={run?.result} runId={run?.id||''}/>
     </section>
   </>;
