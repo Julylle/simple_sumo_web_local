@@ -15,8 +15,8 @@ async def read_snapshot(mapping: dict[str, str]):
         raise ValueError("Unsupported SUMO input parameter.")
     if any(not isinstance(node, str) or not node.strip() for node in mapping.values()):
         raise ValueError("Every mapped parameter requires an OPC UA node ID.")
-    url = os.getenv("KEPSERVER_OPC_URL", "opc.tcp://192.168.1.100:49320")
-    async with Client(url=url, timeout=10) as client:
+    url = os.getenv("KEPSERVER_OPC_URL", "opc.tcp://127.0.0.1:49320")
+    async with Client(url=url, timeout=15) as client:
         readings = []
         for column, node_id in mapping.items():
             node = client.get_node(node_id)
