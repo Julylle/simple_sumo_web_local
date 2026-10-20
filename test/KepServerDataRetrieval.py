@@ -1,25 +1,24 @@
 import asyncio
 from asyncua import Client
 
-# Or use: OPC_URL = "opc.tcp://localhost:49320"
-OPC_URL = "opc.tcp://192.168.1.100:49320"
+OPC_URL = "opc.tcp://127.0.0.1:49320"
+
+NODE_ID = "ns=2;s=GEeth.PLC128.Influent_ammonia_sensor"
+
 
 async def main():
-    async with Client(url=OPC_URL) as client:
 
-        node = client.get_node(
-            "ns=2;s=GEeth.PLC128.Influent_ammonia_sensor"
-        )
+    async with Client(url=OPC_URL, timeout=15) as client:
+
+        node = client.get_node(NODE_ID)
 
         while True:
 
             value = await node.read_value()
 
-            print("Influent NH4:", value)
-
-            # Send to model input interface
-            # await model_service.update_input(value)
+            print(f"Influent NH4: {value}")
 
             await asyncio.sleep(5)
+
 
 asyncio.run(main())
