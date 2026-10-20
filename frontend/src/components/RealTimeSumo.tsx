@@ -28,10 +28,7 @@ export function RealTimeSumo(){
   mappingRef.current=mapping;
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
-  const [duration,setDuration]=useState('168');
   const [limitMinutes,setLimitMinutes]=useState('5');
-  const [mode,setMode]=useState<'live'|'replay'>('live');
-  const [replaySpeed,setReplaySpeed]=useState('10');
   const [run,setRun]=useState<Run|null>(null);
   const [downloading,setDownloading]=useState(false);
   useEffect(()=>{json('/api/sumo/input-options').then(setOptions).catch(e=>setError(String(e)));},[]);
@@ -75,17 +72,11 @@ export function RealTimeSumo(){
       setConnected(true);
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
-  async function start(){
-    if(mode==='live'||mode==='replay'){
-      setError('Continuous SUMO Scheduler integration is not yet available. Live and Replay cannot be started safely until the backend is implemented.');
-      return;
-    }
-    setBusy(true);setError('');
-    try{
-      const prepared=await json('/api/kepserver/prepare-input',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({readings})});
-      const result=await json('/api/sumo/runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({duration_h:Number(duration),input_id:prepared.id,input_columns:prepared.columns})});
-      setRun(result);
-    }catch(e){setError(String(e));}finally{setBusy(false);}
+  function start(){
+    setError('Continuous Live SUMO is not yet connected to the persistent Scheduler. Run is unavailable until the backend supports start/stop and real-time input updates.');
+  }
+  function stop(){
+    setError('Stop SUMO will be enabled when the continuous Scheduler backend is implemented.');
   }
   async function download(){
     if(!run?.id)return;
@@ -116,25 +107,17 @@ export function RealTimeSumo(){
       <h3 className="sumo-step-title">Step2: Set up real time simulation</h3>
       <div className="fields">
         <label className="field"><span className="field-label">Simulation mode</span>
-          <select value={mode} disabled={running} onChange={e=>setMode(e.target.value as 'live'|'replay')}>
-            <option value="live">Live · real-time synchronisation (1×)</option>
-            <option value="replay">Replay · accelerated historical data</option>
-          </select>
+          <div className="input-wrap"><input value="Live · continuous (1×)" readOnly aria-label="Simulation mode"/></div>
         </label>
         <label className="field"><span className="field-label">Input update interval / Limit time (minutes)</span>
           <div className="input-wrap"><input type="number" min="1" max="60" step="1" value={limitMinutes} disabled={running} onChange={e=>setLimitMinutes(e.target.value)}/></div>
         </label>
-        <label className="field"><span className="field-label">Replay speed</span>
-          <select value={mode==='live'?'1':replaySpeed} disabled={running||mode==='live'} onChange={e=>setReplaySpeed(e.target.value)}>
-            <option value="1">1×</option><option value="2">2×</option><option value="5">5×</option><option value="10">10×</option><option value="20">20×</option>
-          </select>
-        </label>
-        <label className="field"><span className="field-label">Simulation duration (hours)</span>
-          <div className="input-wrap"><input type="number" min="1" max="168" step="any" value={duration} disabled={running} onChange={e=>setDuration(e.target.value)}/></div>
+        <label className="field"><span className="field-label">Operation</span>
+          <div className="input-wrap"><input value="Continuous · until Stop SUMO" readOnly aria-label="Simulation operation"/></div>
         </label>
       </div>
-      <p className="calibration-note">Live mode: model advances with wall-clock time. Replay mode requires historical time-series data. The continuous SUMO Scheduler backend is not yet enabled; these settings are currently for configuration only.</p>
-      <p><button className="primary" disabled={running||!readings.length||!(Number(duration)>=1&&Number(duration)<=168)||!(Number(limitMinutes)>=1&&Number(limitMinutes)<=60)} onClick={start}>{running?'Running / preparing...':'Run SUMO'}</button></p>
+      <p className="calibration-note">Live-only mode: SUMO will run continuously until manually stopped, using the selected input update interval. Persistent Scheduler start/stop integration is still pending.</p>
+      <p><button className="primary" disabled={running||!connected||!(Number(limitMinutes)>=1&&Number(limitMinutes)<=60)} onClick={start}>Run SUMO</button> <button className="secondary" disabled={!run||run.status!=='running'} onClick={stop}>Stop SUMO</button></p>
       {run&&<div className="sumo-progress"><p role="status">{run.phase||run.status} · {Math.floor(run.progress_pct||0)}%</p><progress max="100" value={run.progress_pct||0}/></div>}
       {(error||run?.error)&&<div className="alert" role="alert">{error||run?.error}</div>}
     </section>
