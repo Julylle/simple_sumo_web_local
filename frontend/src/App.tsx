@@ -1,4 +1,5 @@
 import { t, useLanguage } from './i18n';
+import { RealTimeSumo } from "./components/RealTimeSumo";
 import { SumoSimulation } from "./components/SumoSimulation";
 import { CalibrationParameters } from "./components/CalibrationParameters";
 import { CalibrationComparison } from "./components/CalibrationComparison";
@@ -19,6 +20,7 @@ const tabLabels: Record<WorkspaceTab, string> = {
   "auto-calibration": "Auto-Calibration",
   history: "Run history",
   sumo: "Offline SUMO",
+  "realtime-sumo": "Real-time SUMO",
 };
 
 export default function App() {
@@ -38,12 +40,13 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <Header engine={tab === "sumo" ? "SUMO" : "Python"} />
+      <Header engine={(tab === "sumo" || tab === "realtime-sumo") ? "SUMO" : "Python"} />
       <Sidebar tab={tab} onTabChange={setTab} />
       <main className="workspace">
-        <div className="breadcrumb"> {t("Models")} <span>/</span> {t(tab === "sumo" ? "SUMO" : "Python ASM")} <span>/</span> {t(tabLabels[tab])}
+        <div className="breadcrumb"> {t("Models")} <span>/</span> {t((tab === "sumo" || tab === "realtime-sumo") ? "SUMO" : "Python ASM")} <span>/</span> {t(tabLabels[tab])}
         </div>
         <div hidden={tab !== "sumo"}><SumoSimulation /></div>
+        {tab === "realtime-sumo" && <RealTimeSumo />}
         {tab === "simulation" && (
           <>
             <section className="page-head">
