@@ -215,7 +215,6 @@ def _worker(s):
             # Keep state available after the temporary directory closes.
             state_path = Path(os.getenv("SUMO_LIVE_STATE_DIR", str(ROOT / "live_states")))
             state_path.mkdir(parents=True, exist_ok=True)
-            import shutil
             shutil.copy2(output_state, state_path / (s["id"] + ".xml"))
             with _lock:
                 s["status"] = "stopped"
