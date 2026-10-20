@@ -16,7 +16,7 @@ class SnapshotRequest(BaseModel):
 async def snapshot(request: SnapshotRequest):
     try:
         return {"readings": await asyncio.wait_for(read_snapshot(request.mapping), timeout=30)}
-    except (ValueError, OSError, asyncio.TimeoutError, Exception) as exc:
+    except Exception as exc:
         raise HTTPException(status_code=502, detail=f"KEPServer read failed: {exc}") from exc
 
 class PrepareRequest(BaseModel):
