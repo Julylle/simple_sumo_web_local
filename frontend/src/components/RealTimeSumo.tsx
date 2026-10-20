@@ -48,8 +48,6 @@ export function RealTimeSumo(){
         if(cancelled)return;
         const receivedAt=Date.now();
         setReadings(result.readings);
-      setHistory((result.readings as Reading[]).map(r=>({...r,receivedAt:Date.now()})));
-      setConnected(true);
         setHistory(old=>[...old,...(result.readings as Reading[]).map(r=>({...r,receivedAt}))].filter(s=>s.receivedAt>=receivedAt-3600000).slice(-7200));
         setSensorError('');
       }catch(e){if(!cancelled)setSensorError(String(e));}
@@ -68,6 +66,8 @@ export function RealTimeSumo(){
       const selected=Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()));
       const result=await json('/api/kepserver/snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mapping:selected})});
       setReadings(result.readings);
+      setHistory((result.readings as Reading[]).map(r=>({...r,receivedAt:Date.now()})));
+      setConnected(true);
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
   async function start(){
