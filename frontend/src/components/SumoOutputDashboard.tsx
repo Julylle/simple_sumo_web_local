@@ -40,11 +40,11 @@ function OutputCard({title, groups, result, runId, remove}: {
       </>}
   </article>;
 }
-export function SumoOutputDashboard({influent, result, runId}: {influent: OutputOption[]; result?: SumoResult; runId: string}) {
+export function SumoOutputDashboard({influent, result, runId, showInfluent = true}: {influent: OutputOption[]; result?: SumoResult; runId: string; showInfluent?: boolean}) {
   useLanguage();
   const [custom, setCustom] = useState<number[]>([]);
   const [nextId, setNextId] = useState(1);
-  const groups = [{title: 'Influent variables', options: influent}, {title: 'Effluent pollutants', options: pollutantOptions}, {title: 'DO concentrations', options: doOptions}];
+  const groups = [...(showInfluent ? [{title: 'Influent variables', options: influent}] : []), {title: 'Effluent pollutants', options: pollutantOptions}, {title: 'DO concentrations', options: doOptions}];
   return <div className="sumo-output-dashboard">
     {groups.map(group => <OutputCard key={group.title} title={group.title} groups={[group]} result={result} runId={runId} />)}
     <div className="section-title"><div><h3>{t("Custom comparison plots")}</h3><p>{t("Add a blank plot and compare variables across all three groups.")}</p></div>
