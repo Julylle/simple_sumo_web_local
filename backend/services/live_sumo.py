@@ -6,6 +6,8 @@ import math
 import logging
 import os
 import tempfile
+import shutil
+import sys
 import threading
 import time
 import zipfile
@@ -69,6 +71,10 @@ def export_csv():
         return out.getvalue()
 
 def _worker(s):
+    model_dir = ROOT / 'real_sim_1202'
+    # DTool Python modules are shipped with the SUMO project, not pip-installed.
+    if str(model_dir) not in sys.path:
+        sys.path.insert(0, str(model_dir))
     try:
         import dynamita.tool as dtool
         import dynamita.scheduler as ds
@@ -85,7 +91,6 @@ def _worker(s):
     # StopTime is an upper bound, not the requested operating duration.
     # Long-running sessions should be restarted from saved state before this limit.
     max_ms = 365 * dtool.day
-    model_dir = ROOT / "real_sim_1202"
     done = threading.Event()
     boundary = threading.Event()
     errors = []
@@ -112,6 +117,9 @@ def _worker(s):
         values = {r["column"]: r["value"] for r in asyncio.run(read_snapshot(s["mapping"]))}
         with tempfile.TemporaryDirectory(prefix="sumo_live_") as directory:
             folder = Path(directory)
+            shutil.copytree(model_dir / "dynamita", folder / "dynamita")
+            with _lock:
+                s["phase"] = "prepared_dynamita_runtime"
             dll = (folder / "dynamic_headless.dll").as_posix()
             output_state = (folder / "final_state.xml").as_posix()
             with _lock:
