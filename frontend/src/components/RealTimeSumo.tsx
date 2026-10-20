@@ -5,6 +5,7 @@ import { SumoOutputDashboard } from './SumoOutputDashboard';
 type Option = {name:string;label:string;unit:string};
 type Reading = {column:string;node_id:string;value:number;timestamp:string};
 type Sample = Reading & { receivedAt: number };
+type LiveRun = {id?:string;status:string;phase?:string;error?:string;simulated_h?:number;samples?:number;result?:{time_h:number[];variables:Record<string,number[]>}};
 type Run = {id:string;status:'running'|'completed'|'failed';error?:string;progress_pct?:number;phase?:string;result?:{time_h:number[];variables:Record<string,number[]>}};
 const defaultNode = 'ns=2;s=GEeth.PLC128.Influent_ammonia_sensor';
 const defaultColumn = 'Sumo__Plant__Influent__param__Ammonia_sensor_Horiba';
@@ -30,6 +31,7 @@ export function RealTimeSumo(){
   const [busy,setBusy]=useState(false);
   const [limitMinutes,setLimitMinutes]=useState('5');
   const [run,setRun]=useState<Run|null>(null);
+  const [liveRun,setLiveRun]=useState<LiveRun|null>(null);
   const [downloading,setDownloading]=useState(false);
   useEffect(()=>{json('/api/sumo/input-options').then(setOptions).catch(e=>setError(String(e)));},[]);
   useEffect(()=>{
@@ -38,6 +40,18 @@ export function RealTimeSumo(){
     const timer=setInterval(()=>{json(`/api/sumo/runs/${run.id}`).then(next=>{if(active)setRun(next);}).catch(e=>{if(active)setError(String(e));});},2000);
     return ()=>{active=false;clearInterval(timer);};
   },[run?.id,run?.status]);
+  useEffect(()=>{
+    let active=true;
+    const poll=async()=>{
+      try{
+        const next:LiveRun=await json('/api/sumo/live/status');
+        if(active)setLiveRun(next.status==='idle'?null:next);
+      }catch(e){if(active)setError(String(e));}
+    };
+    void poll();
+    const timer=setInterval(()=>{void poll();},2000);
+    return()=>{active=false;clearInterval(timer);};
+  },[]);
   useEffect(()=>{
     if(!connected)return;
     let cancelled=false;
@@ -72,11 +86,19 @@ export function RealTimeSumo(){
       setConnected(true);
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
-  function start(){
-    setError('Continuous Live SUMO is not yet connected to the persistent Scheduler. Run is unavailable until the backend supports start/stop and real-time input updates.');
+  async function start(){
+    setBusy(true);setError('');
+    try{
+      const selected=Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()));
+      const result:LiveRun=await json('/api/sumo/live/start',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({mapping:selected,interval_minutes:Number(limitMinutes)})});
+      setLiveRun(result);
+    }catch(e){setError(String(e));}finally{setBusy(false);}
   }
-  function stop(){
-    setError('Stop SUMO will be enabled when the continuous Scheduler backend is implemented.');
+  async function stop(){
+    setBusy(true);setError('');
+    try{setLiveRun(await json('/api/sumo/live/stop',{method:'POST'}));}
+    catch(e){setError(String(e));}finally{setBusy(false);}
   }
   async function download(){
     if(!run?.id)return;
@@ -89,7 +111,8 @@ export function RealTimeSumo(){
       URL.revokeObjectURL(url);
     }catch(e){setError(String(e));}finally{setDownloading(false);}
   }
-  const running=busy||run?.status==='running';
+  const liveActive=['starting','running','stopping'].includes(liveRun?.status||'');
+  const running=busy||liveActive;
   return <>
     <section className="page-head"><div><h1>SUMO Real-time Simulation</h1><p>Cixi Eastern WWTP · KEPServer OPC UA · Manual simulation</p></div></section>
     <section className="config-card">
@@ -116,12 +139,13 @@ export function RealTimeSumo(){
           <div className="input-wrap"><input value="Continuous · until Stop SUMO" readOnly aria-label="Simulation operation"/></div>
         </label>
       </div>
-      <p className="calibration-note">Live-only mode: SUMO will run continuously until manually stopped, using the selected input update interval. Persistent Scheduler start/stop integration is still pending.</p>
-      <p><button className="primary" disabled={running||!connected||!(Number(limitMinutes)>=1&&Number(limitMinutes)<=60)} onClick={start}>Run SUMO</button> <button className="secondary" disabled={!run||run.status!=='running'} onClick={stop}>Stop SUMO</button></p>
+      <p className="calibration-note">Live-only mode: SUMO will run continuously until manually stopped, using the selected input update interval. The model runs in one persistent Scheduler session until Stop SUMO is clicked.</p>
+      <p><button className="primary" disabled={running||!connected||!(Number(limitMinutes)>=1&&Number(limitMinutes)<=60)} onClick={()=>void start()}>Run SUMO</button> <button className="secondary" disabled={busy||!['starting','running'].includes(liveRun?.status||'')} onClick={()=>void stop()}>Stop SUMO</button></p>
+      {liveRun&&<div className="sumo-progress"><p role="status">{liveRun.status} · {liveRun.phase||''} · {(liveRun.simulated_h||0).toFixed(2)} simulated hours · {liveRun.samples||0} output samples</p>{liveRun.error&&<div className="alert">{liveRun.error}</div>}</div>}
       {run&&<div className="sumo-progress"><p role="status">{run.phase||run.status} · {Math.floor(run.progress_pct||0)}%</p><progress max="100" value={run.progress_pct||0}/></div>}
       {(error||run?.error)&&<div className="alert" role="alert">{error||run?.error}</div>}
     </section>
-    <section className="config-card"><div className="section-title"><div><h2>Output variables visualisation</h2></div><button className="secondary" disabled={run?.status!=='completed'||downloading} onClick={download}>Download results CSV</button></div>
+    <section className="config-card"><div className="section-title"><div><h2>Output variables visualisation</h2></div><button className="secondary" disabled={!liveRun?.result?.time_h?.length||downloading} onClick={async()=>{setDownloading(true);try{const response=await fetch('/api/sumo/live/download');if(!response.ok)throw Error('Download failed');const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download='sumo_live_results.csv';link.click();URL.revokeObjectURL(url);}catch(e){setError(String(e));}finally{setDownloading(false);}}>Download results CSV</button></div>
       <section className="sumo-overlay-card">
         <div className="chart-head"><h3>Influent variables · live sensor trends</h3></div>
         <div className="sumo-group-dropdowns">
@@ -157,7 +181,7 @@ export function RealTimeSumo(){
           config={{responsive:true,displaylogo:false}}/>
           :<p className="calibration-note">Connect KEPServer to display live influent sensor trends.</p>}
       </section>
-      <SumoOutputDashboard influent={readings.map(r=>({key:r.column,label:`Influent ${r.column.split('__').pop()}`,unit:options.find(o=>o.name===r.column)?.unit||''}))} result={run?.result} runId={run?.id||''}/>
+      <SumoOutputDashboard influent={readings.map(r=>({key:r.column,label:`Influent ${r.column.split('__').pop()}`,unit:options.find(o=>o.name===r.column)?.unit||''}))} result={liveRun?.result} runId={liveRun?.id||''}/>
     </section>
   </>;
 }
