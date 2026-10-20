@@ -19,6 +19,8 @@ export function RealTimeSumo(){
   const [mapping,setMapping]=useState<Record<string,string>>({[defaultColumn]:defaultNode});
   const [readings,setReadings]=useState<Reading[]>([]);
   const [history,setHistory]=useState<Sample[]>([]);
+  const [secondaryAxis,setSecondaryAxis]=useState(false);
+  const [rightAxisVariables,setRightAxisVariables]=useState<string[]>([]);
   const [connected,setConnected]=useState(false);
   const [sensorError,setSensorError]=useState('');
   const pollingRef=useRef(false);
@@ -116,8 +118,40 @@ export function RealTimeSumo(){
       {(error||run?.error)&&<div className="alert" role="alert">{error||run?.error}</div>}
     </section>
     <section className="config-card"><div className="section-title"><div><h2>Output variables visualisation</h2></div><button className="secondary" disabled={run?.status!=='completed'||downloading} onClick={download}>Download results CSV</button></div>
-      <section className="sumo-overlay-card"><div className="chart-head"><h3>Influent variables · live sensor trends</h3></div>
-        {history.length?<Plot style={{width:'100%',height:380}} useResizeHandler data={Object.keys(mapping).filter(key=>history.some(s=>s.column===key)).map(key=>({x:history.filter(s=>s.column===key).map(s=>new Date(s.receivedAt)),y:history.filter(s=>s.column===key).map(s=>s.value),type:'scatter' as const,mode:'lines+markers' as const,name:key.split('__').pop()||key}))} layout={{autosize:true,height:380,margin:{t:20,b:65,l:65,r:20},xaxis:{title:{text:'Sensor timestamp'}},yaxis:{title:{text:'Sensor reading (see units in Step 1)'}},showlegend:true}} config={{responsive:true,displaylogo:false}}/>:<p className="calibration-note">Connect KEPServer to display live influent sensor trends.</p>}
+      <section className="sumo-overlay-card">
+        <div className="chart-head"><h3>Influent variables · live sensor trends</h3></div>
+        <div className="sumo-group-dropdowns">
+          <label className="sumo-axis-toggle">
+            <input type="checkbox" checked={secondaryAxis} onChange={e=>setSecondaryAxis(e.target.checked)}/>
+            Enable secondary Y axis
+          </label>
+          {secondaryAxis && <details className="sumo-variable-dropdown">
+            <summary>Right Y axis <span>{rightAxisVariables.filter(key=>history.some(s=>s.column===key)).length} selected</span></summary>
+            <div className="sumo-variable-options">
+              {Object.keys(mapping).filter(key=>history.some(s=>s.column===key)).map(key=><label key={key}>
+                <input type="checkbox" checked={rightAxisVariables.includes(key)}
+                  onChange={e=>setRightAxisVariables(old=>e.target.checked?[...old,key]:old.filter(item=>item!==key))}/>
+                {key.split('__').pop()} <small>{options.find(o=>o.name===key)?.unit||''}</small>
+              </label>)}
+            </div>
+          </details>}
+        </div>
+        {history.length?<Plot style={{width:'100%',height:380}} useResizeHandler
+          data={Object.keys(mapping).filter(key=>history.some(s=>s.column===key)).map(key=>({
+            x:history.filter(s=>s.column===key).map(s=>new Date(s.receivedAt)),
+            y:history.filter(s=>s.column===key).map(s=>s.value),
+            type:'scatter' as const,mode:'lines+markers' as const,
+            name:key.split('__').pop()||key,
+            yaxis:secondaryAxis&&rightAxisVariables.includes(key)?'y2' as const:'y' as const
+          }))}
+          layout={{autosize:true,height:380,
+            margin:{t:20,b:65,l:75,r:secondaryAxis?75:20},
+            xaxis:{title:{text:'Sensor timestamp'}},
+            yaxis:{title:{text:'Sensor reading (left axis)'}},
+            ...(secondaryAxis?{yaxis2:{title:{text:'Sensor reading (right axis)'},overlaying:'y' as const,side:'right' as const,showgrid:false}}:{}),
+            showlegend:true}}
+          config={{responsive:true,displaylogo:false}}/>
+          :<p className="calibration-note">Connect KEPServer to display live influent sensor trends.</p>}
       </section>
       <SumoOutputDashboard influent={readings.map(r=>({key:r.column,label:`Influent ${r.column.split('__').pop()}`,unit:options.find(o=>o.name===r.column)?.unit||''}))} result={run?.result} runId={run?.id||''}/>
     </section>
