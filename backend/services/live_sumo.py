@@ -3,6 +3,7 @@ import asyncio
 import csv
 import io
 import math
+import logging
 import os
 import tempfile
 import threading
@@ -68,9 +69,17 @@ def export_csv():
         return out.getvalue()
 
 def _worker(s):
-    import dynamita.tool as dtool
-    import dynamita.scheduler as ds
-    from real_sim_1202.fixed_dynamic_run import OUTPUT_VARIABLES, validate_state_file
+    try:
+        import dynamita.tool as dtool
+        import dynamita.scheduler as ds
+        from real_sim_1202.fixed_dynamic_run import OUTPUT_VARIABLES, validate_state_file
+    except Exception as exc:
+        logging.exception("Live SUMO import failed")
+        with _lock:
+            s["status"] = "failed"
+            s["phase"] = "import_failed"
+            s["error"] = f"SUMO import failed: {exc}"
+        return
 
     step_ms = s["interval"] * dtool.sec
     # StopTime is an upper bound, not the requested operating duration.
@@ -85,6 +94,9 @@ def _worker(s):
     saved = False
     job = None
     try:
+        logging.info("Live SUMO %s validating model files", s["id"])
+        with _lock:
+            s["phase"] = "validating_model"
         initial = model_dir / "sumo_steady_state.xml"
         project = model_dir / "Cixi Eastern WWTP_20260920.sumo"
         validate_state_file(initial)
@@ -95,11 +107,15 @@ def _worker(s):
             if meta is None or meta[4] not in ("Parameter","SystemParameter","Dimension"):
                 raise ValueError("SUMO input not writable: "+column)
         # First read must succeed before creating a SUMO job.
+        with _lock:
+            s["phase"] = "reading_initial_sensors"
         values = {r["column"]: r["value"] for r in asyncio.run(read_snapshot(s["mapping"]))}
         with tempfile.TemporaryDirectory(prefix="sumo_live_") as directory:
             folder = Path(directory)
             dll = (folder / "dynamic_headless.dll").as_posix()
             output_state = (folder / "final_state.xml").as_posix()
+            with _lock:
+                s["phase"] = "extracting_model_dll"
             dtool.extract_dll_from_project(str(project), dll)
             ds.sumo.setParallelJobs(1)
             def message(job_id, msg):
@@ -138,6 +154,8 @@ def _worker(s):
                         f"set Sumo__StopTime {max_ms};", f"set Sumo__DataComm {step_ms};",
                         "mode dynamic;", *(f"set {k} {v};" for k,v in values.items()),
                         f"set Sumo__LimitTime {step_ms};", "start;"]
+            with _lock:
+                s["phase"] = "scheduling_job"
             job = ds.sumo.schedule(dll, commands=commands,
                 variables=list(dict.fromkeys(["Sumo__Time", *s["mapping"], *OUTPUT_VARIABLES])),
                 jobData={getattr(ds.sumo, "persistent", "persistent"): True})
@@ -195,6 +213,7 @@ def _worker(s):
                 s["status"] = "stopped"
                 s["phase"] = "saved"
     except Exception as exc:
+        logging.exception("Live SUMO worker failed")
         with _lock:
             s["status"] = "failed"
             s["phase"] = "failed"
