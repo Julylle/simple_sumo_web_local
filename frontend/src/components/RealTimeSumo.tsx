@@ -18,6 +18,8 @@ async function json(url:string,init?:RequestInit) {
 export function RealTimeSumo(){
   const [options,setOptions]=useState<Option[]>([]);
   const [mapping,setMapping]=useState<Record<string,string>>({[defaultColumn]:defaultNode});
+  const [selectedColumn,setSelectedColumn]=useState(defaultColumn);
+  const [nodeDraft,setNodeDraft]=useState(defaultNode);
   const [readings,setReadings]=useState<Reading[]>([]);
   const [history,setHistory]=useState<Sample[]>([]);
   const [secondaryAxis,setSecondaryAxis]=useState(false);
@@ -118,12 +120,32 @@ export function RealTimeSumo(){
     <section className="config-card">
       <div className="section-title"><div><h2>Simulation settings</h2></div></div>
       <h3>Step1: Connect sensors through KEPServer</h3>
-      <p className="calibration-note">Enter OPC UA Node IDs for the desired SUMO influent parameters. The backend connection URL is configured using KEPSERVER_OPC_URL.</p>
+      <p className="calibration-note">Select a SUMO influent variable from the dropdown, enter its KEPServer OPC UA Node ID, then add the mapping. Existing mappings can be changed or removed below.</p>
       <div className="fields">
-        {options.map(option=><label className="field" key={option.name}>
-          <span className="field-label">{option.label} ({option.unit})</span>
-          <div className="input-wrap"><input type="text" value={mapping[option.name]||''} disabled={running} placeholder="ns=2;s=..." onChange={e=>changeMapping(option.name,e.target.value)}/></div>
-        </label>)}
+        <label className="field"><span className="field-label">Influent variable</span>
+          <select value={selectedColumn} disabled={running} onChange={e=>{const key=e.target.value;setSelectedColumn(key);setNodeDraft(mapping[key]||'');}}>
+            {options.map(option=><option key={option.name} value={option.name}>{option.label} ({option.unit})</option>)}
+          </select>
+        </label>
+        <label className="field"><span className="field-label">KEPServer OPC UA Node ID</span>
+          <div className="input-wrap"><input type="text" value={nodeDraft} disabled={running} placeholder="ns=2;s=..." onChange={e=>setNodeDraft(e.target.value)}/></div>
+        </label>
+      </div>
+      <p><button className="secondary" disabled={running||!selectedColumn||!nodeDraft.trim()} onClick={()=>changeMapping(selectedColumn,nodeDraft.trim())}>Add / Update sensor mapping</button></p>
+      <div className="sumo-group-dropdowns">
+        <details className="sumo-variable-dropdown"><summary>Connected sensor mappings <span>{Object.keys(mapping).length} selected</span></summary>
+          <div className="sumo-variable-options">
+            {Object.entries(mapping).map(([column,node])=><div key={column} style={{padding:'8px 0'}}>
+              <strong>{options.find(o=>o.name===column)?.label||column.split('__').pop()}</strong>
+              <div style={{overflowWrap:'anywhere',fontSize:12}}>{node}</div>
+              <button className="secondary" disabled={running} onClick={()=>{
+                setConnected(false);setHistory([]);setReadings([]);setSensorError('');
+                setMapping(old=>{const next={...old};delete next[column];return next;});
+                if(selectedColumn===column)setNodeDraft('');
+              }}>Remove</button>
+            </div>)}
+          </div>
+        </details>
       </div>
       <p><button className="secondary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{busy?'Reading sensors...':'Connect / Refresh sensor data'}</button> <button className="secondary" disabled={!connected} onClick={()=>setConnected(false)}>Disconnect</button> <span role="status">{connected?'Connected · sampling every 5 s':'Disconnected'}</span></p>
       {sensorError&&<div className="alert" role="alert">Sensor update failed: {sensorError}</div>}
@@ -181,7 +203,7 @@ export function RealTimeSumo(){
           config={{responsive:true,displaylogo:false}}/>
           :<p className="calibration-note">Connect KEPServer to display live influent sensor trends.</p>}
       </section>
-      <SumoOutputDashboard influent={readings.map(r=>({key:r.column,label:`Influent ${r.column.split('__').pop()}`,unit:options.find(o=>o.name===r.column)?.unit||''}))} result={liveRun?.result} runId={liveRun?.id||''}/>
+      <SumoOutputDashboard showInfluent={false} influent={readings.map(r=>({key:r.column,label:`Influent ${r.column.split('__').pop()}`,unit:options.find(o=>o.name===r.column)?.unit||''}))} result={liveRun?.result} runId={liveRun?.id||''}/>
     </section>
   </>;
 }
