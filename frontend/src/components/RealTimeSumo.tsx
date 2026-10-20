@@ -29,6 +29,9 @@ export function RealTimeSumo(){
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
   const [duration,setDuration]=useState('168');
+  const [limitMinutes,setLimitMinutes]=useState('5');
+  const [mode,setMode]=useState<'live'|'replay'>('live');
+  const [replaySpeed,setReplaySpeed]=useState('10');
   const [run,setRun]=useState<Run|null>(null);
   const [downloading,setDownloading]=useState(false);
   useEffect(()=>{json('/api/sumo/input-options').then(setOptions).catch(e=>setError(String(e)));},[]);
@@ -73,6 +76,10 @@ export function RealTimeSumo(){
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
   async function start(){
+    if(mode==='live'||mode==='replay'){
+      setError('Continuous SUMO Scheduler integration is not yet available. Live and Replay cannot be started safely until the backend is implemented.');
+      return;
+    }
     setBusy(true);setError('');
     try{
       const prepared=await json('/api/kepserver/prepare-input',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({readings})});
@@ -106,14 +113,28 @@ export function RealTimeSumo(){
       </div>
       <p><button className="secondary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{busy?'Reading sensors...':'Connect / Refresh sensor data'}</button> <button className="secondary" disabled={!connected} onClick={()=>setConnected(false)}>Disconnect</button> <span role="status">{connected?'Connected · sampling every 5 s':'Disconnected'}</span></p>
       {sensorError&&<div className="alert" role="alert">Sensor update failed: {sensorError}</div>}
-      <h3 className="sumo-step-title">Step2: Review sensor snapshot and model inputs</h3>
-      {readings.length>0?<table><thead><tr><th>SUMO parameter</th><th>Sensor value</th><th>UTC timestamp</th></tr></thead><tbody>
-        {readings.map(r=><tr key={r.column}><td>{r.column.split('__').pop()}</td><td>{r.value} {options.find(o=>o.name===r.column)?.unit}</td><td>{r.timestamp}</td></tr>)}
-      </tbody></table>:<p className="calibration-note">No sensor snapshot loaded. Read sensors before starting a simulation.</p>}
-      <p className="calibration-note">Sensor chart updates every 5 seconds while connected. Run SUMO still uses the latest snapshot as constant model input; live Scheduler integration is separate.</p>
-      <h3 className="sumo-step-title">Step3: Set up simulation duration</h3>
-      <label className="field"><span className="field-label">Duration (hours)</span><div className="input-wrap"><input type="number" min="1" max="168" step="any" value={duration} disabled={running} onChange={e=>setDuration(e.target.value)}/></div></label>
-      <p><button className="primary" disabled={running||!readings.length||!(Number(duration)>=1&&Number(duration)<=168)} onClick={start}>{running?'Running / preparing...':'Run SUMO'}</button></p>
+      <h3 className="sumo-step-title">Step2: Set up real time simulation</h3>
+      <div className="fields">
+        <label className="field"><span className="field-label">Simulation mode</span>
+          <select value={mode} disabled={running} onChange={e=>setMode(e.target.value as 'live'|'replay')}>
+            <option value="live">Live · real-time synchronisation (1×)</option>
+            <option value="replay">Replay · accelerated historical data</option>
+          </select>
+        </label>
+        <label className="field"><span className="field-label">Input update interval / Limit time (minutes)</span>
+          <div className="input-wrap"><input type="number" min="1" max="60" step="1" value={limitMinutes} disabled={running} onChange={e=>setLimitMinutes(e.target.value)}/></div>
+        </label>
+        <label className="field"><span className="field-label">Replay speed</span>
+          <select value={mode==='live'?'1':replaySpeed} disabled={running||mode==='live'} onChange={e=>setReplaySpeed(e.target.value)}>
+            <option value="1">1×</option><option value="2">2×</option><option value="5">5×</option><option value="10">10×</option><option value="20">20×</option>
+          </select>
+        </label>
+        <label className="field"><span className="field-label">Simulation duration (hours)</span>
+          <div className="input-wrap"><input type="number" min="1" max="168" step="any" value={duration} disabled={running} onChange={e=>setDuration(e.target.value)}/></div>
+        </label>
+      </div>
+      <p className="calibration-note">Live mode: model advances with wall-clock time. Replay mode requires historical time-series data. The continuous SUMO Scheduler backend is not yet enabled; these settings are currently for configuration only.</p>
+      <p><button className="primary" disabled={running||!readings.length||!(Number(duration)>=1&&Number(duration)<=168)||!(Number(limitMinutes)>=1&&Number(limitMinutes)<=60)} onClick={start}>{running?'Running / preparing...':'Run SUMO'}</button></p>
       {run&&<div className="sumo-progress"><p role="status">{run.phase||run.status} · {Math.floor(run.progress_pct||0)}%</p><progress max="100" value={run.progress_pct||0}/></div>}
       {(error||run?.error)&&<div className="alert" role="alert">{error||run?.error}</div>}
     </section>
