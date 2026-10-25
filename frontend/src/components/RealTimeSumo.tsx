@@ -256,8 +256,11 @@ export function RealTimeSumo(){
         <div className="sensor-actions"><button className="primary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{busy?'Reading sensors...':connected?'Refresh sensor data':'Connect sensor data'}</button><button className="secondary" disabled={!connected||busy} onClick={()=>setConnected(false)}>Disconnect</button><span>Live charts update automatically after connecting.</span></div>
         {sensorError&&<div className="alert" role="alert">Sensor update failed: {sensorError}</div>}
       </section>
-      <h3 className="sumo-step-title">Step2: Set up real time simulation</h3>
-      <section className="sensor-setup" aria-label="SUMO model selection">
+      <section className="sensor-setup simulation-setup" aria-labelledby="simulation-step-title">
+        <div className="sensor-heading"><div><h3 id="simulation-step-title">Step2: Set up real time simulation</h3><p>Choose a model, prepare its initial state and set the sensor update interval.</p></div><span className={'sensor-status '+(modelReady?'is-connected':'')} role="status">{liveActive?'Simulation active':preparingModel?'Preparing state':modelReady?'Model ready':'Setup required'}</span></div>
+        <div className="sensor-editor-grid sensor-input-grid">
+        <article className="sensor-editor" aria-label="SUMO model selection">
+          <div className="sensor-editor-title"><h4>SUMO model</h4><span>01 · Model</span></div>
         <label className="sensor-field"><span>SUMO model</span>
           <select value={modelSource} disabled={running} onChange={e=>{setModelSource(e.target.value);setUploadedModel(null);setModelError('');}}>
             <option value="builtin">Built-in · Cixi Eastern WWTP_20260920</option>
@@ -265,6 +268,11 @@ export function RealTimeSumo(){
           </select>
         </label>
         {modelSource==='upload'&&<label className="sensor-field"><span>SUMO project (.sumo, max 50 MB)</span><input type="file" accept=".sumo" disabled={running} onChange={e=>{setModelFile(e.target.files?.[0]||null);setUploadedModel(null);setModelError('');}}/></label>}
+          <p className="calibration-note">Use the built-in plant model or upload a compiled SUMO project that supports your sensor variables.</p>
+          <p className="calibration-note simulation-card-footnote">Prepared models are available until the backend restarts.</p>
+        </article>
+        <article className="sensor-editor">
+          <div className="sensor-editor-title"><h4>Initial state</h4><span>02 · Preparation</span></div>
         <label className="sensor-field"><span>Steady state</span>
           <select value={stateMode} disabled={running} onChange={e=>{setStateMode(e.target.value);setUploadedModel(null);setModelError('');}}>
             <option value="upload">Upload steady-state file</option>
@@ -279,39 +287,36 @@ export function RealTimeSumo(){
           <label className="sensor-field"><span>Convergence tolerance (MaxAbsDer)</span><input type="number" min="0" step="any" value={steadyTolerance} disabled={running} onChange={e=>{setSteadyTolerance(e.target.value);setUploadedModel(null);}}/></label>
           <p className="calibration-note">Requires MaxAbsDer at or below the tolerance for three consecutive samples, or at the solver's natural finish. A 3.5-hour timeout reports failure without accepting an unconverged state.</p>
         </>}
-        <div className="sensor-actions"><button className="secondary"
+        <div className="sensor-actions simulation-prepare-action"><button className="secondary"
           disabled={running||(modelSource==='upload'&&!modelFile)||(stateMode==='upload'?!stateFile:(!connected||!Number.isFinite(Number(steadyTolerance))||Number(steadyTolerance)<=0))}
           onClick={()=>void uploadModel()}>{modelUploading?'Preparing model...':stateMode==='upload'?'Use uploaded steady state':'Calculate steady state'}</button></div>
         {preparingModel&&<p role="status">Calculating steady state for {preparingModel.name}. Run SUMO will be available after convergence and saving.</p>}
         {uploadedModel&&<p role="status" className="measurement-ready">Ready: {uploadedModel.name} · {uploadedModel.state_name}</p>}
-        <p className="calibration-note">Prepared models are available until the backend restarts.</p>
+
         {modelError&&<div className="alert" role="alert">{modelError}</div>}
-        {liveActive&&liveRun?.model_name&&<p role="status">Running model: {liveRun.model_name}</p>}
-      </section>
-      <div className="fields">
-        <label className="field"><span className="field-label">Simulation mode</span>
-          <div className="input-wrap"><input value="Live · continuous (1×)" readOnly aria-label="Simulation mode"/></div>
-        </label>
-        <label className="field"><span className="field-label">Input update interval / Limit time (minutes)</span>
-          <div className="input-wrap"><input type="number" min="1" max="60" step="1" value={limitMinutes} disabled={running} onChange={e=>setLimitMinutes(e.target.value)}/></div>
-        </label>
-        <label className="field"><span className="field-label">Operation</span>
-          <div className="input-wrap"><input value="Continuous · until Stop SUMO" readOnly aria-label="Simulation operation"/></div>
-        </label>
-      </div>
-      <p className="calibration-note">Live-only mode: SUMO will run continuously until manually stopped, using the selected input update interval. The model runs in one persistent Scheduler session until Stop SUMO is clicked.</p>
-      {checkpoint&&<div className="sensor-setup">
+        </article>
+        <article className="sensor-editor">
+          <div className="sensor-editor-title"><h4>Live operation</h4><span>03 · Timing</span></div>
+          <label className="sensor-field"><span>Simulation mode</span><input value="Live · continuous (1×)" readOnly aria-label="Simulation mode"/></label>
+          <label className="sensor-field"><span>Input update interval / Limit time (minutes)</span><input type="number" min="1" max="60" step="1" value={limitMinutes} disabled={running} onChange={e=>setLimitMinutes(e.target.value)}/></label>
+          <label className="sensor-field"><span>Operation</span><input value="Continuous · until Stop SUMO" readOnly aria-label="Simulation operation"/></label>
+          <p className="calibration-note">Sensor inputs refresh at each interval. The model continues from the previous interval's state until you stop it.</p>
+        </article>
+        </div>
+        {liveActive&&liveRun?.model_name&&<p className="simulation-model-status" role="status">Running model: {liveRun.model_name}</p>}
+      {checkpoint&&<div className="sensor-editor simulation-recovery">
+        <div className="sensor-editor-title"><h4>Resume a saved simulation</h4><span>Latest checkpoint</span></div>
         {checkpoint.error?<p className="alert">{checkpoint.error}</p>:<>
           <p>Latest checkpoint: {checkpoint.model_name} · simulation time {checkpoint.simulated_h?.toFixed(3)} h · saved {checkpoint.saved_at?new Date(checkpoint.saved_at).toLocaleString():''}</p>
           <p className="calibration-note">Resume restores the saved model, state, sensor mappings and interval, then reads fresh sensors. Downtime is not replayed. Only the latest checkpoint is retained.</p>
           <button className="secondary" disabled={running} onClick={()=>void resume()}>Resume latest checkpoint</button>
         </>}
       </div>}
-      <p className="calibration-note">Each completed interval replaces the latest recovery checkpoint. Stop SUMO finishes and saves the current interval before stopping.</p>
-      <p><button className="primary" disabled={running||!modelReady||!connected||!(Number(limitMinutes)>=1&&Number(limitMinutes)<=60)} onClick={()=>void start()}>Run SUMO</button> <button className="secondary" disabled={busy||!['starting','running'].includes(liveRun?.status||'')} onClick={()=>void stop()}>Stop SUMO</button></p>
+      <div className="sensor-actions simulation-run-actions"><button className="primary" disabled={running||!modelReady||!connected||!(Number(limitMinutes)>=1&&Number(limitMinutes)<=60)} onClick={()=>void start()}>Run SUMO</button> <button className="secondary" disabled={busy||!['starting','running'].includes(liveRun?.status||'')} onClick={()=>void stop()}>Stop SUMO</button><span>Each completed interval saves the latest checkpoint. Stop finishes and saves the current interval.</span></div>
       {liveRun&&<div className="sumo-progress"><p role="status">{liveRun.status} · {liveRun.phase||''} · {(liveRun.simulated_h||0).toFixed(2)} simulated hours · {liveRun.samples||0} output samples</p>{liveRun.error&&<div className="alert">{liveRun.error}</div>}</div>}
       {run&&<div className="sumo-progress"><p role="status">{run.phase||run.status} · {Math.floor(run.progress_pct||0)}%</p><progress max="100" value={run.progress_pct||0}/></div>}
       {(error||run?.error)&&<div className="alert" role="alert">{error||run?.error}</div>}
+      </section>
     </section>
     <section className="config-card"><div className="section-title"><div><h2>Output variables visualisation</h2></div><button className="secondary" disabled={!liveRun?.result?.time_h?.length||downloading} onClick={async()=>{setDownloading(true);try{const response=await fetch('/api/sumo/live/download');if(!response.ok)throw Error('Download failed');const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download='sumo_live_results.csv';link.click();URL.revokeObjectURL(url);}catch(e){setError(String(e));}finally{setDownloading(false);}}}>Download results CSV</button></div>
       <LiveSensorPlot title="Influent variables · live sensor trends" groupTitle="Influent variables"
