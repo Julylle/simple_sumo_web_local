@@ -23,6 +23,16 @@ const defaultMapping: Record<string,string> = {
   "Sumo__Plant__Influent__param__TKN": "ns=2;s=MySQL.Dev4.TN_nh3_sen_ratio",
   "Sumo__Plant__Influent__param__TP": "ns=2;s=MySQL.Dev1.inlet_tp.inlet_tp__1_"
 };
+// These 12 configured inputs must remain selectable even if the SUMO API is offline.
+const influentUnits: Record<string,string> = {
+  Q: 'm3/d', pH: 'pH', T: 'deg C', Ammonia_sensor_Horiba: 'mg/L',
+  COD_lab: 'mg/L', TKN_lab: 'mg/L', Ammonia_lab: 'mg/L', TSS_sensor: 'mg/L',
+  Ammonia_analyzer: 'mg/L', TCOD: 'mg COD/L', TKN: 'mg N/L', TP: 'mg P/L',
+};
+const options: Option[] = Object.keys(defaultMapping).map(name => {
+  const label = name.split('__').pop()!;
+  return {name, label, unit: influentUnits[label]};
+});
 const defaultColumn = 'Sumo__Plant__Influent__param__Ammonia_sensor_Horiba';
 const defaultNode = defaultMapping[defaultColumn];
 async function json(url:string,init?:RequestInit) {
@@ -32,7 +42,6 @@ async function json(url:string,init?:RequestInit) {
   return body;
 }
 export function RealTimeSumo(){
-  const [options,setOptions]=useState<Option[]>([]);
   const [mapping,setMapping]=useState<Record<string,string>>(()=>({...defaultMapping,...defaultDoMapping}));
   const [selectedColumn,setSelectedColumn]=useState(defaultColumn);
   const [nodeDraft,setNodeDraft]=useState(defaultNode);
@@ -51,7 +60,6 @@ export function RealTimeSumo(){
   const [run,setRun]=useState<Run|null>(null);
   const [liveRun,setLiveRun]=useState<LiveRun|null>(null);
   const [downloading,setDownloading]=useState(false);
-  useEffect(()=>{json('/api/sumo/input-options').then(setOptions).catch(e=>setError(String(e)));},[]);
   useEffect(()=>{
     if(run?.status!=='running')return;
     let active=true;
@@ -146,7 +154,7 @@ export function RealTimeSumo(){
           {[{title:'Influent variable',items:options,selected:selectedColumn,draft:nodeDraft,setSelected:setSelectedColumn,setDraft:setNodeDraft,isDo:false},
             {title:'DO sensors',items:doSensorOptions,selected:selectedDo,draft:doDraft,setSelected:setSelectedDo,setDraft:setDoDraft,isDo:true}].map(group=><article className="sensor-editor" key={group.title}>
             <div className="sensor-editor-title"><h4>{group.title}</h4><span>{Object.keys(mapping).filter(key=>Boolean(defaultDoMapping[key])===group.isDo).length} mapped</span></div>
-            <label className="sensor-field"><span>{group.title}</span><select value={group.selected} disabled={running} onChange={e=>{group.setSelected(e.target.value);group.setDraft(mapping[e.target.value]||'');}}>
+            <label className="sensor-field"><span>{group.title}</span><select value={group.selected} onChange={e=>{group.setSelected(e.target.value);group.setDraft(mapping[e.target.value]||'');}}>
               {group.items.map(option=><option key={option.name} value={option.name}>{option.label} ({option.unit})</option>)}
             </select></label>
             <label className="sensor-field"><span>KEPServer OPC UA Node ID</span><input type="text" value={group.draft} disabled={running} placeholder="ns=2;s=..." onChange={e=>group.setDraft(e.target.value)}/></label>
