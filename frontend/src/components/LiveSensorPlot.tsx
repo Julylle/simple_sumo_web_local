@@ -1,3 +1,4 @@
+import { localPlotTimestamp } from '../utils/liveSensorDisplay';
 import { useMemo, useState } from 'react';
 import { t, useLanguage } from '../i18n';
 import { SumoOutputPlot } from './SumoOutputPlot';
@@ -26,7 +27,7 @@ export function LiveSensorPlot({ title, groupTitle, options, history, className 
       byColumn.get(sample.column)!.set(sample.receivedAt, sample.value);
     }
     return {
-      timestamps: times.map(time => new Date(time).toISOString()),
+      timestamps: times.map(localPlotTimestamp),
       result: {time_h: times.map(time => (time-times[0])/3600000),
         variables: Object.fromEntries(options.map(o => [o.key, times.map(time => byColumn.get(o.key)?.get(time) ?? null)]))},
     };

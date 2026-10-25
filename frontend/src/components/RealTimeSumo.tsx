@@ -1,3 +1,4 @@
+import { sensorDisplayValue } from '../utils/liveSensorDisplay';
 import { defaultControlMapping, controlSensorOptions } from '../config/additionalControls';
 import { defaultDoMapping, doSensorOptions } from '../config/doSensors';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -53,12 +54,10 @@ export function RealTimeSumo(){
   const [controlDraft,setControlDraft]=useState(defaultControlMapping[controlSensorOptions[0].name]);
   const [readings,setReadings]=useState<Reading[]>([]);
   const [history,setHistory]=useState<Sample[]>([]);
-  // Display the same converted flow used by SUMO without changing raw readings.
-  const influentPlotHistory=useMemo(()=>history.map(sample=>
-    sample.column==='Sumo__Plant__Influent__param__Q'
-      ? {...sample,value:sample.value/0.0417}
-      : sample
-  ),[history]);
+  // Convert a display copy; keep raw sensor readings intact.
+  const influentPlotHistory=useMemo(()=>history.map(sample=>({
+    ...sample,value:sensorDisplayValue(sample.column,sample.value)
+  })),[history]);
   const [connected,setConnected]=useState(false);
   const [sensorError,setSensorError]=useState('');
   const pollingRef=useRef(false);
@@ -172,9 +171,9 @@ export function RealTimeSumo(){
   const liveActive=['starting','running','stopping'].includes(liveRun?.status||'');
   const running=busy||liveActive||modelUploading;
   const sensorGroup=(key:string)=>defaultDoMapping[key]?'do':defaultControlMapping[key]?'control':'influent';
-  const influentPlotOptions=Object.keys(mapping).filter(key=>Boolean(defaultMapping[key])).map(key=>({
-    key,label:options.find(o=>o.name===key)?.label||key.split('__').pop()||key,
-    unit:options.find(o=>o.name===key)?.unit||''
+  const influentPlotOptions=Object.keys(mapping).filter(key=>Boolean(defaultMapping[key]||defaultControlMapping[key])).map(key=>({
+    key,label:[...options,...controlSensorOptions].find(o=>o.name===key)?.label||key.split('__').pop()||key,
+    unit:[...options,...controlSensorOptions].find(o=>o.name===key)?.unit||''
   }));
   const doPlotOptions=doSensorOptions.filter(o=>mapping[o.name]).map(o=>({key:o.name,label:o.label,unit:o.unit}));
   return <>

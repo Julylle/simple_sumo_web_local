@@ -49,7 +49,7 @@ export function SumoOutputPlot({ result, variables, rightAxis, overlay, runId, o
     uirevision: `${runId}:${overlay}:${variables.join(',')}:${axisKey}`,
     paper_bgcolor: '#ffffff', plot_bgcolor: '#ffffff',
     font: { family: 'Inter, Segoe UI, sans-serif', size: 11, color: '#64748b' },
-    xaxis: { title: { text: timestamps ? t('Sensor timestamp') : t('Time (h)'), standoff: 12 }, gridcolor: '#f1f5f9',
+    xaxis: { title: { text: timestamps ? t('Sensor timestamp (computer local time)') : t('Time (h)'), standoff: 12 }, gridcolor: '#f1f5f9',
       zeroline: false, showline: true, linecolor: '#cbd5e1', ticks: 'outside', tickcolor: '#cbd5e1', automargin: false },
     yaxis: { title: { text: leftTitle, standoff: 12 },
       gridcolor: '#e8edf3', zeroline: false, rangemode: 'tozero', tickformat: '~g', automargin: false },
