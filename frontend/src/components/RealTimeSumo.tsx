@@ -1,6 +1,6 @@
 import { defaultDoMapping, doSensorOptions } from '../config/doSensors';
 import { useEffect, useRef, useState } from 'react';
-import Plot from 'react-plotly.js';
+import { LiveSensorPlot } from './LiveSensorPlot';
 import { SumoOutputDashboard } from './SumoOutputDashboard';
 
 type Option = {name:string;label:string;unit:string};
@@ -38,11 +38,8 @@ export function RealTimeSumo(){
   const [nodeDraft,setNodeDraft]=useState(defaultNode);
   const [selectedDo,setSelectedDo]=useState(doSensorOptions[0].name);
   const [doDraft,setDoDraft]=useState(defaultDoMapping[doSensorOptions[0].name]);
-  const [visibleDo,setVisibleDo]=useState(Object.keys(defaultDoMapping));
   const [readings,setReadings]=useState<Reading[]>([]);
   const [history,setHistory]=useState<Sample[]>([]);
-  const [secondaryAxis,setSecondaryAxis]=useState(false);
-  const [rightAxisVariables,setRightAxisVariables]=useState<string[]>([]);
   const [connected,setConnected]=useState(false);
   const [sensorError,setSensorError]=useState('');
   const pollingRef=useRef(false);
@@ -134,6 +131,11 @@ export function RealTimeSumo(){
   }
   const liveActive=['starting','running','stopping'].includes(liveRun?.status||'');
   const running=busy||liveActive;
+  const influentPlotOptions=Object.keys(mapping).filter(key=>!defaultDoMapping[key]).map(key=>({
+    key,label:options.find(o=>o.name===key)?.label||key.split('__').pop()||key,
+    unit:options.find(o=>o.name===key)?.unit||''
+  }));
+  const doPlotOptions=doSensorOptions.filter(o=>mapping[o.name]).map(o=>({key:o.name,label:o.label,unit:o.unit}));
   return <>
     <section className="page-head"><div><h1>SUMO Real-time Simulation</h1><p>Cixi Eastern WWTP · KEPServer OPC UA · Manual simulation</p></div></section>
     <section className="config-card">
@@ -183,57 +185,11 @@ export function RealTimeSumo(){
       {(error||run?.error)&&<div className="alert" role="alert">{error||run?.error}</div>}
     </section>
     <section className="config-card"><div className="section-title"><div><h2>Output variables visualisation</h2></div><button className="secondary" disabled={!liveRun?.result?.time_h?.length||downloading} onClick={async()=>{setDownloading(true);try{const response=await fetch('/api/sumo/live/download');if(!response.ok)throw Error('Download failed');const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download='sumo_live_results.csv';link.click();URL.revokeObjectURL(url);}catch(e){setError(String(e));}finally{setDownloading(false);}}}>Download results CSV</button></div>
-      <section className="sumo-overlay-card">
-        <div className="chart-head"><h3>Influent variables · live sensor trends</h3></div>
-        <div className="sumo-group-dropdowns">
-          <label className="sumo-axis-toggle">
-            <input type="checkbox" checked={secondaryAxis} onChange={e=>setSecondaryAxis(e.target.checked)}/>
-            Enable secondary Y axis
-          </label>
-          {secondaryAxis && <details className="sumo-variable-dropdown">
-            <summary>Right Y axis <span>{rightAxisVariables.filter(key=>history.some(s=>s.column===key)).length} selected</span></summary>
-            <div className="sumo-variable-options">
-              {Object.keys(mapping).filter(key=>!defaultDoMapping[key]&&history.some(s=>s.column===key)).map(key=><label key={key}>
-                <input type="checkbox" checked={rightAxisVariables.includes(key)}
-                  onChange={e=>setRightAxisVariables(old=>e.target.checked?[...old,key]:old.filter(item=>item!==key))}/>
-                {key.split('__').pop()} <small>{options.find(o=>o.name===key)?.unit||''}</small>
-              </label>)}
-            </div>
-          </details>}
-        </div>
-        {history.length?<Plot style={{width:'100%',height:380}} useResizeHandler
-          data={Object.keys(mapping).filter(key=>!defaultDoMapping[key]&&history.some(s=>s.column===key)).map(key=>({
-            x:history.filter(s=>s.column===key).map(s=>new Date(s.receivedAt)),
-            y:history.filter(s=>s.column===key).map(s=>s.value),
-            type:'scatter' as const,mode:'lines+markers' as const,
-            name:key.split('__').pop()||key,
-            yaxis:secondaryAxis&&rightAxisVariables.includes(key)?'y2' as const:'y' as const
-          }))}
-          layout={{autosize:true,height:380,
-            margin:{t:20,b:65,l:75,r:secondaryAxis?75:20},
-            xaxis:{title:{text:'Sensor timestamp'}},
-            yaxis:{title:{text:'Sensor reading (left axis)'}},
-            ...(secondaryAxis?{yaxis2:{title:{text:'Sensor reading (right axis)'},overlaying:'y' as const,side:'right' as const,showgrid:false}}:{}),
-            showlegend:true}}
-          config={{responsive:true,displaylogo:false}}/>
-          :<p className="calibration-note">Connect KEPServer to display live influent sensor trends.</p>}
-      </section>
-      <section className="sumo-overlay-card live-do-card">
-        <div className="chart-head"><h3>DO concentrations · live sensor trends</h3><span className="sensor-unit">mg O₂/L</span></div>
-        <div className="sumo-group-dropdowns"><details className="sumo-variable-dropdown"><summary>DO sensors <span>{visibleDo.filter(key=>mapping[key]).length} selected</span></summary><div className="sumo-variable-options">
-          <div className="measurement-actions"><button className="secondary" onClick={()=>setVisibleDo(Object.keys(defaultDoMapping))}>Select all</button><button className="secondary" onClick={()=>setVisibleDo([])}>Clear</button></div>
-          {doSensorOptions.filter(o=>mapping[o.name]).map(o=><label key={o.name}><input type="checkbox" checked={visibleDo.includes(o.name)} onChange={e=>setVisibleDo(old=>e.target.checked?[...old,o.name]:old.filter(k=>k!==o.name))}/>{o.label}</label>)}
-        </div></details></div>
-        {history.some(s=>defaultDoMapping[s.column])&&visibleDo.some(key=>mapping[key])?<Plot style={{width:'100%',height:380}} useResizeHandler
-          data={doSensorOptions.filter(o=>mapping[o.name]&&visibleDo.includes(o.name)).map(o=>({
-            x:history.filter(s=>s.column===o.name).map(s=>new Date(s.receivedAt)),
-            y:history.filter(s=>s.column===o.name).map(s=>s.value),
-            type:'scatter' as const,mode:'lines+markers' as const,name:o.label
-          }))}
-          layout={{autosize:true,height:380,margin:{t:20,b:65,l:75,r:30},xaxis:{title:{text:'Sensor timestamp'}},yaxis:{title:{text:'DO concentration (mg O₂/L)'}},showlegend:true}}
-          config={{responsive:true,displaylogo:false}}/>:<p className="calibration-note">{!visibleDo.length?'Select DO sensors to display their trends.':'Connect KEPServer to display live DO concentrations.'}</p>}
-      </section>
-      <SumoOutputDashboard showInfluent={false} showDo={false} influent={readings.filter(r=>!defaultDoMapping[r.column]).map(r=>({key:r.column,label:`Influent ${r.column.split('__').pop()}`,unit:options.find(o=>o.name===r.column)?.unit||''}))} result={liveRun?.result} runId={liveRun?.id||''}/>
+      <LiveSensorPlot title="Influent variables · live sensor trends" groupTitle="Influent variables"
+        options={influentPlotOptions} history={history} axisTitle="Sensor reading" />
+      <LiveSensorPlot title="DO concentrations · live sensor trends" groupTitle="DO concentrations"
+        options={doPlotOptions} history={history} axisTitle="DO concentration (mg O₂/L)" className="live-do-card" />
+      <SumoOutputDashboard showInfluent={false} showDo={false} influent={influentPlotOptions} result={liveRun?.result} runId={liveRun?.id||''}/>
     </section>
   </>;
 }
