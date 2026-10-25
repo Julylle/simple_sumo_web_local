@@ -36,6 +36,7 @@ def save_checkpoint(session, state_file, simulated_ms):
                     archive.writestr('metadata.json', json.dumps(metadata))
                     archive.writestr('results.json', json.dumps({
                         'time_h': session.get('times', []),
+                        'sensor_timestamps': session.get('sensor_timestamps', [None] * len(session.get('times', []))),
                         'variables': session.get('variables', {})}, allow_nan=False))
                     archive.writestr('state.xml', state)
                     archive.write(session['model']['project'], 'model.sumo')
@@ -107,6 +108,15 @@ def _read_results(archive):
     if any(not isinstance(v, (int, float)) or not math.isfinite(v)
            for values in [times, *variables.values()] for v in values):
         raise ValueError('Non-finite checkpoint results.')
+    timestamps = result.get('sensor_timestamps')
+    if timestamps is not None:
+        if not isinstance(timestamps, list) or len(timestamps) != len(times):
+            raise ValueError('Misaligned sensor timestamps.')
+        for value in timestamps:
+            if value is not None:
+                parsed = datetime.fromisoformat(value)
+                if parsed.tzinfo is None:
+                    raise ValueError('Sensor timestamp must include a timezone.')
     return result
 
 

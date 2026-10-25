@@ -13,3 +13,5 @@ After restarting the backend, saved output is immediately available for plots an
 **Stop SUMO** completes and checkpoints the current interval before stopping. Checkpoint save failures stop the live run rather than advancing without a durable recovery point. A new checkpoint becomes available only after at least one full interval has completed and its save has succeeded.
 
 API: `GET /api/sumo/live/status` includes checkpoint information, including while idle after a restart. `POST /api/sumo/live/resume` starts recovery and rejects an already active run. Use a single backend worker for the live SUMO scheduler.
+
+Live output samples now include `sensor_timestamps`: UTC timestamps captured immediately after the sensor read that supplied their input interval. These are acquisition-completion times, not an estimated simulation-time offset or PLC source timestamps. They survive checkpoint recovery and export as `sensor_read_at_utc` in CSV. The realtime dashboard converts them to the viewing computer’s local time. Legacy samples without recorded timestamps remain in CSV but cannot appear on a dated axis.

@@ -1,6 +1,7 @@
 """Single persistent live SUMO session. Scheduler callbacks never block on OPC I/O."""
 import asyncio
 import csv
+from datetime import datetime, timezone
 import io
 import math
 import logging
@@ -39,6 +40,7 @@ def snapshot():
                 "checkpoint": checkpoint_info(),
                 "phase": s["phase"], "simulated_h": s["sim_ms"] / 3600000,
                 "samples": len(s["times"]), "result": {
+                    "sensor_timestamps": list(s.get("sensor_timestamps", [None] * len(s["times"]))),
                     "time_h": list(s["times"]), "variables": {k: list(v) for k, v in s["variables"].items()}}}
 
 def start(mapping, interval_minutes, model_id="builtin"):
@@ -59,6 +61,7 @@ def _launch(mapping, interval_minutes, model_id, selected_model, resume_ms=0, re
              "error": None, "sim_ms": resume_ms, "resume_ms": resume_ms,
              "resume_folder": resume_folder, "times": list((result or {}).get("time_h", [])),
              "variables": {k: list(v) for k, v in (result or {}).get("variables", {}).items()},
+             "sensor_timestamps": list((result or {}).get("sensor_timestamps", [None] * len((result or {}).get("time_h", [])))),
              "mapping": dict(mapping), "interval": interval_minutes * 60,
              "model": selected_model, "model_id": model_id,
              "stop": threading.Event()}
@@ -98,9 +101,9 @@ def export_csv():
         names = list(s["variables"])
         out = io.StringIO()
         writer = csv.writer(out)
-        writer.writerow(["time_h", *names])
+        writer.writerow(["time_h", "sensor_read_at_utc", *names])
         for i, t in enumerate(s["times"]):
-            writer.writerow([t, *(s["variables"][k][i] for k in names)])
+            writer.writerow([t, result.get("sensor_timestamps", [None] * len(s["times"]))[i], *(s["variables"][k][i] for k in names)])
         return out.getvalue()
 
 def _read_model_inputs(mapping):
@@ -160,6 +163,7 @@ def _worker(s):
         with _lock:
             s["phase"] = "reading_initial_sensors"
         values = _read_model_inputs(s["mapping"])
+        s["input_read_at"] = datetime.now(timezone.utc).isoformat()
         # Release the scheduler before removing a directory containing its loaded DLL.
         workspace = tempfile.TemporaryDirectory(prefix="sumo_live_", ignore_cleanup_errors=True)
         directory = workspace.name
@@ -195,6 +199,7 @@ def _worker(s):
                     if s["times"] and float(ms)/3600000 <= s["times"][-1]:
                         return
                     s["sim_ms"] = int(ms)
+                    s.setdefault("sensor_timestamps", [None] * len(s["times"])).append(s["input_read_at"])
                     s["times"].append(float(ms)/3600000)
                     for name in dict.fromkeys([*s["mapping"], *output_variables]):
                         s["variables"].setdefault(name, []).append(float(data.get(name, float("nan"))))
@@ -261,6 +266,7 @@ def _worker(s):
                 break
             try:
                 new_values = _read_model_inputs(s["mapping"])
+                s["input_read_at"] = datetime.now(timezone.utc).isoformat()
             except Exception as exc:
                 # Fail closed: do not advance with stale values.
                 raise RuntimeError("OPC UA unavailable; live simulation stopped: "+str(exc)) from exc

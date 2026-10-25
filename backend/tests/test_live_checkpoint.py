@@ -83,6 +83,10 @@ def test_restart_resume_uses_checkpoint_time_mapping_and_model(session, monkeypa
 @pytest.mark.parametrize('locked_cleanup', [False, True])
 def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failure(session, tmp_path, monkeypatch, resume_ms, stop_at_boundary, locked_cleanup):
     import sys
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    read_times = iter([datetime(2026, 10, 25, 1, minute, tzinfo=timezone.utc) for minute in (0, 1)])
+    monkeypatch.setattr(live, 'datetime', SimpleNamespace(now=lambda tz: next(read_times)))
     session['resume_ms'] = resume_ms
     if resume_ms:
         session['times'] = [resume_ms / 3600000]
@@ -175,6 +179,8 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
     assert len(session['times']) == (3 if resume_ms else 2)
     if resume_ms:
         assert session['variables'][Q][0] == 500
+    assert session['sensor_timestamps'][-2:] == ['2026-10-25T01:00:00+00:00', '2026-10-25T01:01:00+00:00']
+    assert len(session['sensor_timestamps']) == len(session['times'])
     assert engine.schedule.call_count == 1
     commands = [c.args[1] for c in engine.sendCommand.call_args_list]
     assert sum(c.startswith('save ') for c in commands) == 2
@@ -226,3 +232,20 @@ def test_invalid_history_does_not_replace_last_checkpoint(session):
     with pytest.raises(ValueError):
         cp.save_checkpoint(session, session['model']['state'], 120000)
     assert cp.checkpoint_path().read_bytes() == previous
+
+
+def test_sensor_timestamps_survive_checkpoint_resume_and_csv(session, monkeypatch):
+    session['times'] = [1/60, 2/60]
+    session['variables'] = {Q: [100, 200]}
+    session['sensor_timestamps'] = ['2026-10-25T01:00:00+00:00', '2026-10-25T01:01:00+00:00']
+    cp.save_checkpoint(session, session['model']['state'], 120000)
+    monkeypatch.setattr(live, '_session', None)
+    assert live.snapshot()['result']['sensor_timestamps'] == session['sensor_timestamps']
+    assert 'sensor_read_at_utc' in live.export_csv()
+    assert session['sensor_timestamps'][1] in live.export_csv()
+    with patch.object(live.threading, 'Thread'):
+        resumed = live.resume()
+    try:
+        assert resumed['result']['sensor_timestamps'] == session['sensor_timestamps']
+    finally:
+        live._session['resume_folder'].cleanup()
