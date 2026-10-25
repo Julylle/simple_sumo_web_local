@@ -33,9 +33,9 @@ def test_mapping_without_flow_is_unchanged():
 
 @pytest.mark.parametrize('column,raw,expected', [
     ('Sumo__Plant__Sideflowdivider3__param__Qpumped_target', 41.7, 1000),
-    ('Sumo__Plant__Carbon1__param__Q', 2, 83.34),
-    ('Sumo__Plant__Carbon2__param__Q', 3, 125.01),
-    ('Sumo__Plant__Metal1__param__Q', 4, 166.68),
+    ('Sumo__Plant__Carbon1__param__Q', 83.34, 2),
+    ('Sumo__Plant__Carbon2__param__Q', 125.01, 3),
+    ('Sumo__Plant__Metal1__param__Q', 166.68, 4),
 ])
 def test_additional_control_conversions_on_every_fresh_read(column, raw, expected):
     readings = [{'column': column, 'value': raw}, {'column': DO, 'value': 2.5}]

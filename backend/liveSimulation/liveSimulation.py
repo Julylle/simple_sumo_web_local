@@ -91,7 +91,7 @@ def _read_model_inputs(mapping):
         "Sumo__Plant__Metal1__param__Q",
     ):
         if column in values:
-            values[column] *= 41.67
+            values[column] /= 41.67
     for column, value in values.items():
         if not math.isfinite(value):
             raise ValueError("Non-finite SUMO input after conversion: " + column)
