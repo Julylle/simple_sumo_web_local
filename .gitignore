@@ -19,3 +19,4 @@ frontend/dist/
 # Local simulation outputs
 results/
 outputs/
+backend/live_states/

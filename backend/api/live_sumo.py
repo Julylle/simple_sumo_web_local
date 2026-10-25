@@ -73,3 +73,13 @@ def uploaded_model_status(model_id: str):
         return model_status(model_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/sumo/live/resume", status_code=202)
+def resume():
+    try:
+        return live_sumo.resume()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

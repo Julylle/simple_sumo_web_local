@@ -9,7 +9,8 @@ type Option = {name:string;label:string;unit:string};
 type Reading = {column:string;node_id:string;value:number;timestamp:string};
 type Sample = Reading & { receivedAt: number };
 type UploadedModel = {id:string;name:string;state_name:string};
-type LiveRun = {id?:string;model_id?:string;model_name?:string;status:string;phase?:string;error?:string;simulated_h?:number;samples?:number;result?:{time_h:number[];variables:Record<string,number[]>}};
+type Checkpoint = {error?:string;model_name?:string;saved_at?:string;simulated_h?:number;interval_minutes?:number;mapping?:Record<string,string>};
+type LiveRun = {checkpoint?:Checkpoint|null;id?:string;model_id?:string;model_name?:string;status:string;phase?:string;error?:string;simulated_h?:number;samples?:number;result?:{time_h:number[];variables:Record<string,number[]>}};
 type Run = {id:string;status:'running'|'completed'|'failed';error?:string;progress_pct?:number;phase?:string;result?:{time_h:number[];variables:Record<string,number[]>}};
 // Default influent mappings from Julylle/Sumo_web/demo_MLE/cx_opcua1124.csv.
 const defaultMapping: Record<string,string> = {
@@ -79,6 +80,7 @@ export function RealTimeSumo(){
 
   const [run,setRun]=useState<Run|null>(null);
   const [liveRun,setLiveRun]=useState<LiveRun|null>(null);
+  const [checkpoint,setCheckpoint]=useState<Checkpoint|null>(null);
   const [downloading,setDownloading]=useState(false);
   useEffect(()=>{
     if(run?.status!=='running')return;
@@ -91,7 +93,7 @@ export function RealTimeSumo(){
     const poll=async()=>{
       try{
         const next:LiveRun=await json('/api/sumo/live/status');
-        if(active)setLiveRun(next.status==='idle'?null:next);
+        if(active){setLiveRun(next.status==='idle'?null:next);setCheckpoint(next.checkpoint||null);}
       }catch(e){if(active)setError(String(e));}
     };
     void poll();
@@ -187,6 +189,16 @@ export function RealTimeSumo(){
       const result:LiveRun=await json('/api/sumo/live/start',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({mapping:selected,interval_minutes:Number(limitMinutes),model_id:uploadedModel?.id||'builtin'})});
       setLiveRun(result);
+    }catch(e){setError(String(e));}finally{setBusy(false);}
+  }
+  async function resume(){
+    setBusy(true);setError('');
+    try{
+      const result:LiveRun=await json('/api/sumo/live/resume',{method:'POST'});
+      setLiveRun(result);
+      if(result.checkpoint?.mapping)setMapping(result.checkpoint.mapping);
+      if(result.checkpoint?.interval_minutes)setLimitMinutes(String(result.checkpoint.interval_minutes));
+      setConnected(true);
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
   async function stop(){
@@ -288,6 +300,14 @@ export function RealTimeSumo(){
         </label>
       </div>
       <p className="calibration-note">Live-only mode: SUMO will run continuously until manually stopped, using the selected input update interval. The model runs in one persistent Scheduler session until Stop SUMO is clicked.</p>
+      {checkpoint&&<div className="sensor-setup">
+        {checkpoint.error?<p className="alert">{checkpoint.error}</p>:<>
+          <p>Latest checkpoint: {checkpoint.model_name} · simulation time {checkpoint.simulated_h?.toFixed(3)} h · saved {checkpoint.saved_at?new Date(checkpoint.saved_at).toLocaleString():''}</p>
+          <p className="calibration-note">Resume restores the saved model, state, sensor mappings and interval, then reads fresh sensors. Downtime is not replayed. Only the latest checkpoint is retained.</p>
+          <button className="secondary" disabled={running} onClick={()=>void resume()}>Resume latest checkpoint</button>
+        </>}
+      </div>}
+      <p className="calibration-note">Each completed interval replaces the latest recovery checkpoint. Stop SUMO finishes and saves the current interval before stopping.</p>
       <p><button className="primary" disabled={running||!modelReady||!connected||!(Number(limitMinutes)>=1&&Number(limitMinutes)<=60)} onClick={()=>void start()}>Run SUMO</button> <button className="secondary" disabled={busy||!['starting','running'].includes(liveRun?.status||'')} onClick={()=>void stop()}>Stop SUMO</button></p>
       {liveRun&&<div className="sumo-progress"><p role="status">{liveRun.status} · {liveRun.phase||''} · {(liveRun.simulated_h||0).toFixed(2)} simulated hours · {liveRun.samples||0} output samples</p>{liveRun.error&&<div className="alert">{liveRun.error}</div>}</div>}
       {run&&<div className="sumo-progress"><p role="status">{run.phase||run.status} · {Math.floor(run.progress_pct||0)}%</p><progress max="100" value={run.progress_pct||0}/></div>}

@@ -18,6 +18,7 @@ from services.kepserver import read_snapshot
 from services.model_inputs import scale_model_inputs
 from services.sensor_inputs import SENSOR_COLUMNS
 from services.live_models import resolve_model
+from services.live_checkpoint import save_checkpoint, checkpoint_info, restore_checkpoint
 
 ROOT = Path(__file__).resolve().parents[1]
 _lock = threading.RLock()
@@ -26,10 +27,11 @@ _session = None
 def snapshot():
     with _lock:
         if _session is None:
-            return {"status": "idle"}
+            return {"status": "idle", "checkpoint": checkpoint_info()}
         s = _session
         return {"id": s["id"], "status": s["status"], "error": s.get("error"),
                 "model_id": s["model_id"], "model_name": s["model"]["name"],
+                "checkpoint": checkpoint_info(),
                 "phase": s["phase"], "simulated_h": s["sim_ms"] / 3600000,
                 "samples": len(s["times"]), "result": {
                     "time_h": list(s["times"]), "variables": {k: list(v) for k, v in s["variables"].items()}}}
@@ -41,17 +43,35 @@ def start(mapping, interval_minutes, model_id="builtin"):
     if not isinstance(interval_minutes, int) or not 1 <= interval_minutes <= 60:
         raise ValueError("Limit time must be 1–60 whole minutes.")
     selected_model = resolve_model(model_id)
+    return _launch(mapping, interval_minutes, model_id, selected_model)
+
+def _launch(mapping, interval_minutes, model_id, selected_model, resume_ms=0, resume_folder=None):
+    global _session
     with _lock:
         if _session is not None and _session["status"] in ("starting", "running", "stopping"):
             raise RuntimeError("A live SUMO session is already active.")
         s = {"id": str(uuid4()), "status": "starting", "phase": "initializing",
-             "error": None, "sim_ms": 0, "times": [], "variables": {},
+             "error": None, "sim_ms": resume_ms, "resume_ms": resume_ms,
+             "resume_folder": resume_folder, "times": [], "variables": {},
              "mapping": dict(mapping), "interval": interval_minutes * 60,
              "model": selected_model, "model_id": model_id,
              "stop": threading.Event()}
         _session = s
     threading.Thread(target=_worker, args=(s,), daemon=True, name="sumo-live").start()
     return snapshot()
+
+def resume():
+    with _lock:
+        if _session is not None and _session['status'] in ('starting', 'running', 'stopping'):
+            raise RuntimeError('A live SUMO session is already active.')
+        metadata, model, folder = restore_checkpoint()
+        try:
+            return _launch(metadata['mapping'], metadata['interval_minutes'], 'checkpoint', model,
+                           metadata['simulated_ms'], folder)
+        except Exception:
+            folder.cleanup()
+            raise
+
 
 def stop():
     with _lock:
@@ -96,18 +116,21 @@ def _worker(s):
             s["status"] = "failed"
             s["phase"] = "import_failed"
             s["error"] = f"SUMO import failed: {exc}"
+        if s.get("resume_folder") is not None:
+            s["resume_folder"].cleanup()
         return
 
     step_ms = s["interval"] * dtool.sec
     # StopTime is an upper bound, not the requested operating duration.
     # Long-running sessions should be restarted from saved state before this limit.
-    max_ms = 365 * dtool.day
+    resume_ms = s.get("resume_ms", 0)
+    max_ms = resume_ms + 365 * dtool.day
     done = threading.Event()
     boundary = threading.Event()
     errors = []
     state_loaded = False
     save_requested = False
-    saved = False
+    save_done = threading.Event()
     job = None
     try:
         logging.info("Live SUMO %s validating model files", s["id"])
@@ -140,16 +163,15 @@ def _worker(s):
             dtool.extract_dll_from_project(str(project), dll)
             ds.sumo.setParallelJobs(1)
             def message(job_id, msg):
-                nonlocal state_loaded, saved
+                nonlocal state_loaded
                 if msg.startswith("530041"):
                     state_loaded = True
                 if msg.startswith(("230046","230008")):
                     errors.append("SUMO rejected assignment: "+msg)
                     done.set()
                 if msg.startswith("530045") and save_requested:
-                    saved = True
-                    done.set()
-                if ds.sumo.isSimFinishedMsg(msg) and not save_requested:
+                    save_done.set()
+                if ds.sumo.isSimFinishedMsg(msg):
                     errors.append("SUMO finished unexpectedly.")
                     done.set()
             def sample(job_id, data):
@@ -171,10 +193,10 @@ def _worker(s):
                     done.set()
             ds.sumo.message_callback = message
             ds.sumo.datacomm_callback = sample
-            commands = [f'load "{initial.as_posix()}";', "maptoic;", "set Sumo__Time 0;",
+            commands = [f'load "{initial.as_posix()}";', "maptoic;", f"set Sumo__Time {resume_ms};",
                         f"set Sumo__StopTime {max_ms};", f"set Sumo__DataComm {step_ms};",
                         "mode dynamic;", *(f"set {k} {v};" for k,v in values.items()),
-                        f"set Sumo__LimitTime {step_ms};", "start;"]
+                        f"set Sumo__LimitTime {resume_ms + step_ms};", "start;"]
             with _lock:
                 s["phase"] = "scheduling_job"
             job = ds.sumo.schedule(dll, commands=commands,
@@ -183,11 +205,28 @@ def _worker(s):
             with _lock:
                 s["status"] = "running"
                 s["phase"] = "waiting_for_boundary"
+            def checkpoint(simulated_ms):
+                nonlocal save_requested
+                with _lock:
+                    s['phase'] = 'saving_checkpoint'
+                save_done.clear()
+                save_requested = True
+                try:
+                    ds.sumo.sendCommand(job, f'save "{output_state}";')
+                    deadline = time.monotonic() + 60
+                    while not save_done.wait(0.1):
+                        if done.is_set() or time.monotonic() >= deadline:
+                            raise RuntimeError('Checkpoint save failed or timed out; previous checkpoint retained.')
+                    if errors:
+                        raise RuntimeError(errors[0])
+                    validate_state_file(output_state)
+                    save_checkpoint(s, output_state, simulated_ms)
+                finally:
+                    save_requested = False
+
             started = time.monotonic()
             next_index = 1
             while not done.is_set():
-                if s["stop"].is_set():
-                    break
                 if not boundary.wait(0.25):
                     continue
                 boundary.clear()
@@ -195,10 +234,11 @@ def _worker(s):
                     raise RuntimeError("SUMO initial state was not confirmed loaded.")
                 with _lock:
                     current_ms = s["sim_ms"]
-                if current_ms < next_index * step_ms:
+                if current_ms < resume_ms + next_index * step_ms:
                     continue
-                if current_ms > next_index * step_ms:
+                if current_ms > resume_ms + next_index * step_ms:
                     raise RuntimeError("SUMO advanced beyond its input boundary.")
+                checkpoint(current_ms)
                 # Do not advance before real time catches up with simulated time.
                 due = started + next_index * s["interval"]
                 while time.monotonic() < due and not s["stop"].is_set():
@@ -214,21 +254,11 @@ def _worker(s):
                     ds.sumo.sendCommand(job, f"set {key} {value};")
                 values = new_values
                 next_index += 1
-                ds.sumo.sendCommand(job, f"set Sumo__LimitTime {next_index * step_ms};")
+                ds.sumo.sendCommand(job, f"set Sumo__LimitTime {resume_ms + next_index * step_ms};")
                 with _lock:
                     s["phase"] = "simulating"
             if errors:
                 raise RuntimeError(errors[0])
-            # Save state while the persistent job is paused at its limit.
-            save_requested = True
-            ds.sumo.sendCommand(job, f'save "{output_state}";')
-            if not done.wait(60) or not saved:
-                raise RuntimeError("SUMO state-save acknowledgement timed out.")
-            validate_state_file(output_state)
-            # Keep state available after the temporary directory closes.
-            state_path = Path(os.getenv("SUMO_LIVE_STATE_DIR", str(ROOT / "live_states")))
-            state_path.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(output_state, state_path / (s["id"] + ".xml"))
             with _lock:
                 s["status"] = "stopped"
                 s["phase"] = "saved"
@@ -250,3 +280,5 @@ def _worker(s):
             pass
         ds.sumo.message_callback = None
         ds.sumo.datacomm_callback = None
+        if s.get("resume_folder") is not None:
+            s["resume_folder"].cleanup()
