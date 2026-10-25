@@ -15,6 +15,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from services.kepserver import read_snapshot
+from services.model_inputs import scale_model_inputs
 from services.sensor_inputs import SENSOR_COLUMNS
 from services.live_models import resolve_model
 
@@ -77,25 +78,7 @@ def export_csv():
 def _read_model_inputs(mapping):
     """Read fresh raw sensors and convert flows only at the SUMO input boundary."""
     readings = asyncio.run(read_snapshot(mapping))
-    values = {r["column"]: r["value"] for r in readings}
-    # Apply site conversions to fresh raw values, exactly once per update.
-    for column in (
-        "Sumo__Plant__Influent__param__Q",
-        "Sumo__Plant__Sideflowdivider3__param__Qpumped_target",
-    ):
-        if column in values:
-            values[column] /= 0.0417
-    for column in (
-        "Sumo__Plant__Carbon1__param__Q",
-        "Sumo__Plant__Carbon2__param__Q",
-        "Sumo__Plant__Metal1__param__Q",
-    ):
-        if column in values:
-            values[column] /= 41.67
-    for column, value in values.items():
-        if not math.isfinite(value):
-            raise ValueError("Non-finite SUMO input after conversion: " + column)
-    return values
+    return scale_model_inputs(readings)
 
 
 def _worker(s):

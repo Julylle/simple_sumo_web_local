@@ -67,12 +67,15 @@ export function RealTimeSumo(){
   const [busy,setBusy]=useState(false);
   const [limitMinutes,setLimitMinutes]=useState('5');
   const [modelSource,setModelSource]=useState('builtin');
+  const [stateMode,setStateMode]=useState('upload');
+  const [stateFile,setStateFile]=useState<File|null>(null);
+  const [steadyTolerance,setSteadyTolerance]=useState('0.000001');
   const [modelFile,setModelFile]=useState<File|null>(null);
   const [preparingModel,setPreparingModel]=useState<UploadedModel|null>(null);
   const [uploadedModel,setUploadedModel]=useState<UploadedModel|null>(null);
   const [modelUploading,setModelUploading]=useState(false);
   const [modelError,setModelError]=useState('');
-  const modelReady=modelSource==='builtin'||!!uploadedModel;
+  const modelReady=!!uploadedModel||(modelSource==='builtin'&&stateMode==='upload'&&!stateFile);
 
   const [run,setRun]=useState<Run|null>(null);
   const [liveRun,setLiveRun]=useState<LiveRun|null>(null);
@@ -131,13 +134,28 @@ export function RealTimeSumo(){
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
   async function uploadModel(){
-    if(!modelFile)return;
+    if(modelSource==='upload'&&!modelFile)return;
     setModelUploading(true);setModelError('');setUploadedModel(null);
     try{
-      if(!modelFile.name.toLowerCase().endsWith('.sumo')||modelFile.size>50*1024*1024)
+      if(modelFile&&(!modelFile.name.toLowerCase().endsWith('.sumo')||modelFile.size>50*1024*1024))
         throw new Error('Choose a .sumo project no larger than 50 MB.');
-      const form=new FormData();form.append('project',modelFile);
-      setPreparingModel(await json('/api/sumo/live/models',{method:'POST',body:form}));
+      const form=new FormData();
+      if(modelSource==='upload'&&modelFile)form.append('project',modelFile);
+      form.append('state_mode',stateMode);
+      if(stateMode==='upload'){
+        if(!stateFile||!stateFile.name.toLowerCase().endsWith('.xml')||stateFile.size>20*1024*1024)
+          throw new Error('Choose a steady-state XML no larger than 20 MB.');
+        form.append('initial_state',stateFile);
+      }else{
+        if(!connected)throw new Error('Connect sensor data first.');
+        if(!Number.isFinite(Number(steadyTolerance))||Number(steadyTolerance)<=0)
+          throw new Error('Convergence tolerance must be positive.');
+        form.append('tolerance',steadyTolerance);
+        form.append('mapping',JSON.stringify(Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()))));
+      }
+      const model=await json('/api/sumo/live/models',{method:'POST',body:form});
+      if(model.status==='ready')setUploadedModel(model);
+      else setPreparingModel(model);
     }catch(e){setModelError(String(e));}finally{setModelUploading(false);}
   }
   useEffect(()=>{
@@ -167,7 +185,7 @@ export function RealTimeSumo(){
     try{
       const selected=Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()));
       const result:LiveRun=await json('/api/sumo/live/start',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({mapping:selected,interval_minutes:Number(limitMinutes),model_id:modelSource==='builtin'?'builtin':uploadedModel!.id})});
+        body:JSON.stringify({mapping:selected,interval_minutes:Number(limitMinutes),model_id:uploadedModel?.id||'builtin'})});
       setLiveRun(result);
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
@@ -229,20 +247,32 @@ export function RealTimeSumo(){
       <h3 className="sumo-step-title">Step2: Set up real time simulation</h3>
       <section className="sensor-setup" aria-label="SUMO model selection">
         <label className="sensor-field"><span>SUMO model</span>
-          <select value={modelSource} disabled={running} onChange={e=>{setModelSource(e.target.value);setModelError('');}}>
+          <select value={modelSource} disabled={running} onChange={e=>{setModelSource(e.target.value);setUploadedModel(null);setModelError('');}}>
             <option value="builtin">Built-in · Cixi Eastern WWTP_20260920</option>
             <option value="upload">Upload a SUMO model</option>
           </select>
         </label>
-        {modelSource==='builtin'?<p className="calibration-note">Uses the built-in model and sumo_steady_state.xml initial state.</p>:<>
-          <p className="calibration-note">Upload a compiled SUMO project. steady_run.py automatically generates sumo_steady_state.xml (up to 3.5 hours plus saving time; convergence is not guaranteed). The model must support your selected sensor variables. Uploads are available until the backend restarts.</p>
-          <div className="sensor-editor-grid">
-            <label className="sensor-field"><span>SUMO project (.sumo, max 50 MB)</span><input type="file" accept=".sumo" disabled={running} onChange={e=>{setModelFile(e.target.files?.[0]||null);setUploadedModel(null);setModelError('');}}/></label>
-          </div>
-          <div className="sensor-actions"><button className="secondary" disabled={running||!modelFile} onClick={()=>void uploadModel()}>{modelUploading?'Uploading model...':'Upload model and generate initial state'}</button></div>
-          {preparingModel&&<p role="status">Generating initial state for {preparingModel.name}. Run SUMO will be available when generation finishes.</p>}
-          {uploadedModel&&<p role="status" className="measurement-ready">Ready: {uploadedModel.name} · {uploadedModel.state_name}</p>}
+        {modelSource==='upload'&&<label className="sensor-field"><span>SUMO project (.sumo, max 50 MB)</span><input type="file" accept=".sumo" disabled={running} onChange={e=>{setModelFile(e.target.files?.[0]||null);setUploadedModel(null);setModelError('');}}/></label>}
+        <label className="sensor-field"><span>Steady state</span>
+          <select value={stateMode} disabled={running} onChange={e=>{setStateMode(e.target.value);setUploadedModel(null);setModelError('');}}>
+            <option value="upload">Upload steady-state file</option>
+            <option value="calculate">Calculate from latest sensor data</option>
+          </select>
+        </label>
+        {stateMode==='upload'?<>
+          <label className="sensor-field"><span>Steady-state file (.xml, max 20 MB)</span><input type="file" accept=".xml" disabled={running} onChange={e=>{setStateFile(e.target.files?.[0]||null);setUploadedModel(null);setModelError('');}}/></label>
+          <p className="calibration-note">{modelSource==='builtin'&&!stateFile?'Using the built-in sumo_steady_state.xml. Select a file to replace it.':'Choose a steady-state XML matching the selected model.'}</p>
+        </>:<>
+          <p className="calibration-note">Reads a fresh sensor snapshot when calculation starts, applies scaling, and holds those inputs constant until convergence. Connect sensor data first.</p>
+          <label className="sensor-field"><span>Convergence tolerance (MaxAbsDer)</span><input type="number" min="0" step="any" value={steadyTolerance} disabled={running} onChange={e=>{setSteadyTolerance(e.target.value);setUploadedModel(null);}}/></label>
+          <p className="calibration-note">Requires MaxAbsDer at or below the tolerance for three consecutive samples, or at the solver's natural finish. A 3.5-hour timeout reports failure without accepting an unconverged state.</p>
         </>}
+        <div className="sensor-actions"><button className="secondary"
+          disabled={running||(modelSource==='upload'&&!modelFile)||(stateMode==='upload'?!stateFile:(!connected||!Number.isFinite(Number(steadyTolerance))||Number(steadyTolerance)<=0))}
+          onClick={()=>void uploadModel()}>{modelUploading?'Preparing model...':stateMode==='upload'?'Use uploaded steady state':'Calculate steady state'}</button></div>
+        {preparingModel&&<p role="status">Calculating steady state for {preparingModel.name}. Run SUMO will be available after convergence and saving.</p>}
+        {uploadedModel&&<p role="status" className="measurement-ready">Ready: {uploadedModel.name} · {uploadedModel.state_name}</p>}
+        <p className="calibration-note">Prepared models are available until the backend restarts.</p>
         {modelError&&<div className="alert" role="alert">{modelError}</div>}
         {liveActive&&liveRun?.model_name&&<p role="status">Running model: {liveRun.model_name}</p>}
       </section>

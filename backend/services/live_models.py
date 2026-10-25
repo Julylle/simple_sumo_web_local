@@ -1,5 +1,8 @@
 """Uploaded projects and asynchronously generated states, scoped to this server session."""
 import io
+import asyncio
+import json
+import math
 import os
 import shutil
 import subprocess
@@ -12,6 +15,11 @@ from pathlib import Path
 from uuid import uuid4
 
 BUILTIN_DIR = Path(__file__).resolve().parents[1] / 'real_sim_1202'
+from services.kepserver import read_snapshot
+from services.model_inputs import scale_model_inputs
+from services.sensor_inputs import SENSOR_COLUMNS
+
+MAX_STATE_BYTES = 20 * 1024 * 1024
 MAX_MODEL_BYTES = 50 * 1024 * 1024
 STEADY_SECONDS = 3.5 * 60 * 60
 _solver_lock = threading.Lock()
@@ -20,7 +28,31 @@ _models = {}
 _lock = threading.Lock()
 
 
-def register_model(project_bytes, project_name):
+
+def validate_state(content):
+    if not content or len(content) > MAX_STATE_BYTES:
+        raise ValueError('Choose a non-empty steady-state XML no larger than 20 MB.')
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError as exc:
+        raise ValueError('Invalid steady-state XML.') from exc
+    if root.tag != 'systemstate' or len(root) == 0:
+        raise ValueError('Choose a non-empty SUMO systemstate XML.')
+
+
+def register_model(project_bytes, project_name, *, state_bytes=None, mapping=None,
+                   state_mode='calculate', tolerance=1e-6):
+    if state_mode not in ('upload', 'calculate'):
+        raise ValueError('Choose upload or calculate for the steady state.')
+    if not math.isfinite(tolerance) or tolerance <= 0:
+        raise ValueError('Convergence tolerance must be positive and finite.')
+    if state_mode == 'upload':
+        validate_state(state_bytes)
+    elif (not isinstance(mapping, dict) or not 1 <= len(mapping) <= 40 or
+          any(k not in SENSOR_COLUMNS or not isinstance(v, str) or not v.strip()
+              for k, v in mapping.items())):
+        raise ValueError('Configure sensor mappings before calculating the steady state.')
+
     project_name = (project_name or '').replace('\\', '/').split('/')[-1]
     if not project_name.lower().endswith('.sumo'):
         raise ValueError('Choose a compiled .sumo project.')
@@ -37,6 +69,12 @@ def register_model(project_bytes, project_name):
                 raise ValueError('SUMO project has no valid variable metadata.')
     except (zipfile.BadZipFile, KeyError, UnicodeError, RuntimeError) as exc:
         raise ValueError('Invalid .sumo project: compiled sumoproject.dll and variables.var are required.') from exc
+    if state_mode == 'calculate':
+        writable = {row[1] for row in fields if len(row)>4 and row[4] in
+                    ('Parameter', 'SystemParameter', 'Dimension')}
+        missing = set(mapping) - writable
+        if missing:
+            raise ValueError('SUMO inputs not writable: ' + ', '.join(sorted(missing)))
     identifier = str(uuid4())
     with _lock:
         if len(_models) >= 20:
@@ -46,10 +84,15 @@ def register_model(project_bytes, project_name):
         project = folder / 'model.sumo'
         state = folder / 'sumo_steady_state.xml'
         project.write_bytes(project_bytes)
+        if state_mode == 'upload':
+            state.write_bytes(state_bytes)
         _models[identifier] = {'project': project, 'state': state, 'name': project_name,
-                               'state_name': state.name, 'status': 'queued', 'error': None}
-    threading.Thread(target=_prepare_model, args=(identifier,), daemon=True,
-                     name='sumo-steady').start()
+                               'state_name': state.name, 'status': 'ready' if state_mode == 'upload' else 'queued',
+                               'error': None, 'mapping': dict(mapping or {}), 'tolerance': tolerance,
+                               'state_mode': state_mode, 'sensor_read_at': None}
+    if state_mode == 'calculate':
+        threading.Thread(target=_prepare_model, args=(identifier,), daemon=True,
+                         name='sumo-steady').start()
     return model_status(identifier)
 
 
@@ -59,21 +102,23 @@ def model_status(identifier):
         if model is None:
             raise ValueError('Uploaded model is unavailable. Upload the project again.')
         return {'id': identifier, **{key: model[key] for key in
-                ('name', 'state_name', 'status', 'error')}}
+                ('name', 'state_name', 'status', 'error', 'sensor_read_at', 'tolerance', 'state_mode')}}
 
 
 def _run_steady(model):
     # A separate process isolates Scheduler callbacks and cleanup from live runs.
-    # Copy the unchanged source script so its CSV and DLL stay in this job folder.
+    # Copy the solver script so its CSV and DLL stay in this job folder.
     folder = model['project'].parent
     shutil.copy2(BUILTIN_DIR / 'steady_run.py', folder / 'steady_run.py')
     env = dict(os.environ)
     env['PYTHONPATH'] = str(BUILTIN_DIR) + os.pathsep + env.get('PYTHONPATH', '')
     command = [
         sys.executable, '-u', '-c',
-        'from steady_run import prepare_steady_state; import sys; '
-        'prepare_steady_state(sys.argv[1], sys.argv[2], wall_run_seconds=float(sys.argv[3]))',
+        'from steady_run import prepare_steady_state; import sys,json; '
+        'prepare_steady_state(sys.argv[1], sys.argv[2], wall_run_seconds=float(sys.argv[3]), '
+        'inputs=json.load(open(sys.argv[4]))["values"], tolerance=float(sys.argv[5]))',
         str(model['project']), str(model['state']), str(STEADY_SECONDS),
+        str(folder / 'sensor_inputs.json'), str(model['tolerance']),
     ]
     with (folder / 'steady_process.log').open('w', encoding='utf-8') as output:
         result = subprocess.run(command, cwd=folder, env=env, stdout=output,
@@ -90,6 +135,16 @@ def _prepare_model(identifier):
             with _lock:
                 model = dict(_models[identifier])
                 _models[identifier]['status'] = 'preparing'
+            async def fresh_snapshot():
+                return await asyncio.wait_for(read_snapshot(model['mapping']), timeout=30)
+            readings = asyncio.run(fresh_snapshot())
+            values = scale_model_inputs(readings)
+            if set(values) != set(model['mapping']):
+                raise ValueError('Incomplete sensor snapshot; steady-state calculation was not started.')
+            (model['project'].parent / 'sensor_inputs.json').write_text(
+                json.dumps({'readings': readings, 'values': values}), encoding='utf-8')
+            with _lock:
+                _models[identifier]['sensor_read_at'] = max(r['timestamp'] for r in readings)
             _run_steady(model)
             root = ET.parse(model['state']).getroot()
             if root.tag != 'systemstate' or len(root) == 0:
