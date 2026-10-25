@@ -25,7 +25,7 @@ const tabLabels: Record<WorkspaceTab, string> = {
 
 export default function App() {
   useLanguage();
-  const [tab, setTab] = useState<WorkspaceTab>("sumo");
+  const [tab, setTab] = useState<WorkspaceTab>("realtime-sumo");
   const { inputSeries, parameters, data, busy, error, dirty, updateParameter, run, reset, calibration, calibrationError, calibrationLoaded, updateCalibration, retryCalibration,
     runAutoCalibration, autoCalibrationBusy, autoCalibrationError, autoCalibrationComplete,
     measurements, measurementBusy, measurementError, uploadMeasurements, comparison,
