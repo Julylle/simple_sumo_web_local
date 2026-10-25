@@ -20,3 +20,6 @@ frontend/dist/
 results/
 outputs/
 backend/live_states/
+
+# Durable raw acquisition spool
+backend/raw_spool/

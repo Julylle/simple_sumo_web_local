@@ -77,7 +77,7 @@ def validate_state_file(path):
         raise ValueError(f"Not a SUMO systemstate file: {path}")
 
 
-def run_dynamic(sumo_project_path, initial_state_path=INITIAL_STATE, output_state_path=OUTPUT_STATE, output_dir=None, on_sample=None, input_columns=None):
+def run_dynamic(sumo_project_path, initial_state_path=INITIAL_STATE, output_state_path=OUTPUT_STATE, output_dir=None, on_sample=None, input_columns=None, extra_variables=()):
     input_columns = list(INPUT_COLUMN if input_columns is None else input_columns)
     if not input_columns or len(input_columns) != len(set(input_columns)):
         raise ValueError("Input columns must be non-empty and unique")
@@ -240,7 +240,7 @@ def run_dynamic(sumo_project_path, initial_state_path=INITIAL_STATE, output_stat
             commands=commands,
             # Always subscribe to the input parameter needed for verification,
             # even when it is omitted from the user-facing output columns.
-            variables=list(dict.fromkeys(["Sumo__Time", *input_columns, *OUTPUT_VARIABLES])),
+            variables=list(dict.fromkeys(["Sumo__Time", *input_columns, *OUTPUT_VARIABLES, *extra_variables])),
             jobData=job_data,
         )
 

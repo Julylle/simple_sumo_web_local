@@ -11,3 +11,4 @@ openpyxl
 asyncua>=1.1,<2
 
 python-multipart>=0.0.18,<1
+PyMySQL[rsa]>=1.1,<2

@@ -252,3 +252,7 @@ After successful completion, **Download results CSV** calls
 timestamps, requested input values and outputs. Downloads share the 20-task
 in-memory retention limit; they are not the downsampled plot data.
 
+
+## MySQL: raw data and SUMO simulation
+
+See [database setup and operation](backend/database/README.md) for the complete 73-row KEPServer mapping, independent raw collector, model-derived SUMO state recording, MySQL Docker volume, UTC time fields and query examples. Configuration is opt-in: set `SUMO_MYSQL_ENABLED=1` after initializing MySQL.

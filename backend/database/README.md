@@ -1,0 +1,100 @@
+# MySQL time-series database
+
+The database `sumo_timeseries` exposes two SQL views named exactly **`raw data`** and **`sumo simulation`**. SQL identifiers with spaces must be enclosed in backticks. They are datasets in one database, backed by normalized catalog and time-series tables; no new table or file is created per variable or per LimitTime.
+
+## Scope and provenance
+
+`cx_opcua1124.csv` is copied from `Julylle/Sumo_web/demo_MLE/cx_opcua1124.csv` (retrieved 2026-10-25). All 73 rows and all 12 columns are preserved, including blank comments, tag spaces, duplicated OPC tags, original unit/type strings, Scaling and Offset. The complete CSV and its SHA-256 are versioned in `mapping_versions`; each raw row references its immutable catalog row. A changed CSV creates a new mapping version, so previous readings retain their original mapping/scaling.
+
+The collector reads every unique tag once per cycle and stores a reading for **every mapping row**. An OPC tag used by multiple SUMO variables therefore generates multiple linked rows with the same read timestamp and source value. STRING lab values stay strings in `raw_value`; parseable scalar values are also available as `numeric_value`. Arrays stay JSON arrays. Bad quality and disconnected/unreadable tags produce quality/error records rather than zero values or missing rows. This collector never writes to OPC UA.
+
+Raw values are never scaled in place. The separate `scaled_value` follows the existing project convention `(raw - Offset) / Scaling`; all offsets in the supplied CSV are zero. CSV metadata alone does not specify the scaling direction: verify this convention on site before using the scaled column for a new mapping. Failed conversions and bad-quality values have NULL scaled values. This feature does not change the live solver's existing input selection or conversion rules.
+
+## Install and initialize on Windows
+
+Run from the repository root in the Python environment used by the SUMO backend (Python 3.11+). MySQL 8.4 is the deployment target.
+
+```powershell
+# Create configuration once; edit passwords and the KEPServer endpoint before use.
+Copy-Item .\backend\database\.env.example .\.env
+notepad .\.env
+
+# Load settings into this PowerShell process; passwords are not printed.
+. .\backend\scripts\load-database-env.ps1
+python -m pip install -r .\backend\database\requirements.txt
+
+# Optional: provision MySQL locally with a persistent Docker named volume.
+# Skip this command if using an existing MySQL server/database.
+docker compose -f docker-compose.mysql.yml up -d --wait
+
+Set-Location backend
+python -m database init
+python -m database catalog --project '.\real_sim_1202\Cixi Eastern WWTP_20260920.sumo'
+
+# Run ONE collector process, independently of any browser or SUMO simulation.
+python -m database.collector
+```
+
+For an existing server, have an administrator create `sumo_timeseries` and grant the application user privileges on that database. `python -m database init --create-database` can create it if the supplied account has permission. Initialization is repeatable and nondestructive. Do not point it at an unrelated existing schema with the same table names. Use `MYSQL_PORT=3307` in `.env` if port 3306 is already occupied; this also changes the optional Docker host port. Do not replace an existing MySQL installation.
+
+In a second PowerShell window, load the same environment **before launching the usual backend**:
+
+```powershell
+. .\backend\scripts\load-database-env.ps1
+Set-Location backend
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
+```
+
+If you use another port/start script, keep that existing command and make sure it inherits these environment variables. `SUMO_MYSQL_ENABLED=1` enables recording in both the realtime worker and the web offline worker. The standalone `steady_run.py` is not a time-series collector. With the flag unset/0, simulation behavior remains unchanged and MySQL is not required. Credentials are read from environment variables; `.env` and raw spool files are gitignored. If the offline worker uses a different `SUMO_PYTHON`, install the database requirements in that Python environment as well.
+
+Use the OPC namespace URI when possible (`KEPSERVER_NAMESPACE_URI`); otherwise the supplied default is `ns=2`. OPC node IDs are constructed as `ns=<index>;s=<OpcTag>` without trimming or altering the tag. Only no-security/anonymous OPC UA connections are configured here, matching the existing project; server-specific certificate/user authentication requires additional configuration.
+
+## SUMO variables and timestamps
+
+The recorder parses the **actual selected `.sumo` project's `variables.var`**, preserves its field metadata, and subscribes to all `StateVariable` and `AccumulatedStateVariable` entries, plus existing dashboard outputs (including derived TCOD). The bundled project contains 3,549 + 55 = **3,604 formal state variables**. It supports uploaded models and arrays without flattening or casting arrays to floats. Missing/non-finite values are explicitly marked and raw JSON preserved. The full catalog is stored in `sumo_variables`; database variables are not all sent to the browser or added to the dashboard CSV.
+
+`SystemState` is a different SUMO category containing about 152,359 derived/internal entries in this project. Set `SUMO_DB_INCLUDE_SYSTEM_STATE=1` **before starting a new run** to additionally subscribe to every one. This can greatly increase Scheduler payloads, write time and disk use; native SUMO capacity must be verified on the licensed host. Do not change this scope while resuming the same run; start a new run instead.
+
+Every live DataComm sample and every offline DataComm sample is stored at the model's communication interval. Live sampling follows LimitTime; offline sampling follows the runner's DataComm setting. Each run is linked to its model SHA-256 and configuration. Live checkpoint resume keeps the run ID; `(run_id, simulated_ms)` uniqueness prevents duplicate history. If an interval is recomputed after an interrupted checkpoint save, its timestamp and values are transactionally replaced by the recomputed result. Offline runs get independent database UUIDs, exposed as `database_run_id` in the API result. Simulation time and real time remain separate:
+
+- `simulated_ms` / `time_h`: model clock.
+- `sensor_read_at`: acquisition-completion time for the live interval's input snapshot, NULL for offline runs.
+- `acquired_at`: database writer observation time.
+- Raw data additionally includes OPC source/server timestamps, status code, and collector acquisition time.
+
+All database DATETIME values are **UTC**. Convert for local-time displays; do not interpret simulated hours as wall-clock time. Raw collection and SUMO input reads are independent, so their timestamps are not guaranteed to be identical. Existing historical runs are not backfilled automatically.
+
+## Durability and capacity
+
+MySQL writes are incremental and transactional. No accumulated history is rewritten at each interval. The Docker named volume persists across restarts; **do not run `docker compose down -v`** if you need to retain the database.
+
+The raw collector defaults to 60 seconds (`RAW_SAMPLE_SECONDS`). A small fsynced pending-batch file is retained across failed DB writes and collector restarts; retry is idempotent by batch UUID. While the database is unavailable, acquisition pauses with an error rather than creating an unbounded file backlog. This creates an explicit acquisition gap; it does not reconstruct samples from downtime. Run only one collector per spool directory. If changing CSV with an outstanding batch, restore the original CSV and drain that batch first.
+
+The SUMO writer has a bounded queue of eight snapshots and uses a separate thread so MySQL I/O does not block native callbacks. Live worker flushes the queue before checkpointing/releasing the next interval. A database error/full queue stops the simulation with an error instead of silently dropping values. The previous successful checkpoint remains recoverable. A crash before an interval is committed may require resuming that interval. The database is not a replacement for the model-state checkpoint.
+
+Storage remains cumulative: at 73 rows/minute raw data adds 105,120 rows/day. At 3,604 variables every five minutes, formal SUMO states add about 1.04 million value rows/day, plus dashboard outputs. SystemState inclusion raises this dramatically. No automatic deletion is enabled. Monitor disk usage and choose an archive/retention policy before long unattended operation. Tables are indexed by variable/time and run/time; queries should always restrict time/run and use LIMIT. Back up the MySQL volume/database separately.
+
+## Query examples
+
+```sql
+SELECT * FROM `raw data`
+WHERE variable = 'Sumo__Plant__Influent__param__Q'
+  AND acquired_at >= UTC_TIMESTAMP() - INTERVAL 1 DAY
+ORDER BY acquired_at DESC LIMIT 100;
+
+SELECT run_id, simulated_ms, sensor_read_at, variable, value_json, numeric_value
+FROM `sumo simulation`
+WHERE run_id = 'YOUR-RUN-UUID'
+  AND variable = 'Sumo__Plant__CSTR3_10__TCOD'
+ORDER BY simulated_ms LIMIT 1000;
+
+SELECT row_number,sumo_name,opc_tag,metadata FROM raw_variables ORDER BY id;
+SELECT category,COUNT(*) FROM sumo_variables GROUP BY category;
+SELECT run_id,run_mode,model_sha,started_at FROM sumo_runs ORDER BY started_at DESC;
+SELECT table_name,ROUND((data_length+index_length)/1024/1024,1) AS size_mb
+FROM information_schema.tables WHERE table_schema = 'sumo_timeseries';
+```
+
+## Validation
+
+Run `python -m pytest tests/test_timeseries_database.py tests/test_live_checkpoint.py tests/test_live_flow_scaling.py`. `tests/test_timeseries_mysql.py` is an opt-in real MySQL integration test: set `MYSQL_TEST_ENABLED=1` with a **disposable, initialized test database** to run it. Native Scheduler subscriptions and the actual KEPServer tags still require validation on the Windows SUMO host. No running database or live sensor connection is provisioned merely by pulling this repository.

@@ -78,11 +78,15 @@ def test_restart_resume_uses_checkpoint_time_mapping_and_model(session, monkeypa
         live._session['resume_folder'].cleanup()
 
 
+@pytest.mark.parametrize('database_enabled', [False, True])
 @pytest.mark.parametrize('resume_ms', [0, 120000])
 @pytest.mark.parametrize('stop_at_boundary', [False, True])
 @pytest.mark.parametrize('locked_cleanup', [False, True])
-def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failure(session, tmp_path, monkeypatch, resume_ms, stop_at_boundary, locked_cleanup):
+def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failure(session, tmp_path, monkeypatch, resume_ms, stop_at_boundary, locked_cleanup, database_enabled):
     import sys
+    recorder = Mock()
+    recorder.names = ['all_state_test']
+    monkeypatch.setattr(live, 'open_recorder', Mock(return_value=recorder if database_enabled else None))
     from datetime import datetime, timezone
     from types import SimpleNamespace
     read_times = iter([datetime(2026, 10, 25, 1, minute, tzinfo=timezone.utc) for minute in (0, 1)])
@@ -123,6 +127,7 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
         assert f'set Sumo__Time {resume_ms};' in commands
         assert f'set Sumo__LimitTime {resume_ms+60000};' in commands
         assert len([c for c in commands if c.startswith('load ')]) == 1
+        assert ('all_state_test' in kwargs['variables']) == database_enabled
         engine.message_callback(1, '530041 Loaded')
         if resume_ms:
             emit(resume_ms)
@@ -186,6 +191,10 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
     assert sum(c.startswith('save ') for c in commands) == 2
     assert not any(c.startswith('load ') or c == 'maptoic;' for c in commands)
     engine.cleanup.assert_called_once()
+    if database_enabled:
+        assert recorder.submit.call_count == 2
+        assert recorder.flush.call_count == 2
+        recorder.close.assert_called_once()
 
 
 

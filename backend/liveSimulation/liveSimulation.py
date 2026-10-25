@@ -15,6 +15,7 @@ import zipfile
 from pathlib import Path
 from uuid import uuid4
 
+from database.simulation import open_recorder
 from services.kepserver import read_snapshot
 from services.model_inputs import scale_model_inputs
 from services.sensor_inputs import SENSOR_COLUMNS
@@ -144,6 +145,7 @@ def _worker(s):
     save_done = threading.Event()
     job = None
     workspace = None
+    recorder = None
     try:
         logging.info("Live SUMO %s validating model files", s["id"])
         with _lock:
@@ -159,6 +161,9 @@ def _worker(s):
                 raise ValueError("SUMO input not writable: "+column)
         available_names = {row[1] for row in fields if len(row) > 1}
         output_variables = [name for name in OUTPUT_VARIABLES if name in available_names]
+        recorder = open_recorder(project, s['id'], 'live',
+                                 {'mapping': s['mapping'], 'interval_seconds': s['interval']}, output_variables)
+        database_variables = recorder.names if recorder else []
         # First read must succeed before creating a SUMO job.
         with _lock:
             s["phase"] = "reading_initial_sensors"
@@ -206,6 +211,8 @@ def _worker(s):
                     # Keep arrays aligned and finite for the plot.
                     if any(not math.isfinite(s["variables"][k][-1]) for k in s["variables"]):
                         raise ValueError("Non-finite SUMO output.")
+                if recorder:
+                    recorder.submit(int(ms), data, s['input_read_at'])
                 boundary.set()
             except Exception as exc:
                 errors.append(str(exc))
@@ -219,7 +226,7 @@ def _worker(s):
         with _lock:
             s["phase"] = "scheduling_job"
         job = ds.sumo.schedule(dll, commands=commands,
-            variables=list(dict.fromkeys(["Sumo__Time", *s["mapping"], *output_variables])),
+            variables=list(dict.fromkeys(["Sumo__Time", *s["mapping"], *output_variables, *database_variables])),
             jobData={getattr(ds.sumo, "persistent", "persistent"): True})
         with _lock:
             s["status"] = "running"
@@ -257,6 +264,8 @@ def _worker(s):
                 continue
             if current_ms > resume_ms + next_index * step_ms:
                 raise RuntimeError("SUMO advanced beyond its input boundary.")
+            if recorder:
+                recorder.flush()
             checkpoint(current_ms)
             # Do not advance before real time catches up with simulated time.
             due = started + next_index * s["interval"]
@@ -289,6 +298,13 @@ def _worker(s):
             s["phase"] = "failed"
             s["error"] = str(exc)
     finally:
+        if recorder:
+            try:
+                recorder.close()
+            except Exception as exc:
+                logging.exception('SUMO database writer failed')
+                with _lock:
+                    s.update(status='failed', phase='database_failed', error=str(exc))
         if job is not None:
             try:
                 ds.sumo.finish(job)

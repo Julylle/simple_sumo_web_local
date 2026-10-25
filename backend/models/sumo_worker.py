@@ -4,6 +4,7 @@ import json
 import math
 import sys
 import time
+from uuid import uuid4
 from pathlib import Path
 
 MODEL_DIR = Path(__file__).resolve().parents[1] / 'real_sim_1202'
@@ -48,10 +49,15 @@ def main():
                            else MODEL_DIR / 'Sumo__Plant__Influent__param.csv')
     input_columns, _ = parse_input(Path(runner.INPUT_CSV).read_bytes())
     runner.OUTPUT_VARIABLES = list(dict.fromkeys([*input_columns, *OUTPUTS.values()]))
+    from database.simulation import open_recorder
+    project = MODEL_DIR / 'Cixi Eastern WWTP_20260920.sumo'
+    recorder = open_recorder(project, str(uuid4()), 'offline', {'duration_h': duration_h}, runner.OUTPUT_VARIABLES)
     last_report = 0.0
 
     def report_progress(sim_time_ms, data):
         nonlocal last_report
+        if recorder and sim_time_ms is not None:
+            recorder.submit(int(sim_time_ms), data)
         now = time.monotonic()
         if sim_time_ms is None or (now - last_report < 0.5 and sim_time_ms < duration_h * 3600000):
             return
@@ -60,10 +66,16 @@ def main():
         temporary.replace('progress.json')
         last_report = now
 
-    runner.run_dynamic(str(MODEL_DIR / 'Cixi Eastern WWTP_20260920.sumo'),
-                       str(MODEL_DIR / 'sumo_steady_state.xml'),
-                       str(Path.cwd() / 'final_state.xml'), output_dir=str(Path.cwd()), on_sample=report_progress, input_columns=input_columns)
+    try:
+        runner.run_dynamic(str(MODEL_DIR / 'Cixi Eastern WWTP_20260920.sumo'),
+                           str(MODEL_DIR / 'sumo_steady_state.xml'),
+                           str(Path.cwd() / 'final_state.xml'), output_dir=str(Path.cwd()), on_sample=report_progress, input_columns=input_columns, extra_variables=recorder.names if recorder else ())
+    finally:
+        if recorder:
+            recorder.close()
     result = read_result(next(Path.cwd().glob('dynamic_results_*.csv')), duration_h, input_columns)
+    if recorder:
+        result['database_run_id'] = recorder.run_id
     Path('result.json').write_text(json.dumps(result, allow_nan=False), encoding='utf-8')
 
 
