@@ -1,5 +1,5 @@
 import { t, useLanguage } from '../i18n';
-export type WorkspaceTab = "simulation" | "auto-calibration" | "history" | "sumo";
+export type WorkspaceTab = "simulation" | "auto-calibration" | "history" | "sumo" | "realtime-sumo";
 
 interface SidebarProps {
   tab: WorkspaceTab;
@@ -8,7 +8,7 @@ interface SidebarProps {
 
 export function Sidebar({ tab, onTabChange }: SidebarProps) {
   useLanguage();
-  const pythonActive = tab !== "sumo";
+  const pythonActive = tab !== "sumo" && tab !== "realtime-sumo";
 
   return (
     <aside className="sidebar">
@@ -16,17 +16,17 @@ export function Sidebar({ tab, onTabChange }: SidebarProps) {
         <p>{t("MODELS")}</p>
         <ul className="model-menu">
           <li>
-            <button className={"nav " + (tab === "sumo" ? "active" : "")} onClick={() => onTabChange("sumo")}>
+            <button className={"nav " + ((tab === "sumo" || tab === "realtime-sumo") ? "active" : "")} onClick={() => onTabChange("realtime-sumo")}>
               <span className="nav-icon" aria-hidden="true">S</span>SUMO
-              {tab === "sumo" && <span className="active-dot" />}
+              {(tab === "sumo" || tab === "realtime-sumo") && <span className="active-dot" />}
             </button>
             <ul className="model-submenu" aria-label={t("SUMO pages")}>
               <li>
-                <button className={"nav " + (tab === "sumo" ? "active" : "")}
-                  aria-current={tab === "sumo" ? "page" : undefined} onClick={() => onTabChange("sumo")}> {t("Offline SUMO")} </button>
+                <button className={"nav " + (tab === "realtime-sumo" ? "active" : "")} aria-current={tab === "realtime-sumo" ? "page" : undefined} onClick={() => onTabChange("realtime-sumo")}> {t("Real-time SUMO")} </button>
               </li>
               <li>
-                <button className="nav future-nav" disabled title={t("Planned for a future release")}> {t("Real-time SUMO (Future)")} </button>
+                <button className={"nav " + (tab === "sumo" ? "active" : "")}
+                  aria-current={tab === "sumo" ? "page" : undefined} onClick={() => onTabChange("sumo")}> {t("Offline SUMO")} </button>
               </li>
             </ul>
           </li>
