@@ -70,6 +70,19 @@ def export_csv():
             writer.writerow([t, *(s["variables"][k][i] for k in names)])
         return out.getvalue()
 
+def _read_model_inputs(mapping):
+    """Read fresh raw sensors and convert flow only at the SUMO input boundary."""
+    readings = asyncio.run(read_snapshot(mapping))
+    values = {r["column"]: r["value"] for r in readings}
+    flow_column = "Sumo__Plant__Influent__param__Q"
+    if flow_column in values:
+        # Site convention: raw sensor Q = model Q * 0.0417.
+        values[flow_column] /= 0.0417
+        if not math.isfinite(values[flow_column]):
+            raise ValueError("Non-finite SUMO influent flow after conversion.")
+    return values
+
+
 def _worker(s):
     model_dir = ROOT / 'real_sim_1202'
     # DTool Python modules are shipped with the SUMO project, not pip-installed.
@@ -114,7 +127,7 @@ def _worker(s):
         # First read must succeed before creating a SUMO job.
         with _lock:
             s["phase"] = "reading_initial_sensors"
-        values = {r["column"]: r["value"] for r in asyncio.run(read_snapshot(s["mapping"]))}
+        values = _read_model_inputs(s["mapping"])
         with tempfile.TemporaryDirectory(prefix="sumo_live_") as directory:
             folder = Path(directory)
             shutil.copytree(model_dir / "dynamita", folder / "dynamita")
@@ -193,7 +206,7 @@ def _worker(s):
                 if s["stop"].is_set():
                     break
                 try:
-                    new_values = {r["column"]: r["value"] for r in asyncio.run(read_snapshot(s["mapping"]))}
+                    new_values = _read_model_inputs(s["mapping"])
                 except Exception as exc:
                     # Fail closed: do not advance with stale values.
                     raise RuntimeError("OPC UA unavailable; live simulation stopped: "+str(exc)) from exc

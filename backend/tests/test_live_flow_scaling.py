@@ -1,0 +1,31 @@
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from liveSimulation.liveSimulation import _read_model_inputs
+
+Q = 'Sumo__Plant__Influent__param__Q'
+TKN = 'Sumo__Plant__Influent__param__TKN'
+DO = 'Sumo__Plant__CSTR1_5__param__SO2'
+
+
+def test_fresh_flow_is_divided_once_and_other_readings_unchanged():
+    initial = [{'column': Q, 'value': 41.7}, {'column': TKN, 'value': 40},
+               {'column': DO, 'value': 2.5}]
+    updated = [{'column': Q, 'value': 83.4}, {'column': TKN, 'value': 42},
+               {'column': DO, 'value': 3}]
+    mapping = {Q: 'flow-tag', TKN: 'tkn-tag', DO: 'do-tag'}
+    with patch('liveSimulation.liveSimulation.read_snapshot',
+               new=AsyncMock(side_effect=[initial, updated])) as read:
+        assert _read_model_inputs(mapping) == {Q: pytest.approx(1000), TKN: 40, DO: 2.5}
+        assert _read_model_inputs(mapping) == {Q: pytest.approx(2000), TKN: 42, DO: 3}
+        assert read.await_count == 2
+        read.assert_awaited_with(mapping)
+    assert initial[0]['value'] == 41.7
+    assert updated[0]['value'] == 83.4
+
+
+def test_mapping_without_flow_is_unchanged():
+    with patch('liveSimulation.liveSimulation.read_snapshot',
+               new=AsyncMock(return_value=[{'column': DO, 'value': 2}])):
+        assert _read_model_inputs({DO: 'do-tag'}) == {DO: 2}
