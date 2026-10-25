@@ -29,3 +29,19 @@ def test_mapping_without_flow_is_unchanged():
     with patch('liveSimulation.liveSimulation.read_snapshot',
                new=AsyncMock(return_value=[{'column': DO, 'value': 2}])):
         assert _read_model_inputs({DO: 'do-tag'}) == {DO: 2}
+
+
+@pytest.mark.parametrize('column,raw,expected', [
+    ('Sumo__Plant__Sideflowdivider3__param__Qpumped_target', 41.7, 1000),
+    ('Sumo__Plant__Carbon1__param__Q', 2, 83.34),
+    ('Sumo__Plant__Carbon2__param__Q', 3, 125.01),
+    ('Sumo__Plant__Metal1__param__Q', 4, 166.68),
+])
+def test_additional_control_conversions_on_every_fresh_read(column, raw, expected):
+    readings = [{'column': column, 'value': raw}, {'column': DO, 'value': 2.5}]
+    with patch('liveSimulation.liveSimulation.read_snapshot',
+               new=AsyncMock(return_value=readings)):
+        for _ in range(2):
+            assert _read_model_inputs({column: 'tag', DO: 'do-tag'}) == {
+                column: pytest.approx(expected), DO: 2.5}
+    assert readings[0]['value'] == raw
