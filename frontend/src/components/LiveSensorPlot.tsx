@@ -1,40 +1,46 @@
-import { useState } from 'react';
-import Plot from 'react-plotly.js';
+import { useMemo, useState } from 'react';
+import { t, useLanguage } from '../i18n';
+import { SumoOutputPlot } from './SumoOutputPlot';
 import { VariableDropdown } from './SumoOutputDashboard';
 import type { OutputOption } from './sumoOutputs';
 
 type Sample = { column: string; value: number; receivedAt: number };
 
-export function LiveSensorPlot({ title, groupTitle, options, history, axisTitle, className = '' }: {
+export function LiveSensorPlot({ title, groupTitle, options, history, className = '' }: {
   title: string; groupTitle: string; options: OutputOption[]; history: Sample[];
-  axisTitle: string; className?: string;
+  className?: string;
 }) {
+  useLanguage();
   const [selection, setSelection] = useState<string[] | null>(null);
   const [secondary, setSecondary] = useState(false);
   const [right, setRight] = useState<string[]>([]);
   const selected = options.filter(o => selection === null || selection.includes(o.key));
   const available = selected.filter(o => history.some(s => s.column === o.key));
+  const { result, timestamps } = useMemo(() => {
+    const keys = new Set(options.map(o => o.key));
+    const samples = history.filter(s => keys.has(s.column));
+    const times = [...new Set(samples.map(s => s.receivedAt))].sort((a,b) => a-b);
+    const byColumn = new Map<string, Map<number, number>>();
+    for (const sample of samples) {
+      if (!byColumn.has(sample.column)) byColumn.set(sample.column, new Map());
+      byColumn.get(sample.column)!.set(sample.receivedAt, sample.value);
+    }
+    return {
+      timestamps: times.map(time => new Date(time).toISOString()),
+      result: {time_h: times.map(time => (time-times[0])/3600000),
+        variables: Object.fromEntries(options.map(o => [o.key, times.map(time => byColumn.get(o.key)?.get(time) ?? null)]))},
+    };
+  }, [history, options]);
   return <section className={`sumo-overlay-card ${className}`}>
-    <div className="chart-head"><h3>{title}</h3></div>
+    <div className="chart-head"><h3>{t(title)}</h3></div>
     <div className="sumo-group-dropdowns">
       <VariableDropdown title={groupTitle} options={options} selected={selected.map(o => o.key)} onChange={setSelection} />
-      <label className="sumo-axis-toggle"><input type="checkbox" checked={secondary} onChange={e => setSecondary(e.target.checked)} />Enable secondary Y axis</label>
+      <label className="sumo-axis-toggle"><input type="checkbox" checked={secondary} onChange={e => setSecondary(e.target.checked)} />{t("Enable secondary Y axis")}</label>
       {secondary && <VariableDropdown title="Right Y axis" options={selected} selected={right} onChange={setRight} />}
     </div>
-    {!selected.length ? <div className="empty"><b>Select variables to build this plot</b><span>Choose one or more variables from the dropdown above.</span></div>
-      : !available.length ? <p className="calibration-note">Connect KEPServer to display live sensor trends.</p>
-      : <Plot style={{width:'100%',height:380}} useResizeHandler
-        data={available.map(o => ({
-          x: history.filter(s => s.column === o.key).map(s => new Date(s.receivedAt)),
-          y: history.filter(s => s.column === o.key).map(s => s.value),
-          type: 'scatter' as const, mode: 'lines+markers' as const, name: o.label,
-          yaxis: secondary && right.includes(o.key) ? 'y2' as const : 'y' as const,
-        }))}
-        layout={{autosize:true,height:380,margin:{t:20,b:65,l:75,r:secondary?75:20},
-          xaxis:{title:{text:'Sensor timestamp'}},
-          yaxis:{title:{text:axisTitle + (secondary?' · left axis':'')}},
-          ...(secondary ? {yaxis2:{title:{text:axisTitle+' · right axis'},overlaying:'y' as const,side:'right' as const,showgrid:false}} : {}),
-          showlegend:true}}
-        config={{responsive:true,displaylogo:false}} />}
+    {!selected.length ? <div className="empty"><b>{t("Select variables to build this plot")}</b><span>{t("Choose one or more variables from the dropdowns above.")}</span></div>
+      : !available.length ? <div className="empty"><b>{t("No sensor readings yet")}</b><span>{t("Connect KEPServer to display live sensor trends.")}</span></div>
+      : <SumoOutputPlot result={result} timestamps={timestamps} variables={available.map(o => o.key)}
+          rightAxis={secondary ? right : []} overlay runId="live-sensors" options={options} />}
   </section>;
 }

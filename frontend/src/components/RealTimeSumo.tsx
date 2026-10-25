@@ -108,7 +108,8 @@ export function RealTimeSumo(){
       const selected=Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()));
       const result=await json('/api/kepserver/snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mapping:selected})});
       setReadings(result.readings);
-      setHistory((result.readings as Reading[]).map(r=>({...r,receivedAt:Date.now()})));
+      const receivedAt=Date.now();
+      setHistory((result.readings as Reading[]).map(r=>({...r,receivedAt})));
       setConnected(true);
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
@@ -194,9 +195,9 @@ export function RealTimeSumo(){
     </section>
     <section className="config-card"><div className="section-title"><div><h2>Output variables visualisation</h2></div><button className="secondary" disabled={!liveRun?.result?.time_h?.length||downloading} onClick={async()=>{setDownloading(true);try{const response=await fetch('/api/sumo/live/download');if(!response.ok)throw Error('Download failed');const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download='sumo_live_results.csv';link.click();URL.revokeObjectURL(url);}catch(e){setError(String(e));}finally{setDownloading(false);}}}>Download results CSV</button></div>
       <LiveSensorPlot title="Influent variables · live sensor trends" groupTitle="Influent variables"
-        options={influentPlotOptions} history={history} axisTitle="Sensor reading" />
+        options={influentPlotOptions} history={history} />
       <LiveSensorPlot title="DO concentrations · live sensor trends" groupTitle="DO concentrations"
-        options={doPlotOptions} history={history} axisTitle="DO concentration (mg O₂/L)" className="live-do-card" />
+        options={doPlotOptions} history={history} className="live-do-card" />
       <SumoOutputDashboard showInfluent={false} showDo={false} influent={influentPlotOptions} result={liveRun?.result} runId={liveRun?.id||''}/>
     </section>
   </>;
