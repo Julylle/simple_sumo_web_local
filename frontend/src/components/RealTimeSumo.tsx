@@ -7,8 +7,23 @@ type Reading = {column:string;node_id:string;value:number;timestamp:string};
 type Sample = Reading & { receivedAt: number };
 type LiveRun = {id?:string;status:string;phase?:string;error?:string;simulated_h?:number;samples?:number;result?:{time_h:number[];variables:Record<string,number[]>}};
 type Run = {id:string;status:'running'|'completed'|'failed';error?:string;progress_pct?:number;phase?:string;result?:{time_h:number[];variables:Record<string,number[]>}};
-const defaultNode = 'ns=2;s=GEeth.PLC128.Influent_ammonia_sensor';
+// Default influent mappings from Julylle/Sumo_web/demo_MLE/cx_opcua1124.csv.
+const defaultMapping: Record<string,string> = {
+  "Sumo__Plant__Influent__param__Q": "ns=2;s=SiemensEth.PLC204.F_Q0",
+  "Sumo__Plant__Influent__param__pH": "ns=2;s=GEeth.PLC128.pH",
+  "Sumo__Plant__Influent__param__T": "ns=2;s=GEeth.PLC128.Temperature",
+  "Sumo__Plant__Influent__param__Ammonia_sensor_Horiba": "ns=2;s=GEeth.PLC132.Influent_ammonia_sensor(Horiba)",
+  "Sumo__Plant__Influent__param__COD_lab": "ns=2;s=MySQL.Dev1.inlet_cod.inlet_cod__1_",
+  "Sumo__Plant__Influent__param__TKN_lab": "ns=2;s=MySQL.Dev1.inlet_tn.inlet_tn__1_",
+  "Sumo__Plant__Influent__param__Ammonia_lab": "ns=2;s=MySQL.Dev1.inlet_nh3n.inlet_nh3n__1_",
+  "Sumo__Plant__Influent__param__TSS_sensor": "ns=2;s=GEeth.PLC128.Influent_TSS_sensor(HACH)",
+  "Sumo__Plant__Influent__param__Ammonia_analyzer": "ns=2;s=GEeth.PLC128.JS_NH3N",
+  "Sumo__Plant__Influent__param__TCOD": "ns=2;s=MySQL.Dev4.COD_nh3_sen_ratio",
+  "Sumo__Plant__Influent__param__TKN": "ns=2;s=MySQL.Dev4.TN_nh3_sen_ratio",
+  "Sumo__Plant__Influent__param__TP": "ns=2;s=MySQL.Dev1.inlet_tp.inlet_tp__1_"
+};
 const defaultColumn = 'Sumo__Plant__Influent__param__Ammonia_sensor_Horiba';
+const defaultNode = defaultMapping[defaultColumn];
 async function json(url:string,init?:RequestInit) {
   const response=await fetch(url,init);
   const body=await response.json().catch(()=>null);
@@ -17,7 +32,7 @@ async function json(url:string,init?:RequestInit) {
 }
 export function RealTimeSumo(){
   const [options,setOptions]=useState<Option[]>([]);
-  const [mapping,setMapping]=useState<Record<string,string>>({[defaultColumn]:defaultNode});
+  const [mapping,setMapping]=useState<Record<string,string>>(()=>({...defaultMapping}));
   const [selectedColumn,setSelectedColumn]=useState(defaultColumn);
   const [nodeDraft,setNodeDraft]=useState(defaultNode);
   const [readings,setReadings]=useState<Reading[]>([]);
@@ -120,7 +135,7 @@ export function RealTimeSumo(){
     <section className="config-card">
       <div className="section-title"><div><h2>Simulation settings</h2></div></div>
       <h3>Step1: Connect sensors through KEPServer</h3>
-      <p className="calibration-note">Select a SUMO influent variable from the dropdown, enter its KEPServer OPC UA Node ID, then add the mapping. Existing mappings can be changed or removed below.</p>
+      <p className="calibration-note">The 12 influent sensor mappings are prefilled. Select a SUMO influent variable to edit its KEPServer OPC UA Node ID, then click Add / Update sensor mapping. Existing mappings can be changed or removed below.</p>
       <div className="fields">
         <label className="field"><span className="field-label">Influent variable</span>
           <select value={selectedColumn} disabled={running} onChange={e=>{const key=e.target.value;setSelectedColumn(key);setNodeDraft(mapping[key]||'');}}>
