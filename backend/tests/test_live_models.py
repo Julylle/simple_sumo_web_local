@@ -26,6 +26,7 @@ def project_bytes():
 def isolated_store(tmp_path, monkeypatch):
     monkeypatch.setattr(live_models, '_store', SimpleNamespace(name=str(tmp_path)))
     monkeypatch.setattr(live_models, '_models', {})
+    monkeypatch.setattr(live_models.threading, 'Thread', lambda **kwargs: SimpleNamespace(start=lambda: None))
 
 
 def test_builtin_is_default_and_original_paths_are_preserved():
@@ -41,10 +42,15 @@ def test_upload_and_start_use_selected_project_and_state():
     with TestClient(app) as client:
         content = project_bytes()
         response = client.post('/api/sumo/live/models', files={
-            'project': ('other.sumo', content),
-            'initial_state': ('other.xml', STATE)})
-        assert response.status_code == 201, response.text
+            'project': ('other.sumo', content)})
+        assert response.status_code == 202, response.text
         model_id = response.json()['id']
+        assert client.get('/api/sumo/live/models/'+model_id).json()['status'] == 'queued'
+        with pytest.raises(ValueError, match='still being generated'):
+            live_models.resolve_model(model_id)
+        with patch.object(live_models, '_run_steady', lambda model: model['state'].write_bytes(STATE)):
+            live_models._prepare_model(model_id)
+        assert client.get('/api/sumo/live/models/'+model_id).json()['status'] == 'ready'
         model = live_models.resolve_model(model_id)
         assert model['project'].read_bytes() == content
         assert model['state'].read_bytes() == STATE
@@ -55,11 +61,24 @@ def test_upload_and_start_use_selected_project_and_state():
             assert liveSimulation._session['model'] == model
 
 
-@pytest.mark.parametrize('project,state', [(b'not zip', STATE), (project_bytes(), b'<wrong/>'), (project_bytes(), b'<broken')])
-def test_invalid_files_never_registered(project, state):
+def test_invalid_files_never_registered():
     with pytest.raises(ValueError):
-        live_models.register_model(project, state, 'model.sumo', 'state.xml')
+        live_models.register_model(b'not zip', 'model.sumo')
     assert not live_models._models
+
+
+@pytest.mark.parametrize('output', [b'<wrong/>', b'<broken', None])
+def test_generation_failure_cannot_start(output):
+    model = live_models.register_model(project_bytes(), 'model.sumo')
+    def generate(record):
+        if output is None:
+            raise RuntimeError('Solver failed')
+        record['state'].write_bytes(output)
+    with patch.object(live_models, '_run_steady', generate):
+        live_models._prepare_model(model['id'])
+    assert live_models.model_status(model['id'])['status'] == 'failed'
+    with pytest.raises(ValueError):
+        live_models.resolve_model(model['id'])
 
 
 def test_unknown_id_cannot_be_used_as_a_file_path():
@@ -70,4 +89,16 @@ def test_unknown_id_cannot_be_used_as_a_file_path():
 def test_upload_limits_are_checked(monkeypatch):
     monkeypatch.setattr(live_models, 'MAX_MODEL_BYTES', 1)
     with pytest.raises(ValueError, match='50 MB'):
-        live_models.register_model(project_bytes(), STATE, 'model.sumo', 'state.xml')
+        live_models.register_model(project_bytes(), 'model.sumo')
+
+
+def test_solver_runs_in_isolated_directory_with_uploaded_paths():
+    model = live_models.register_model(project_bytes(), 'model.sumo')
+    record = live_models._models[model['id']]
+    with patch.object(live_models.subprocess, 'run', return_value=SimpleNamespace(returncode=0)) as run:
+        live_models._run_steady(record)
+    args, kwargs = run.call_args
+    assert args[0][-3:] == [str(record['project']), str(record['state']), str(live_models.STEADY_SECONDS)]
+    assert kwargs['cwd'] == record['project'].parent
+    assert kwargs['timeout'] > live_models.STEADY_SECONDS
+    assert (kwargs['cwd'] / 'steady_run.py').read_bytes() == (live_models.BUILTIN_DIR / 'steady_run.py').read_bytes()

@@ -68,7 +68,7 @@ export function RealTimeSumo(){
   const [limitMinutes,setLimitMinutes]=useState('5');
   const [modelSource,setModelSource]=useState('builtin');
   const [modelFile,setModelFile]=useState<File|null>(null);
-  const [stateFile,setStateFile]=useState<File|null>(null);
+  const [preparingModel,setPreparingModel]=useState<UploadedModel|null>(null);
   const [uploadedModel,setUploadedModel]=useState<UploadedModel|null>(null);
   const [modelUploading,setModelUploading]=useState(false);
   const [modelError,setModelError]=useState('');
@@ -131,17 +131,36 @@ export function RealTimeSumo(){
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
   async function uploadModel(){
-    if(!modelFile||!stateFile)return;
+    if(!modelFile)return;
     setModelUploading(true);setModelError('');setUploadedModel(null);
     try{
       if(!modelFile.name.toLowerCase().endsWith('.sumo')||modelFile.size>50*1024*1024)
         throw new Error('Choose a .sumo project no larger than 50 MB.');
-      if(!stateFile.name.toLowerCase().endsWith('.xml')||stateFile.size>20*1024*1024)
-        throw new Error('Choose an initial-state XML no larger than 20 MB.');
-      const form=new FormData();form.append('project',modelFile);form.append('initial_state',stateFile);
-      setUploadedModel(await json('/api/sumo/live/models',{method:'POST',body:form}));
+      const form=new FormData();form.append('project',modelFile);
+      setPreparingModel(await json('/api/sumo/live/models',{method:'POST',body:form}));
     }catch(e){setModelError(String(e));}finally{setModelUploading(false);}
   }
+  useEffect(()=>{
+    if(!preparingModel)return;
+    let cancelled=false;
+    let timer:ReturnType<typeof setTimeout>;
+    async function pollModel(){
+      try{
+        const model=await json('/api/sumo/live/models/'+preparingModel!.id);
+        if(cancelled)return;
+        setModelError('');
+        if(model.status==='ready'){setUploadedModel(model);setPreparingModel(null);return;}
+        if(model.status==='failed'){setModelError(model.error||'Initial-state generation failed.');setPreparingModel(null);return;}
+      }catch(e){
+        if(cancelled)return;
+        setModelError(String(e));
+      }
+      timer=setTimeout(()=>void pollModel(),3000);
+    }
+    void pollModel();
+    return ()=>{cancelled=true;clearTimeout(timer);};
+  },[preparingModel]);
+
   async function start(){
     if(!modelReady)return;
     setBusy(true);setError('');
@@ -169,7 +188,7 @@ export function RealTimeSumo(){
     }catch(e){setError(String(e));}finally{setDownloading(false);}
   }
   const liveActive=['starting','running','stopping'].includes(liveRun?.status||'');
-  const running=busy||liveActive||modelUploading;
+  const running=busy||liveActive||modelUploading||!!preparingModel;
   const sensorGroup=(key:string)=>defaultDoMapping[key]?'do':defaultControlMapping[key]?'control':'influent';
   const influentPlotOptions=Object.keys(mapping).filter(key=>Boolean(defaultMapping[key]||defaultControlMapping[key])).map(key=>({
     key,label:[...options,...controlSensorOptions].find(o=>o.name===key)?.label||key.split('__').pop()||key,
@@ -216,12 +235,12 @@ export function RealTimeSumo(){
           </select>
         </label>
         {modelSource==='builtin'?<p className="calibration-note">Uses the built-in model and sumo_steady_state.xml initial state.</p>:<>
-          <p className="calibration-note">Choose a compiled SUMO project and its matching initial state. The model must support your selected sensor variables. Uploads are available until the backend restarts.</p>
+          <p className="calibration-note">Upload a compiled SUMO project. steady_run.py automatically generates sumo_steady_state.xml (up to 3.5 hours plus saving time; convergence is not guaranteed). The model must support your selected sensor variables. Uploads are available until the backend restarts.</p>
           <div className="sensor-editor-grid">
             <label className="sensor-field"><span>SUMO project (.sumo, max 50 MB)</span><input type="file" accept=".sumo" disabled={running} onChange={e=>{setModelFile(e.target.files?.[0]||null);setUploadedModel(null);setModelError('');}}/></label>
-            <label className="sensor-field"><span>Initial state (.xml, max 20 MB)</span><input type="file" accept=".xml" disabled={running} onChange={e=>{setStateFile(e.target.files?.[0]||null);setUploadedModel(null);setModelError('');}}/></label>
           </div>
-          <div className="sensor-actions"><button className="secondary" disabled={running||!modelFile||!stateFile} onClick={()=>void uploadModel()}>{modelUploading?'Uploading model...':'Upload model and initial state'}</button></div>
+          <div className="sensor-actions"><button className="secondary" disabled={running||!modelFile} onClick={()=>void uploadModel()}>{modelUploading?'Uploading model...':'Upload model and generate initial state'}</button></div>
+          {preparingModel&&<p role="status">Generating initial state for {preparingModel.name}. Run SUMO will be available when generation finishes.</p>}
           {uploadedModel&&<p role="status" className="measurement-ready">Ready: {uploadedModel.name} · {uploadedModel.state_name}</p>}
         </>}
         {modelError&&<div className="alert" role="alert">{modelError}</div>}

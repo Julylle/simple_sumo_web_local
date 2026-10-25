@@ -1,5 +1,9 @@
-"""Uploaded SUMO projects paired with their own initial state, scoped to this server session."""
+"""Uploaded projects and asynchronously generated states, scoped to this server session."""
 import io
+import os
+import shutil
+import subprocess
+import sys
 import tempfile
 import threading
 import zipfile
@@ -9,21 +13,19 @@ from uuid import uuid4
 
 BUILTIN_DIR = Path(__file__).resolve().parents[1] / 'real_sim_1202'
 MAX_MODEL_BYTES = 50 * 1024 * 1024
-MAX_STATE_BYTES = 20 * 1024 * 1024
+STEADY_SECONDS = 3.5 * 60 * 60
+_solver_lock = threading.Lock()
 _store = tempfile.TemporaryDirectory(prefix='sumo_uploaded_models_')
 _models = {}
 _lock = threading.Lock()
 
 
-def register_model(project_bytes, state_bytes, project_name, state_name):
+def register_model(project_bytes, project_name):
     project_name = (project_name or '').replace('\\', '/').split('/')[-1]
-    state_name = (state_name or '').replace('\\', '/').split('/')[-1]
-    if not project_name.lower().endswith('.sumo') or not state_name.lower().endswith('.xml'):
-        raise ValueError('Choose a .sumo project and its initial-state .xml file.')
+    if not project_name.lower().endswith('.sumo'):
+        raise ValueError('Choose a compiled .sumo project.')
     if not project_bytes or len(project_bytes) > MAX_MODEL_BYTES:
         raise ValueError('SUMO project must be non-empty and no larger than 50 MB.')
-    if not state_bytes or len(state_bytes) > MAX_STATE_BYTES:
-        raise ValueError('Initial state must be non-empty and no larger than 20 MB.')
     try:
         with zipfile.ZipFile(io.BytesIO(project_bytes)) as archive:
             for name, limit in [('variables.var', 20 * 1024 * 1024), ('sumoproject.dll', 200 * 1024 * 1024)]:
@@ -35,12 +37,6 @@ def register_model(project_bytes, state_bytes, project_name, state_name):
                 raise ValueError('SUMO project has no valid variable metadata.')
     except (zipfile.BadZipFile, KeyError, UnicodeError, RuntimeError) as exc:
         raise ValueError('Invalid .sumo project: compiled sumoproject.dll and variables.var are required.') from exc
-    try:
-        root = ET.fromstring(state_bytes)
-        if root.tag != 'systemstate' or len(root) == 0:
-            raise ValueError('Choose a SUMO systemstate XML file.')
-    except ET.ParseError as exc:
-        raise ValueError('Initial state is not valid XML.') from exc
     identifier = str(uuid4())
     with _lock:
         if len(_models) >= 20:
@@ -48,11 +44,62 @@ def register_model(project_bytes, state_bytes, project_name, state_name):
         folder = Path(_store.name) / identifier
         folder.mkdir()
         project = folder / 'model.sumo'
-        state = folder / 'initial_state.xml'
+        state = folder / 'sumo_steady_state.xml'
         project.write_bytes(project_bytes)
-        state.write_bytes(state_bytes)
-        _models[identifier] = {'project': project, 'state': state, 'name': project_name, 'state_name': state_name}
-    return {'id': identifier, 'name': project_name, 'state_name': state_name}
+        _models[identifier] = {'project': project, 'state': state, 'name': project_name,
+                               'state_name': state.name, 'status': 'queued', 'error': None}
+    threading.Thread(target=_prepare_model, args=(identifier,), daemon=True,
+                     name='sumo-steady').start()
+    return model_status(identifier)
+
+
+def model_status(identifier):
+    with _lock:
+        model = _models.get(identifier)
+        if model is None:
+            raise ValueError('Uploaded model is unavailable. Upload the project again.')
+        return {'id': identifier, **{key: model[key] for key in
+                ('name', 'state_name', 'status', 'error')}}
+
+
+def _run_steady(model):
+    # A separate process isolates Scheduler callbacks and cleanup from live runs.
+    # Copy the unchanged source script so its CSV and DLL stay in this job folder.
+    folder = model['project'].parent
+    shutil.copy2(BUILTIN_DIR / 'steady_run.py', folder / 'steady_run.py')
+    env = dict(os.environ)
+    env['PYTHONPATH'] = str(BUILTIN_DIR) + os.pathsep + env.get('PYTHONPATH', '')
+    command = [
+        sys.executable, '-u', '-c',
+        'from steady_run import prepare_steady_state; import sys; '
+        'prepare_steady_state(sys.argv[1], sys.argv[2], wall_run_seconds=float(sys.argv[3]))',
+        str(model['project']), str(model['state']), str(STEADY_SECONDS),
+    ]
+    with (folder / 'steady_process.log').open('w', encoding='utf-8') as output:
+        result = subprocess.run(command, cwd=folder, env=env, stdout=output,
+                                stderr=subprocess.STDOUT, timeout=STEADY_SECONDS + 180)
+    if result.returncode:
+        tail = (folder / 'steady_process.log').read_text(encoding='utf-8', errors='replace')[-3000:]
+        raise RuntimeError('Steady-state generation failed: ' + tail)
+
+
+def _prepare_model(identifier):
+    try:
+        # Serialize steady jobs to avoid starting many licensed solver processes.
+        with _solver_lock:
+            with _lock:
+                model = dict(_models[identifier])
+                _models[identifier]['status'] = 'preparing'
+            _run_steady(model)
+            root = ET.parse(model['state']).getroot()
+            if root.tag != 'systemstate' or len(root) == 0:
+                raise ValueError('Generated state is not a non-empty SUMO systemstate.')
+            with _lock:
+                _models[identifier]['status'] = 'ready'
+    except Exception as exc:
+        with _lock:
+            _models[identifier].update(status='failed', error=str(exc))
+
 
 
 def resolve_model(model_id='builtin'):
@@ -63,5 +110,7 @@ def resolve_model(model_id='builtin'):
     with _lock:
         model = _models.get(model_id)
         if model is None:
-            raise ValueError('Uploaded model is unavailable. Upload the project and initial state again.')
+            raise ValueError('Uploaded model is unavailable. Upload the project again.')
+        if model['status'] != 'ready':
+            raise ValueError(model.get('error') or 'The model initial state is still being generated.')
         return dict(model)

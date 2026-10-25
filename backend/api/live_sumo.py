@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException, Response, UploadFile, File
 from pydantic import BaseModel, Field
 from liveSimulation import liveSimulation as live_sumo
-from services.live_models import register_model, MAX_MODEL_BYTES, MAX_STATE_BYTES
+from services.live_models import register_model, model_status, MAX_MODEL_BYTES
 
 router = APIRouter()
 
@@ -41,14 +41,21 @@ def download():
                     headers={"Content-Disposition": 'attachment; filename="sumo_live_results.csv"'})
 
 
-@router.post("/sumo/live/models", status_code=201)
-async def upload_model(project: UploadFile = File(...), initial_state: UploadFile = File(...)):
+@router.post("/sumo/live/models", status_code=202)
+async def upload_model(project: UploadFile = File(...)):
     try:
         model_bytes = await project.read(MAX_MODEL_BYTES + 1)
-        state_bytes = await initial_state.read(MAX_STATE_BYTES + 1)
-        return register_model(model_bytes, state_bytes, project.filename, initial_state.filename)
+        return register_model(model_bytes, project.filename)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     finally:
         await project.close()
-        await initial_state.close()
+
+
+
+@router.get("/sumo/live/models/{model_id}")
+def uploaded_model_status(model_id: str):
+    try:
+        return model_status(model_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
