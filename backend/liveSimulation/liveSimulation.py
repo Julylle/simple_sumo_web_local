@@ -18,7 +18,7 @@ from services.kepserver import read_snapshot
 from services.model_inputs import scale_model_inputs
 from services.sensor_inputs import SENSOR_COLUMNS
 from services.live_models import resolve_model
-from services.live_checkpoint import save_checkpoint, checkpoint_info, restore_checkpoint
+from services.live_checkpoint import save_checkpoint, checkpoint_info, restore_checkpoint, saved_snapshot
 
 ROOT = Path(__file__).resolve().parents[1]
 _lock = threading.RLock()
@@ -27,10 +27,15 @@ _session = None
 def snapshot():
     with _lock:
         if _session is None:
-            return {"status": "idle", "checkpoint": checkpoint_info()}
+            try:
+                saved = saved_snapshot()
+            except (OSError, ValueError, KeyError, zipfile.BadZipFile):
+                saved = None
+            return {**(saved or {"status": "idle"}), "checkpoint": checkpoint_info()}
         s = _session
         return {"id": s["id"], "status": s["status"], "error": s.get("error"),
                 "model_id": s["model_id"], "model_name": s["model"]["name"],
+                "mapping": dict(s["mapping"]), "interval_minutes": s["interval"] // 60,
                 "checkpoint": checkpoint_info(),
                 "phase": s["phase"], "simulated_h": s["sim_ms"] / 3600000,
                 "samples": len(s["times"]), "result": {
@@ -45,14 +50,15 @@ def start(mapping, interval_minutes, model_id="builtin"):
     selected_model = resolve_model(model_id)
     return _launch(mapping, interval_minutes, model_id, selected_model)
 
-def _launch(mapping, interval_minutes, model_id, selected_model, resume_ms=0, resume_folder=None):
+def _launch(mapping, interval_minutes, model_id, selected_model, resume_ms=0, resume_folder=None, result=None, run_id=None):
     global _session
     with _lock:
         if _session is not None and _session["status"] in ("starting", "running", "stopping"):
             raise RuntimeError("A live SUMO session is already active.")
-        s = {"id": str(uuid4()), "status": "starting", "phase": "initializing",
+        s = {"id": run_id or str(uuid4()), "status": "starting", "phase": "initializing",
              "error": None, "sim_ms": resume_ms, "resume_ms": resume_ms,
-             "resume_folder": resume_folder, "times": [], "variables": {},
+             "resume_folder": resume_folder, "times": list((result or {}).get("time_h", [])),
+             "variables": {k: list(v) for k, v in (result or {}).get("variables", {}).items()},
              "mapping": dict(mapping), "interval": interval_minutes * 60,
              "model": selected_model, "model_id": model_id,
              "stop": threading.Event()}
@@ -67,7 +73,7 @@ def resume():
         metadata, model, folder = restore_checkpoint()
         try:
             return _launch(metadata['mapping'], metadata['interval_minutes'], 'checkpoint', model,
-                           metadata['simulated_ms'], folder)
+                           metadata['simulated_ms'], folder, metadata.get('result'), metadata['run_id'])
         except Exception:
             folder.cleanup()
             raise
@@ -84,8 +90,10 @@ def stop():
 
 def export_csv():
     with _lock:
-        s = _session
-        if s is None or not s["times"]:
+        current = snapshot()
+        result = current.get('result') or {}
+        s = {'times': result.get('time_h', []), 'variables': result.get('variables', {})}
+        if not s['times']:
             raise ValueError("No live SUMO samples available.")
         names = list(s["variables"])
         out = io.StringIO()
@@ -183,6 +191,9 @@ def _worker(s):
                 if ms is None or not math.isfinite(float(ms)):
                     raise ValueError("Missing SUMO simulation time.")
                 with _lock:
+                    # Some schedulers emit the loaded checkpoint at start; do not duplicate it.
+                    if s["times"] and float(ms)/3600000 <= s["times"][-1]:
+                        return
                     s["sim_ms"] = int(ms)
                     s["times"].append(float(ms)/3600000)
                     for name in dict.fromkeys([*s["mapping"], *output_variables]):

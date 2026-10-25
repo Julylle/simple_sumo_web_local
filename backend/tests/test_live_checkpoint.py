@@ -84,6 +84,9 @@ def test_restart_resume_uses_checkpoint_time_mapping_and_model(session, monkeypa
 def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failure(session, tmp_path, monkeypatch, resume_ms, stop_at_boundary, locked_cleanup):
     import sys
     session['resume_ms'] = resume_ms
+    if resume_ms:
+        session['times'] = [resume_ms / 3600000]
+        session['variables'] = {Q: [500]}
     monkeypatch.setattr(live, 'ROOT', tmp_path)
     package = ModuleType('dynamita')
     tool = ModuleType('dynamita.tool')
@@ -117,6 +120,8 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
         assert f'set Sumo__LimitTime {resume_ms+60000};' in commands
         assert len([c for c in commands if c.startswith('load ')]) == 1
         engine.message_callback(1, '530041 Loaded')
+        if resume_ms:
+            emit(resume_ms)
         emit(resume_ms+60000)
         return 1
     def send(job, command):
@@ -167,8 +172,57 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
         assert session['status'] == 'failed'
         assert 'Sensor disconnected' in session['error']
     assert cp.checkpoint_info()['simulated_ms'] == resume_ms+120000
+    assert len(session['times']) == (3 if resume_ms else 2)
+    if resume_ms:
+        assert session['variables'][Q][0] == 500
     assert engine.schedule.call_count == 1
     commands = [c.args[1] for c in engine.sendCommand.call_args_list]
     assert sum(c.startswith('save ') for c in commands) == 2
     assert not any(c.startswith('load ') or c == 'maptoic;' for c in commands)
     engine.cleanup.assert_called_once()
+
+
+
+def test_restart_exposes_history_and_csv_without_starting_worker(session, monkeypatch):
+    session['times'] = [0, 1/60, 2/60]
+    session['variables'] = {Q: [100, 200, 300]}
+    cp.save_checkpoint(session, session['model']['state'], 120000)
+    monkeypatch.setattr(live, '_session', None)
+    with patch.object(live.threading, 'Thread') as worker:
+        result = live.snapshot()
+        assert result['status'] == 'interrupted'
+        assert result['result']['time_h'] == session['times']
+        assert result['mapping'] == session['mapping']
+        assert result['interval_minutes'] == 1
+        assert '300' in live.export_csv()
+        worker.assert_not_called()
+        resumed = live.resume()
+    try:
+        assert resumed['id'] == session['id']
+        assert resumed['result'] == result['result']
+        assert resumed['samples'] == 3
+    finally:
+        live._session['resume_folder'].cleanup()
+
+
+def test_old_checkpoint_without_history_remains_resumable(session, monkeypatch):
+    cp.save_checkpoint(session, session['model']['state'], 60000)
+    target = cp.checkpoint_path()
+    with zipfile.ZipFile(target) as archive:
+        members = {name: archive.read(name) for name in archive.namelist() if name != 'results.json'}
+    with zipfile.ZipFile(target, 'w') as archive:
+        for name, content in members.items():
+            archive.writestr(name, content)
+    assert cp.saved_snapshot()['result'] == {'time_h': [], 'variables': {}}
+    metadata, _, folder = cp.restore_checkpoint()
+    folder.cleanup()
+    assert metadata['simulated_ms'] == 60000
+
+
+def test_invalid_history_does_not_replace_last_checkpoint(session):
+    cp.save_checkpoint(session, session['model']['state'], 60000)
+    previous = cp.checkpoint_path().read_bytes()
+    session['times'] = [float('nan')]
+    with pytest.raises(ValueError):
+        cp.save_checkpoint(session, session['model']['state'], 120000)
+    assert cp.checkpoint_path().read_bytes() == previous

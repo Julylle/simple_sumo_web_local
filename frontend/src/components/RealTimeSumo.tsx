@@ -1,3 +1,4 @@
+import { useLiveSetting } from '../hooks/useLiveSetting';
 import { sensorDisplayValue } from '../utils/liveSensorDisplay';
 import { defaultControlMapping, controlSensorOptions } from '../config/additionalControls';
 import { defaultDoMapping, doSensorOptions } from '../config/doSensors';
@@ -10,7 +11,7 @@ type Reading = {column:string;node_id:string;value:number;timestamp:string};
 type Sample = Reading & { receivedAt: number };
 type UploadedModel = {id:string;name:string;state_name:string};
 type Checkpoint = {error?:string;model_name?:string;saved_at?:string;simulated_h?:number;interval_minutes?:number;mapping?:Record<string,string>};
-type LiveRun = {checkpoint?:Checkpoint|null;id?:string;model_id?:string;model_name?:string;status:string;phase?:string;error?:string;simulated_h?:number;samples?:number;result?:{time_h:number[];variables:Record<string,number[]>}};
+type LiveRun = {mapping?:Record<string,string>;interval_minutes?:number;checkpoint?:Checkpoint|null;id?:string;model_id?:string;model_name?:string;status:string;phase?:string;error?:string;simulated_h?:number;samples?:number;result?:{time_h:number[];variables:Record<string,number[]>}};
 type Run = {id:string;status:'running'|'completed'|'failed';error?:string;progress_pct?:number;phase?:string;result?:{time_h:number[];variables:Record<string,number[]>}};
 // Default influent mappings from Julylle/Sumo_web/demo_MLE/cx_opcua1124.csv.
 const defaultMapping: Record<string,string> = {
@@ -46,42 +47,57 @@ async function json(url:string,init?:RequestInit) {
   return body;
 }
 export function RealTimeSumo(){
-  const [mapping,setMapping]=useState<Record<string,string>>(()=>({...defaultMapping,...defaultDoMapping,...defaultControlMapping}));
-  const [selectedColumn,setSelectedColumn]=useState(defaultColumn);
-  const [nodeDraft,setNodeDraft]=useState(defaultNode);
-  const [selectedDo,setSelectedDo]=useState(doSensorOptions[0].name);
-  const [doDraft,setDoDraft]=useState(defaultDoMapping[doSensorOptions[0].name]);
-  const [selectedControl,setSelectedControl]=useState(controlSensorOptions[0].name);
-  const [controlDraft,setControlDraft]=useState(defaultControlMapping[controlSensorOptions[0].name]);
+  const [mapping,setMapping]=useLiveSetting<Record<string,string>>('mapping',{...defaultMapping,...defaultDoMapping,...defaultControlMapping});
+  const [selectedColumn,setSelectedColumn]=useLiveSetting('selectedColumn',defaultColumn);
+  const [nodeDraft,setNodeDraft]=useLiveSetting('nodeDraft',defaultNode);
+  const [selectedDo,setSelectedDo]=useLiveSetting('selectedDo',doSensorOptions[0].name);
+  const [doDraft,setDoDraft]=useLiveSetting('doDraft',defaultDoMapping[doSensorOptions[0].name]);
+  const [selectedControl,setSelectedControl]=useLiveSetting('selectedControl',controlSensorOptions[0].name);
+  const [controlDraft,setControlDraft]=useLiveSetting('controlDraft',defaultControlMapping[controlSensorOptions[0].name]);
   const [readings,setReadings]=useState<Reading[]>([]);
-  const [history,setHistory]=useState<Sample[]>([]);
+  const [history,setHistory]=useLiveSetting<Sample[]>('sensorHistory',[]);
   // Convert a display copy; keep raw sensor readings intact.
   const influentPlotHistory=useMemo(()=>history.map(sample=>({
     ...sample,value:sensorDisplayValue(sample.column,sample.value)
   })),[history]);
-  const [connected,setConnected]=useState(false);
+  const [connected,setConnected]=useLiveSetting('connected',false);
   const [sensorError,setSensorError]=useState('');
   const pollingRef=useRef(false);
   const mappingRef=useRef(mapping);
   mappingRef.current=mapping;
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
-  const [limitMinutes,setLimitMinutes]=useState('5');
-  const [modelSource,setModelSource]=useState('builtin');
-  const [stateMode,setStateMode]=useState('upload');
+  const [limitMinutes,setLimitMinutes]=useLiveSetting('limitMinutes','5');
+  const [modelSource,setModelSource]=useLiveSetting('modelSource','builtin');
+  const [stateMode,setStateMode]=useLiveSetting('stateMode','upload');
+  const [stateFilename,setStateFilename]=useLiveSetting('stateFilename','');
   const [stateFile,setStateFile]=useState<File|null>(null);
-  const [steadyTolerance,setSteadyTolerance]=useState('0.000001');
+  const [steadyTolerance,setSteadyTolerance]=useLiveSetting('steadyTolerance','0.000001');
   const [modelFile,setModelFile]=useState<File|null>(null);
-  const [preparingModel,setPreparingModel]=useState<UploadedModel|null>(null);
-  const [uploadedModel,setUploadedModel]=useState<UploadedModel|null>(null);
+  const [preparingModel,setPreparingModel]=useLiveSetting<UploadedModel|null>('preparingModel',null);
+  const [uploadedModel,setUploadedModel]=useLiveSetting<UploadedModel|null>('uploadedModel',null);
   const [modelUploading,setModelUploading]=useState(false);
   const [modelError,setModelError]=useState('');
-  const modelReady=!!uploadedModel||(modelSource==='builtin'&&stateMode==='upload'&&!stateFile);
+  const [modelVerified,setModelVerified]=useState(false);
+  const modelReady=(!!uploadedModel&&modelVerified)||(modelSource==='builtin'&&stateMode==='upload'&&!stateFile&&!stateFilename);
 
   const [run,setRun]=useState<Run|null>(null);
   const [liveRun,setLiveRun]=useState<LiveRun|null>(null);
   const [checkpoint,setCheckpoint]=useState<Checkpoint|null>(null);
   const [downloading,setDownloading]=useState(false);
+  const [statusReady,setStatusReady]=useState(false);
+  const restoredRun=useRef('');
+  // Uploaded model IDs survive a page reload, but the backend registry may restart.
+  useEffect(()=>{
+    setModelVerified(false);
+    if(!uploadedModel)return;
+    let active=true;
+    json('/api/sumo/live/models/'+uploadedModel.id).then(model=>{
+      if(active&&model.status==='ready')setModelVerified(true);
+      if(active&&model.status!=='ready'){setUploadedModel(null);setModelError('Prepare the model again before starting a new run.');}
+    }).catch(()=>{if(active)setModelError('Could not verify the prepared model. Reconnect or prepare it again.');});
+    return()=>{active=false;};
+  },[uploadedModel?.id]);
   useEffect(()=>{
     if(run?.status!=='running')return;
     let active=true;
@@ -93,7 +109,20 @@ export function RealTimeSumo(){
     const poll=async()=>{
       try{
         const next:LiveRun=await json('/api/sumo/live/status');
-        if(active){setLiveRun(next.status==='idle'?null:next);setCheckpoint(next.checkpoint||null);}
+        if(active){
+          setLiveRun(next.status==='idle'?null:next);setCheckpoint(next.checkpoint||null);
+          setStatusReady(true);
+          if(next.id && restoredRun.current!==next.id){
+            restoredRun.current=next.id;
+            if(next.mapping){
+              setMapping(next.mapping);
+              setNodeDraft(next.mapping[selectedColumn]||'');
+              setDoDraft(next.mapping[selectedDo]||'');
+              setControlDraft(next.mapping[selectedControl]||'');
+            }
+            if(next.interval_minutes)setLimitMinutes(String(next.interval_minutes));
+          }
+        }
       }catch(e){if(active)setError(String(e));}
     };
     void poll();
@@ -125,13 +154,13 @@ export function RealTimeSumo(){
     setMapping(old=>({...old,[column]:node}));setReadings([]);setRun(null);
   }
   async function refresh(){
-    setConnected(false);setBusy(true);setError('');setSensorError('');setReadings([]);setHistory([]);setRun(null);
+    setConnected(false);setBusy(true);setError('');setSensorError('');setRun(null);
     try {
       const selected=Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()));
       const result=await json('/api/kepserver/snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mapping:selected})});
       setReadings(result.readings);
       const receivedAt=Date.now();
-      setHistory((result.readings as Reading[]).map(r=>({...r,receivedAt})));
+      setHistory(old=>[...old,...(result.readings as Reading[]).map(r=>({...r,receivedAt}))].filter(s=>s.receivedAt>=receivedAt-3600000).slice(-28800));
       setConnected(true);
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
@@ -182,7 +211,8 @@ export function RealTimeSumo(){
   },[preparingModel]);
 
   async function start(){
-    if(!modelReady)return;
+    if(!statusReady||!modelReady)return;
+    if((liveRun?.samples||0)>0 && !window.confirm('Start a new simulation? This replaces the displayed run and, after its first interval, the latest checkpoint. Download the current results first if you need to keep them.'))return;
     setBusy(true);setError('');
     try{
       const selected=Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()));
@@ -202,6 +232,7 @@ export function RealTimeSumo(){
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
   async function stop(){
+    if(!window.confirm('Stop the shared live simulation for all viewers?'))return;
     setBusy(true);setError('');
     try{setLiveRun(await json('/api/sumo/live/stop',{method:'POST'}));}
     catch(e){setError(String(e));}finally{setBusy(false);}
@@ -218,7 +249,7 @@ export function RealTimeSumo(){
     }catch(e){setError(String(e));}finally{setDownloading(false);}
   }
   const liveActive=['starting','running','stopping'].includes(liveRun?.status||'');
-  const running=busy||liveActive||modelUploading||!!preparingModel;
+  const running=!statusReady||busy||liveActive||modelUploading||!!preparingModel;
   const sensorGroup=(key:string)=>defaultDoMapping[key]?'do':defaultControlMapping[key]?'control':'influent';
   const influentPlotOptions=Object.keys(mapping).filter(key=>Boolean(defaultMapping[key]||defaultControlMapping[key])).map(key=>({
     key,label:[...options,...controlSensorOptions].find(o=>o.name===key)?.label||key.split('__').pop()||key,
@@ -280,8 +311,9 @@ export function RealTimeSumo(){
           </select>
         </label>
         {stateMode==='upload'?<>
-          <label className="sensor-field"><span>Steady-state file (.xml, max 20 MB)</span><input type="file" accept=".xml" disabled={running} onChange={e=>{setStateFile(e.target.files?.[0]||null);setUploadedModel(null);setModelError('');}}/></label>
-          <p className="calibration-note">{modelSource==='builtin'&&!stateFile?'Using the built-in sumo_steady_state.xml. Select a file to replace it.':'Choose a steady-state XML matching the selected model.'}</p>
+          <label className="sensor-field"><span>Steady-state file (.xml, max 20 MB)</span><input type="file" accept=".xml" disabled={running} onChange={e=>{setStateFile(e.target.files?.[0]||null);setStateFilename(e.target.files?.[0]?.name||'');setUploadedModel(null);setModelError('');}}/></label>
+          {stateFilename&&!stateFile&&!uploadedModel&&<p role="status">Reselect {stateFilename} to prepare this state, or clear the selection to use the built-in state. <button className="secondary" disabled={running} onClick={()=>setStateFilename('')}>Clear file selection</button></p>}
+          <p className="calibration-note">{modelSource==='builtin'&&!stateFile&&!stateFilename?'Using the built-in sumo_steady_state.xml. Select a file to replace it.':'Choose a steady-state XML matching the selected model.'}</p>
         </>:<>
           <p className="calibration-note">Reads a fresh sensor snapshot when calculation starts, applies scaling, and holds those inputs constant until convergence. Connect sensor data first.</p>
           <label className="sensor-field"><span>Convergence tolerance (MaxAbsDer)</span><input type="number" min="0" step="any" value={steadyTolerance} disabled={running} onChange={e=>{setSteadyTolerance(e.target.value);setUploadedModel(null);}}/></label>
@@ -304,6 +336,8 @@ export function RealTimeSumo(){
         </article>
         </div>
         {liveActive&&liveRun?.model_name&&<p className="simulation-model-status" role="status">Running model: {liveRun.model_name}</p>}
+      <p className="calibration-note">Refreshing or closing this page does not stop the server simulation. Saved output history is restored after a backend restart; click Resume to continue. Sensor preview history and draft settings are retained in this browser. File selections must be reselected if not yet uploaded.</p>
+      {!statusReady&&<p role="status">Reconnecting to the live simulation…</p>}
       {checkpoint&&<div className="sensor-editor simulation-recovery">
         <div className="sensor-editor-title"><h4>Resume a saved simulation</h4><span>Latest checkpoint</span></div>
         {checkpoint.error?<p className="alert">{checkpoint.error}</p>:<>

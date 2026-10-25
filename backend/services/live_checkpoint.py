@@ -1,5 +1,6 @@
 """One atomically replaced recovery bundle, including the exact SUMO project."""
 import json
+import math
 import os
 import tempfile
 import threading
@@ -33,6 +34,9 @@ def save_checkpoint(session, state_file, simulated_ms):
             with pending.open('wb') as stream:
                 with zipfile.ZipFile(stream, 'w', compression=zipfile.ZIP_STORED) as archive:
                     archive.writestr('metadata.json', json.dumps(metadata))
+                    archive.writestr('results.json', json.dumps({
+                        'time_h': session.get('times', []),
+                        'variables': session.get('variables', {})}, allow_nan=False))
                     archive.writestr('state.xml', state)
                     archive.write(session['model']['project'], 'model.sumo')
                 stream.flush()
@@ -75,6 +79,7 @@ def restore_checkpoint():
                 if archive.testzip() is not None:
                     raise ValueError('Checkpoint checksum validation failed.')
                 metadata = json.loads(archive.read('metadata.json'))
+                metadata['result'] = _read_results(archive)
                 if metadata.get('version') != 1:
                     raise ValueError('Unsupported checkpoint version.')
                 for name in ('model.sumo', 'state.xml'):
@@ -86,3 +91,37 @@ def restore_checkpoint():
         except Exception as exc:
             folder.cleanup()
             raise ValueError('Cannot restore checkpoint: ' + str(exc)) from exc
+
+
+
+def _read_results(archive):
+    # Older checkpoints remain usable, but cannot recover unrecorded history.
+    if 'results.json' not in archive.namelist():
+        return {'time_h': [], 'variables': {}}
+    result = json.loads(archive.read('results.json'))
+    times, variables = result['time_h'], result['variables']
+    if not isinstance(times, list) or not isinstance(variables, dict):
+        raise ValueError('Invalid checkpoint results.')
+    if any(not isinstance(v, list) or len(v) != len(times) for v in variables.values()):
+        raise ValueError('Misaligned checkpoint results.')
+    if any(not isinstance(v, (int, float)) or not math.isfinite(v)
+           for values in [times, *variables.values()] for v in values):
+        raise ValueError('Non-finite checkpoint results.')
+    return result
+
+
+def saved_snapshot():
+    """Read history without loading the native scheduler or starting a simulation."""
+    with _lock:
+        target = checkpoint_path()
+        if not target.exists():
+            return None
+        with zipfile.ZipFile(target) as archive:
+            metadata = json.loads(archive.read('metadata.json'))
+            result = _read_results(archive)
+        return {'id': metadata['run_id'], 'status': 'interrupted',
+                'phase': 'Saved checkpoint — resume to continue',
+                'model_id': 'checkpoint', 'model_name': metadata['model_name'],
+                'mapping': metadata['mapping'], 'interval_minutes': metadata['interval_minutes'],
+                'simulated_h': metadata['simulated_ms'] / 3600000,
+                'samples': len(result['time_h']), 'result': result}
