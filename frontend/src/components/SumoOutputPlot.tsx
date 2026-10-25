@@ -17,9 +17,15 @@ export function SumoOutputPlot({ result, variables, rightAxis, overlay, runId, o
   const [resetRevision, setResetRevision] = useState(0);
   const [width, setWidth] = useState(0);
   const labels = variables.map(key => `${t(options.find(o => o.key === key)?.label ?? key)} (${options.find(o => o.key === key)?.unit ?? ''})${overlay && rightAxis.includes(key) ? t(' [right]') : ''}`);
-  const legend = plotLegend(labels, width, overlay ? 75 : 25);
+  const measureText = useMemo(() => {
+    const context = document.createElement('canvas').getContext('2d');
+    if (context) context.font = '11px Inter, "Segoe UI", sans-serif';
+    return (label: string) => context?.measureText(label).width ?? label.length * 7;
+  }, []);
+  const legend = plotLegend(labels, width, overlay ? 75 : 25, measureText);
+  const plotWidth = overlay ? legend.plotWidth : width;
   const plotHeight = overlay ? 335 : 225;
-  const bottom = overlay ? 90 + legend.height : 60;
+  const bottom = overlay ? 72 + legend.height : 60;
   const height = 35 + plotHeight + bottom;
   useEffect(() => {
     if (!frame.current) return;
@@ -51,7 +57,7 @@ export function SumoOutputPlot({ result, variables, rightAxis, overlay, runId, o
   const layout = useMemo<Partial<Layout>>(() => ({
     // Dimensions belong to the container, not the axis viewport. Reset axes
     // changes ranges only; resize the plot only when its container changes.
-    autosize: false, width, height,
+    autosize: false, width: plotWidth, height,
     uirevision: `${runId}:${overlay}:${variables.join(',')}:${axisKey}:${resetRevision}`,
     paper_bgcolor: '#ffffff', plot_bgcolor: '#ffffff',
     font: { family: 'Inter, Segoe UI, sans-serif', size: 11, color: '#64748b' },
@@ -61,13 +67,13 @@ export function SumoOutputPlot({ result, variables, rightAxis, overlay, runId, o
       gridcolor: '#e8edf3', zeroline: false, rangemode: 'tozero', tickformat: '~g', automargin: false },
     ...(hasRight ? { yaxis2: { autorange: true, title: { text: rightTitle, standoff: 12 }, overlaying: 'y', side: 'right',
       showgrid: false, zeroline: false, rangemode: 'tozero', tickformat: '~g', automargin: false } } : {}),
-    showlegend: overlay, legend: { orientation: 'h', y: -80 / plotHeight, yanchor: 'top', x: 0, xanchor: 'left',
-      entrywidth: legend.fraction, entrywidthmode: 'fraction', font: { size: 11 }, maxheight: legend.height },
+    showlegend: overlay, legend: { orientation: 'h', y: -64 / plotHeight, yanchor: 'top', x: 0, xanchor: 'left',
+      font: { size: 11 }, maxheight: legend.height },
     margin: { t: 35, b: bottom, l: 75, r: overlay ? 75 : 25, autoexpand: false },
     hovermode: 'x unified', hoverlabel: { bgcolor: '#ffffff', bordercolor: '#e2e8f0', font: { size: 12 } },
     dragmode: 'zoom',
-  }), [width, height, runId, overlay, variables, axisKey, hasRight, leftTitle, rightTitle, language, timestamps, bottom, legend.fraction, legend.height, resetRevision]);
-  return <div ref={frame} className="sumo-plot-frame" style={{ height }}>
+  }), [width, height, runId, overlay, variables, axisKey, hasRight, leftTitle, rightTitle, language, timestamps, bottom, plotWidth, legend.height, resetRevision]);
+  return <div ref={frame} className="sumo-plot-frame" style={{ height: height + (plotWidth > width ? 18 : 0), overflowX: 'auto' }}>
     {width > 0 && <Plot data={data} layout={layout}
       config={{ ...plotLocale(language), responsive: false, displaylogo: false, displayModeBar: true, doubleClick: 'reset',
         modeBarButtonsToRemove: ['lasso2d', 'select2d', 'resetScale2d', 'autoScale2d'],
@@ -75,6 +81,6 @@ export function SumoOutputPlot({ result, variables, rightAxis, overlay, runId, o
           icon: { width: 24, height: 24, path: 'M4 4v6h6L7.5 7.5A7 7 0 1 1 5 13H3a9 9 0 1 0 3-7L4 4z' },
           click: () => setResetRevision(value => value + 1) }],
         toImageButtonOptions: { format: 'png', filename: 'sumo-comparison', scale: 2 } }}
-      style={{ width: '100%', height: '100%' }} />}
+      style={{ width: plotWidth, height }} />}
   </div>;
 }
