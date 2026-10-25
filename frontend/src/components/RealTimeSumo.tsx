@@ -166,7 +166,7 @@ export function RealTimeSumo(){
             </select></label>
             <label className="sensor-field"><span>KEPServer OPC UA Node ID</span><input type="text" value={group.draft} disabled={running} placeholder="ns=2;s=..." onChange={e=>group.setDraft(e.target.value)}/></label>
             <button className="secondary" disabled={running||!group.selected||!group.draft.trim()} onClick={()=>changeMapping(group.selected,group.draft.trim())}>Add / Update mapping</button>
-            <details className="sensor-mapping-list"><summary>Review mappings</summary>
+            <details className="sensor-mapping-list" onMouseLeave={event => { event.currentTarget.open = false; }}><summary>Review mappings</summary>
               {Object.entries(mapping).filter(([key])=>Boolean(defaultDoMapping[key])===group.isDo).map(([column,node])=><div className="sensor-mapping-row" key={column}>
                 <div><strong>{[...options,...doSensorOptions].find(o=>o.name===column)?.label||column.split('__').pop()}</strong><code>{node}</code></div>
                 <button className="secondary" aria-label={'Remove '+column} disabled={running} onClick={()=>{

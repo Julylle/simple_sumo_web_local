@@ -7,7 +7,7 @@ export function VariableDropdown({ title, options, selected, onChange }: {
   title: string; options: OutputOption[]; selected: string[]; onChange: (keys: string[]) => void;
 }) {
   useLanguage();
-  return <details className="sumo-variable-dropdown"><summary>{t(title)} <span>{selected.filter(k => options.some(o => o.key === k)).length} {t("selected")}</span></summary>
+  return <details className="sumo-variable-dropdown" onMouseLeave={event => { event.currentTarget.open = false; }}><summary>{t(title)} <span>{selected.filter(k => options.some(o => o.key === k)).length} {t("selected")}</span></summary>
     <div className="sumo-variable-options"><div className="measurement-actions">
       <button className="secondary" onClick={() => onChange(options.map(o => o.key))}>{t("Select all")}</button>
       <button className="secondary" onClick={() => onChange([])}>{t("Clear")}</button></div>
