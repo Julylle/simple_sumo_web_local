@@ -80,7 +80,8 @@ def test_restart_resume_uses_checkpoint_time_mapping_and_model(session, monkeypa
 
 @pytest.mark.parametrize('resume_ms', [0, 120000])
 @pytest.mark.parametrize('stop_at_boundary', [False, True])
-def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failure(session, tmp_path, monkeypatch, resume_ms, stop_at_boundary):
+@pytest.mark.parametrize('locked_cleanup', [False, True])
+def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failure(session, tmp_path, monkeypatch, resume_ms, stop_at_boundary, locked_cleanup):
     import sys
     session['resume_ms'] = resume_ms
     monkeypatch.setattr(live, 'ROOT', tmp_path)
@@ -125,6 +126,22 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
             engine.message_callback(1, '530045 Saved')
         elif command.startswith('set Sumo__LimitTime '):
             emit(int(command.split()[-1].rstrip(';')))
+    original_temporary_directory = live.tempfile.TemporaryDirectory
+    temporary_folders = []
+    cleanup_calls = []
+    def temporary_directory(**kwargs):
+        from types import SimpleNamespace
+        directory = original_temporary_directory(**kwargs)
+        temporary_folders.append(directory)
+        def cleanup():
+            engine.finish.assert_called_once_with(1)
+            engine.cleanup.assert_called_once()
+            cleanup_calls.append(directory.name)
+            if locked_cleanup:
+                raise PermissionError(5, 'DLL still in use')
+            directory.cleanup()
+        return SimpleNamespace(name=directory.name, cleanup=cleanup)
+    monkeypatch.setattr(live.tempfile, 'TemporaryDirectory', temporary_directory)
     engine.schedule.side_effect = schedule
     engine.sendCommand.side_effect = send
     reads = 0
@@ -137,7 +154,12 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
             raise RuntimeError('Sensor disconnected')
         return {Q:1000*reads}
     monkeypatch.setattr(live, '_read_model_inputs', read)
-    live._worker(session)
+    try:
+        live._worker(session)
+    finally:
+        for directory in temporary_folders:
+            directory.cleanup()
+    assert len(cleanup_calls) == 1
     if stop_at_boundary:
         assert session['status'] == 'stopped'
         assert reads == 2

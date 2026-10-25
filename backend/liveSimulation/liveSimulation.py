@@ -132,6 +132,7 @@ def _worker(s):
     save_requested = False
     save_done = threading.Event()
     job = None
+    workspace = None
     try:
         logging.info("Live SUMO %s validating model files", s["id"])
         with _lock:
@@ -151,117 +152,119 @@ def _worker(s):
         with _lock:
             s["phase"] = "reading_initial_sensors"
         values = _read_model_inputs(s["mapping"])
-        with tempfile.TemporaryDirectory(prefix="sumo_live_") as directory:
-            folder = Path(directory)
-            shutil.copytree(model_dir / "dynamita", folder / "dynamita")
-            with _lock:
-                s["phase"] = "prepared_dynamita_runtime"
-            dll = (folder / "dynamic_headless.dll").as_posix()
-            output_state = (folder / "final_state.xml").as_posix()
-            with _lock:
-                s["phase"] = "extracting_model_dll"
-            dtool.extract_dll_from_project(str(project), dll)
-            ds.sumo.setParallelJobs(1)
-            def message(job_id, msg):
-                nonlocal state_loaded
-                if msg.startswith("530041"):
-                    state_loaded = True
-                if msg.startswith(("230046","230008")):
-                    errors.append("SUMO rejected assignment: "+msg)
-                    done.set()
-                if msg.startswith("530045") and save_requested:
-                    save_done.set()
-                if ds.sumo.isSimFinishedMsg(msg):
-                    errors.append("SUMO finished unexpectedly.")
-                    done.set()
-            def sample(job_id, data):
-                try:
-                    ms = data.get("Sumo__Time")
-                    if ms is None or not math.isfinite(float(ms)):
-                        raise ValueError("Missing SUMO simulation time.")
-                    with _lock:
-                        s["sim_ms"] = int(ms)
-                        s["times"].append(float(ms)/3600000)
-                        for name in dict.fromkeys([*s["mapping"], *output_variables]):
-                            s["variables"].setdefault(name, []).append(float(data.get(name, float("nan"))))
-                        # Keep arrays aligned and finite for the plot.
-                        if any(not math.isfinite(s["variables"][k][-1]) for k in s["variables"]):
-                            raise ValueError("Non-finite SUMO output.")
-                    boundary.set()
-                except Exception as exc:
-                    errors.append(str(exc))
-                    done.set()
-            ds.sumo.message_callback = message
-            ds.sumo.datacomm_callback = sample
-            commands = [f'load "{initial.as_posix()}";', "maptoic;", f"set Sumo__Time {resume_ms};",
-                        f"set Sumo__StopTime {max_ms};", f"set Sumo__DataComm {step_ms};",
-                        "mode dynamic;", *(f"set {k} {v};" for k,v in values.items()),
-                        f"set Sumo__LimitTime {resume_ms + step_ms};", "start;"]
-            with _lock:
-                s["phase"] = "scheduling_job"
-            job = ds.sumo.schedule(dll, commands=commands,
-                variables=list(dict.fromkeys(["Sumo__Time", *s["mapping"], *output_variables])),
-                jobData={getattr(ds.sumo, "persistent", "persistent"): True})
-            with _lock:
-                s["status"] = "running"
-                s["phase"] = "waiting_for_boundary"
-            def checkpoint(simulated_ms):
-                nonlocal save_requested
+        # Release the scheduler before removing a directory containing its loaded DLL.
+        workspace = tempfile.TemporaryDirectory(prefix="sumo_live_", ignore_cleanup_errors=True)
+        directory = workspace.name
+        folder = Path(directory)
+        shutil.copytree(model_dir / "dynamita", folder / "dynamita")
+        with _lock:
+            s["phase"] = "prepared_dynamita_runtime"
+        dll = (folder / "dynamic_headless.dll").as_posix()
+        output_state = (folder / "final_state.xml").as_posix()
+        with _lock:
+            s["phase"] = "extracting_model_dll"
+        dtool.extract_dll_from_project(str(project), dll)
+        ds.sumo.setParallelJobs(1)
+        def message(job_id, msg):
+            nonlocal state_loaded
+            if msg.startswith("530041"):
+                state_loaded = True
+            if msg.startswith(("230046","230008")):
+                errors.append("SUMO rejected assignment: "+msg)
+                done.set()
+            if msg.startswith("530045") and save_requested:
+                save_done.set()
+            if ds.sumo.isSimFinishedMsg(msg):
+                errors.append("SUMO finished unexpectedly.")
+                done.set()
+        def sample(job_id, data):
+            try:
+                ms = data.get("Sumo__Time")
+                if ms is None or not math.isfinite(float(ms)):
+                    raise ValueError("Missing SUMO simulation time.")
                 with _lock:
-                    s['phase'] = 'saving_checkpoint'
-                save_done.clear()
-                save_requested = True
-                try:
-                    ds.sumo.sendCommand(job, f'save "{output_state}";')
-                    deadline = time.monotonic() + 60
-                    while not save_done.wait(0.1):
-                        if done.is_set() or time.monotonic() >= deadline:
-                            raise RuntimeError('Checkpoint save failed or timed out; previous checkpoint retained.')
-                    if errors:
-                        raise RuntimeError(errors[0])
-                    validate_state_file(output_state)
-                    save_checkpoint(s, output_state, simulated_ms)
-                finally:
-                    save_requested = False
+                    s["sim_ms"] = int(ms)
+                    s["times"].append(float(ms)/3600000)
+                    for name in dict.fromkeys([*s["mapping"], *output_variables]):
+                        s["variables"].setdefault(name, []).append(float(data.get(name, float("nan"))))
+                    # Keep arrays aligned and finite for the plot.
+                    if any(not math.isfinite(s["variables"][k][-1]) for k in s["variables"]):
+                        raise ValueError("Non-finite SUMO output.")
+                boundary.set()
+            except Exception as exc:
+                errors.append(str(exc))
+                done.set()
+        ds.sumo.message_callback = message
+        ds.sumo.datacomm_callback = sample
+        commands = [f'load "{initial.as_posix()}";', "maptoic;", f"set Sumo__Time {resume_ms};",
+                    f"set Sumo__StopTime {max_ms};", f"set Sumo__DataComm {step_ms};",
+                    "mode dynamic;", *(f"set {k} {v};" for k,v in values.items()),
+                    f"set Sumo__LimitTime {resume_ms + step_ms};", "start;"]
+        with _lock:
+            s["phase"] = "scheduling_job"
+        job = ds.sumo.schedule(dll, commands=commands,
+            variables=list(dict.fromkeys(["Sumo__Time", *s["mapping"], *output_variables])),
+            jobData={getattr(ds.sumo, "persistent", "persistent"): True})
+        with _lock:
+            s["status"] = "running"
+            s["phase"] = "waiting_for_boundary"
+        def checkpoint(simulated_ms):
+            nonlocal save_requested
+            with _lock:
+                s['phase'] = 'saving_checkpoint'
+            save_done.clear()
+            save_requested = True
+            try:
+                ds.sumo.sendCommand(job, f'save "{output_state}";')
+                deadline = time.monotonic() + 60
+                while not save_done.wait(0.1):
+                    if done.is_set() or time.monotonic() >= deadline:
+                        raise RuntimeError('Checkpoint save failed or timed out; previous checkpoint retained.')
+                if errors:
+                    raise RuntimeError(errors[0])
+                validate_state_file(output_state)
+                save_checkpoint(s, output_state, simulated_ms)
+            finally:
+                save_requested = False
 
-            started = time.monotonic()
-            next_index = 1
-            while not done.is_set():
-                if not boundary.wait(0.25):
-                    continue
-                boundary.clear()
-                if not state_loaded:
-                    raise RuntimeError("SUMO initial state was not confirmed loaded.")
-                with _lock:
-                    current_ms = s["sim_ms"]
-                if current_ms < resume_ms + next_index * step_ms:
-                    continue
-                if current_ms > resume_ms + next_index * step_ms:
-                    raise RuntimeError("SUMO advanced beyond its input boundary.")
-                checkpoint(current_ms)
-                # Do not advance before real time catches up with simulated time.
-                due = started + next_index * s["interval"]
-                while time.monotonic() < due and not s["stop"].is_set():
-                    s["stop"].wait(min(0.25, due - time.monotonic()))
-                if s["stop"].is_set():
-                    break
-                try:
-                    new_values = _read_model_inputs(s["mapping"])
-                except Exception as exc:
-                    # Fail closed: do not advance with stale values.
-                    raise RuntimeError("OPC UA unavailable; live simulation stopped: "+str(exc)) from exc
-                for key, value in new_values.items():
-                    ds.sumo.sendCommand(job, f"set {key} {value};")
-                values = new_values
-                next_index += 1
-                ds.sumo.sendCommand(job, f"set Sumo__LimitTime {resume_ms + next_index * step_ms};")
-                with _lock:
-                    s["phase"] = "simulating"
-            if errors:
-                raise RuntimeError(errors[0])
+        started = time.monotonic()
+        next_index = 1
+        while not done.is_set():
+            if not boundary.wait(0.25):
+                continue
+            boundary.clear()
+            if not state_loaded:
+                raise RuntimeError("SUMO initial state was not confirmed loaded.")
             with _lock:
-                s["status"] = "stopped"
-                s["phase"] = "saved"
+                current_ms = s["sim_ms"]
+            if current_ms < resume_ms + next_index * step_ms:
+                continue
+            if current_ms > resume_ms + next_index * step_ms:
+                raise RuntimeError("SUMO advanced beyond its input boundary.")
+            checkpoint(current_ms)
+            # Do not advance before real time catches up with simulated time.
+            due = started + next_index * s["interval"]
+            while time.monotonic() < due and not s["stop"].is_set():
+                s["stop"].wait(min(0.25, due - time.monotonic()))
+            if s["stop"].is_set():
+                break
+            try:
+                new_values = _read_model_inputs(s["mapping"])
+            except Exception as exc:
+                # Fail closed: do not advance with stale values.
+                raise RuntimeError("OPC UA unavailable; live simulation stopped: "+str(exc)) from exc
+            for key, value in new_values.items():
+                ds.sumo.sendCommand(job, f"set {key} {value};")
+            values = new_values
+            next_index += 1
+            ds.sumo.sendCommand(job, f"set Sumo__LimitTime {resume_ms + next_index * step_ms};")
+            with _lock:
+                s["phase"] = "simulating"
+        if errors:
+            raise RuntimeError(errors[0])
+        with _lock:
+            s["status"] = "stopped"
+            s["phase"] = "saved"
     except Exception as exc:
         logging.exception("Live SUMO worker failed")
         with _lock:
@@ -280,5 +283,11 @@ def _worker(s):
             pass
         ds.sumo.message_callback = None
         ds.sumo.datacomm_callback = None
-        if s.get("resume_folder") is not None:
-            s["resume_folder"].cleanup()
+        # Windows may retain DLL handles briefly even after Scheduler cleanup.
+        # Temporary-file cleanup must not replace the actual simulation outcome.
+        for temporary in (workspace, s.get("resume_folder")):
+            if temporary is not None:
+                try:
+                    temporary.cleanup()
+                except OSError:
+                    logging.warning("Temporary SUMO files remain in %s", temporary.name, exc_info=True)
