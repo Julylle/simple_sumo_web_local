@@ -1,5 +1,5 @@
 import { defaultDoMapping, doSensorOptions } from '../config/doSensors';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { LiveSensorPlot } from './LiveSensorPlot';
 import { SumoOutputDashboard } from './SumoOutputDashboard';
 
@@ -49,6 +49,12 @@ export function RealTimeSumo(){
   const [doDraft,setDoDraft]=useState(defaultDoMapping[doSensorOptions[0].name]);
   const [readings,setReadings]=useState<Reading[]>([]);
   const [history,setHistory]=useState<Sample[]>([]);
+  // Display the same converted flow used by SUMO without changing raw readings.
+  const influentPlotHistory=useMemo(()=>history.map(sample=>
+    sample.column==='Sumo__Plant__Influent__param__Q'
+      ? {...sample,value:sample.value/0.0417}
+      : sample
+  ),[history]);
   const [connected,setConnected]=useState(false);
   const [sensorError,setSensorError]=useState('');
   const pollingRef=useRef(false);
@@ -195,7 +201,7 @@ export function RealTimeSumo(){
     </section>
     <section className="config-card"><div className="section-title"><div><h2>Output variables visualisation</h2></div><button className="secondary" disabled={!liveRun?.result?.time_h?.length||downloading} onClick={async()=>{setDownloading(true);try{const response=await fetch('/api/sumo/live/download');if(!response.ok)throw Error('Download failed');const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download='sumo_live_results.csv';link.click();URL.revokeObjectURL(url);}catch(e){setError(String(e));}finally{setDownloading(false);}}}>Download results CSV</button></div>
       <LiveSensorPlot title="Influent variables · live sensor trends" groupTitle="Influent variables"
-        options={influentPlotOptions} history={history} />
+        options={influentPlotOptions} history={influentPlotHistory} />
       <LiveSensorPlot title="DO concentrations · live sensor trends" groupTitle="DO concentrations"
         options={doPlotOptions} history={history} className="live-do-card" />
       <SumoOutputDashboard showInfluent={false} showDo={false} influent={influentPlotOptions} result={liveRun?.result} runId={liveRun?.id||''}/>
