@@ -16,6 +16,7 @@ from uuid import uuid4
 
 from services.kepserver import read_snapshot
 from services.sensor_inputs import SENSOR_COLUMNS
+from services.live_models import resolve_model
 
 ROOT = Path(__file__).resolve().parents[1]
 _lock = threading.RLock()
@@ -27,22 +28,25 @@ def snapshot():
             return {"status": "idle"}
         s = _session
         return {"id": s["id"], "status": s["status"], "error": s.get("error"),
+                "model_id": s["model_id"], "model_name": s["model"]["name"],
                 "phase": s["phase"], "simulated_h": s["sim_ms"] / 3600000,
                 "samples": len(s["times"]), "result": {
                     "time_h": list(s["times"]), "variables": {k: list(v) for k, v in s["variables"].items()}}}
 
-def start(mapping, interval_minutes):
+def start(mapping, interval_minutes, model_id="builtin"):
     global _session
     if not mapping or any(k not in SENSOR_COLUMNS or not isinstance(v, str) or not v.strip() for k,v in mapping.items()):
         raise ValueError("Provide valid OPC UA node IDs for supported SUMO inputs.")
     if not isinstance(interval_minutes, int) or not 1 <= interval_minutes <= 60:
         raise ValueError("Limit time must be 1–60 whole minutes.")
+    selected_model = resolve_model(model_id)
     with _lock:
         if _session is not None and _session["status"] in ("starting", "running", "stopping"):
             raise RuntimeError("A live SUMO session is already active.")
         s = {"id": str(uuid4()), "status": "starting", "phase": "initializing",
              "error": None, "sim_ms": 0, "times": [], "variables": {},
              "mapping": dict(mapping), "interval": interval_minutes * 60,
+             "model": selected_model, "model_id": model_id,
              "stop": threading.Event()}
         _session = s
     threading.Thread(target=_worker, args=(s,), daemon=True, name="sumo-live").start()
@@ -115,8 +119,8 @@ def _worker(s):
         logging.info("Live SUMO %s validating model files", s["id"])
         with _lock:
             s["phase"] = "validating_model"
-        initial = model_dir / "sumo_steady_state.xml"
-        project = model_dir / "Cixi Eastern WWTP_20260920.sumo"
+        initial = s["model"]["state"]
+        project = s["model"]["project"]
         validate_state_file(initial)
         with zipfile.ZipFile(project) as archive:
             fields = [line.split("\t") for line in archive.read("variables.var").decode("utf-8-sig").splitlines()]
@@ -124,6 +128,8 @@ def _worker(s):
             meta = next((row for row in fields if len(row)>4 and row[1]==column), None)
             if meta is None or meta[4] not in ("Parameter","SystemParameter","Dimension"):
                 raise ValueError("SUMO input not writable: "+column)
+        available_names = {row[1] for row in fields if len(row) > 1}
+        output_variables = [name for name in OUTPUT_VARIABLES if name in available_names]
         # First read must succeed before creating a SUMO job.
         with _lock:
             s["phase"] = "reading_initial_sensors"
@@ -160,7 +166,7 @@ def _worker(s):
                     with _lock:
                         s["sim_ms"] = int(ms)
                         s["times"].append(float(ms)/3600000)
-                        for name in dict.fromkeys([*s["mapping"], *OUTPUT_VARIABLES]):
+                        for name in dict.fromkeys([*s["mapping"], *output_variables]):
                             s["variables"].setdefault(name, []).append(float(data.get(name, float("nan"))))
                         # Keep arrays aligned and finite for the plot.
                         if any(not math.isfinite(s["variables"][k][-1]) for k in s["variables"]):
@@ -178,7 +184,7 @@ def _worker(s):
             with _lock:
                 s["phase"] = "scheduling_job"
             job = ds.sumo.schedule(dll, commands=commands,
-                variables=list(dict.fromkeys(["Sumo__Time", *s["mapping"], *OUTPUT_VARIABLES])),
+                variables=list(dict.fromkeys(["Sumo__Time", *s["mapping"], *output_variables])),
                 jobData={getattr(ds.sumo, "persistent", "persistent"): True})
             with _lock:
                 s["status"] = "running"

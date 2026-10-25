@@ -6,7 +6,8 @@ import { SumoOutputDashboard } from './SumoOutputDashboard';
 type Option = {name:string;label:string;unit:string};
 type Reading = {column:string;node_id:string;value:number;timestamp:string};
 type Sample = Reading & { receivedAt: number };
-type LiveRun = {id?:string;status:string;phase?:string;error?:string;simulated_h?:number;samples?:number;result?:{time_h:number[];variables:Record<string,number[]>}};
+type UploadedModel = {id:string;name:string;state_name:string};
+type LiveRun = {id?:string;model_id?:string;model_name?:string;status:string;phase?:string;error?:string;simulated_h?:number;samples?:number;result?:{time_h:number[];variables:Record<string,number[]>}};
 type Run = {id:string;status:'running'|'completed'|'failed';error?:string;progress_pct?:number;phase?:string;result?:{time_h:number[];variables:Record<string,number[]>}};
 // Default influent mappings from Julylle/Sumo_web/demo_MLE/cx_opcua1124.csv.
 const defaultMapping: Record<string,string> = {
@@ -63,6 +64,14 @@ export function RealTimeSumo(){
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
   const [limitMinutes,setLimitMinutes]=useState('5');
+  const [modelSource,setModelSource]=useState('builtin');
+  const [modelFile,setModelFile]=useState<File|null>(null);
+  const [stateFile,setStateFile]=useState<File|null>(null);
+  const [uploadedModel,setUploadedModel]=useState<UploadedModel|null>(null);
+  const [modelUploading,setModelUploading]=useState(false);
+  const [modelError,setModelError]=useState('');
+  const modelReady=modelSource==='builtin'||!!uploadedModel;
+
   const [run,setRun]=useState<Run|null>(null);
   const [liveRun,setLiveRun]=useState<LiveRun|null>(null);
   const [downloading,setDownloading]=useState(false);
@@ -119,12 +128,25 @@ export function RealTimeSumo(){
       setConnected(true);
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
+  async function uploadModel(){
+    if(!modelFile||!stateFile)return;
+    setModelUploading(true);setModelError('');setUploadedModel(null);
+    try{
+      if(!modelFile.name.toLowerCase().endsWith('.sumo')||modelFile.size>50*1024*1024)
+        throw new Error('Choose a .sumo project no larger than 50 MB.');
+      if(!stateFile.name.toLowerCase().endsWith('.xml')||stateFile.size>20*1024*1024)
+        throw new Error('Choose an initial-state XML no larger than 20 MB.');
+      const form=new FormData();form.append('project',modelFile);form.append('initial_state',stateFile);
+      setUploadedModel(await json('/api/sumo/live/models',{method:'POST',body:form}));
+    }catch(e){setModelError(String(e));}finally{setModelUploading(false);}
+  }
   async function start(){
+    if(!modelReady)return;
     setBusy(true);setError('');
     try{
       const selected=Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()));
       const result:LiveRun=await json('/api/sumo/live/start',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({mapping:selected,interval_minutes:Number(limitMinutes)})});
+        body:JSON.stringify({mapping:selected,interval_minutes:Number(limitMinutes),model_id:modelSource==='builtin'?'builtin':uploadedModel!.id})});
       setLiveRun(result);
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
@@ -145,7 +167,7 @@ export function RealTimeSumo(){
     }catch(e){setError(String(e));}finally{setDownloading(false);}
   }
   const liveActive=['starting','running','stopping'].includes(liveRun?.status||'');
-  const running=busy||liveActive;
+  const running=busy||liveActive||modelUploading;
   const influentPlotOptions=Object.keys(mapping).filter(key=>!defaultDoMapping[key]).map(key=>({
     key,label:options.find(o=>o.name===key)?.label||key.split('__').pop()||key,
     unit:options.find(o=>o.name===key)?.unit||''
@@ -182,6 +204,25 @@ export function RealTimeSumo(){
         {sensorError&&<div className="alert" role="alert">Sensor update failed: {sensorError}</div>}
       </section>
       <h3 className="sumo-step-title">Step2: Set up real time simulation</h3>
+      <section className="sensor-setup" aria-label="SUMO model selection">
+        <label className="sensor-field"><span>SUMO model</span>
+          <select value={modelSource} disabled={running} onChange={e=>{setModelSource(e.target.value);setModelError('');}}>
+            <option value="builtin">Built-in · Cixi Eastern WWTP_20260920</option>
+            <option value="upload">Upload a SUMO model</option>
+          </select>
+        </label>
+        {modelSource==='builtin'?<p className="calibration-note">Uses the built-in model and sumo_steady_state.xml initial state.</p>:<>
+          <p className="calibration-note">Choose a compiled SUMO project and its matching initial state. The model must support your selected sensor variables. Uploads are available until the backend restarts.</p>
+          <div className="sensor-editor-grid">
+            <label className="sensor-field"><span>SUMO project (.sumo, max 50 MB)</span><input type="file" accept=".sumo" disabled={running} onChange={e=>{setModelFile(e.target.files?.[0]||null);setUploadedModel(null);setModelError('');}}/></label>
+            <label className="sensor-field"><span>Initial state (.xml, max 20 MB)</span><input type="file" accept=".xml" disabled={running} onChange={e=>{setStateFile(e.target.files?.[0]||null);setUploadedModel(null);setModelError('');}}/></label>
+          </div>
+          <div className="sensor-actions"><button className="secondary" disabled={running||!modelFile||!stateFile} onClick={()=>void uploadModel()}>{modelUploading?'Uploading model...':'Upload model and initial state'}</button></div>
+          {uploadedModel&&<p role="status" className="measurement-ready">Ready: {uploadedModel.name} · {uploadedModel.state_name}</p>}
+        </>}
+        {modelError&&<div className="alert" role="alert">{modelError}</div>}
+        {liveActive&&liveRun?.model_name&&<p role="status">Running model: {liveRun.model_name}</p>}
+      </section>
       <div className="fields">
         <label className="field"><span className="field-label">Simulation mode</span>
           <div className="input-wrap"><input value="Live · continuous (1×)" readOnly aria-label="Simulation mode"/></div>
@@ -194,7 +235,7 @@ export function RealTimeSumo(){
         </label>
       </div>
       <p className="calibration-note">Live-only mode: SUMO will run continuously until manually stopped, using the selected input update interval. The model runs in one persistent Scheduler session until Stop SUMO is clicked.</p>
-      <p><button className="primary" disabled={running||!connected||!(Number(limitMinutes)>=1&&Number(limitMinutes)<=60)} onClick={()=>void start()}>Run SUMO</button> <button className="secondary" disabled={busy||!['starting','running'].includes(liveRun?.status||'')} onClick={()=>void stop()}>Stop SUMO</button></p>
+      <p><button className="primary" disabled={running||!modelReady||!connected||!(Number(limitMinutes)>=1&&Number(limitMinutes)<=60)} onClick={()=>void start()}>Run SUMO</button> <button className="secondary" disabled={busy||!['starting','running'].includes(liveRun?.status||'')} onClick={()=>void stop()}>Stop SUMO</button></p>
       {liveRun&&<div className="sumo-progress"><p role="status">{liveRun.status} · {liveRun.phase||''} · {(liveRun.simulated_h||0).toFixed(2)} simulated hours · {liveRun.samples||0} output samples</p>{liveRun.error&&<div className="alert">{liveRun.error}</div>}</div>}
       {run&&<div className="sumo-progress"><p role="status">{run.phase||run.status} · {Math.floor(run.progress_pct||0)}%</p><progress max="100" value={run.progress_pct||0}/></div>}
       {(error||run?.error)&&<div className="alert" role="alert">{error||run?.error}</div>}
