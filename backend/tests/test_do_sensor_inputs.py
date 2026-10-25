@@ -13,7 +13,7 @@ import pytest
 
 def test_sensor_allowlist_and_request_capacity():
     assert len(DO_COLUMNS) == 24
-    assert len(set(SENSOR_COLUMNS)) == 36
+    assert len(set(SENSOR_COLUMNS)) == 40
     mapping = {key: f'ns=2;s=sensor{i}' for i, key in enumerate(SENSOR_COLUMNS)}
     assert SnapshotRequest(mapping=mapping).mapping == mapping
     assert LiveStart(mapping=mapping).mapping == mapping
@@ -36,7 +36,7 @@ def test_all_mappings_return_even_when_tags_are_shared():
     mapping = {key: 'ns=2;s=shared_tag' for key in SENSOR_COLUMNS}
     with patch('services.kepserver.Client', Client):
         readings = asyncio.run(read_snapshot(mapping))
-    assert len(readings) == 36
+    assert len(readings) == 40
     assert {r['column'] for r in readings} == set(SENSOR_COLUMNS)
     assert all(r['value'] == 2.5 for r in readings)
 

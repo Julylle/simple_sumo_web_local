@@ -10,7 +10,7 @@ from services.sumo_data import save_input
 router = APIRouter()
 
 class SnapshotRequest(BaseModel):
-    mapping: dict[str, str] = Field(min_length=1, max_length=36)
+    mapping: dict[str, str] = Field(min_length=1, max_length=40)
 
 @router.post("/kepserver/snapshot")
 async def snapshot(request: SnapshotRequest):

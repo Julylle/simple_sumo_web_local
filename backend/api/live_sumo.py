@@ -7,7 +7,7 @@ from services.live_models import register_model, MAX_MODEL_BYTES, MAX_STATE_BYTE
 router = APIRouter()
 
 class LiveStart(BaseModel):
-    mapping: dict[str, str] = Field(min_length=1, max_length=36)
+    mapping: dict[str, str] = Field(min_length=1, max_length=40)
     interval_minutes: int = Field(default=5, ge=1, le=60)
     model_id: str = Field(default="builtin", min_length=1, max_length=64)
 

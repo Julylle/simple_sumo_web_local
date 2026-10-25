@@ -192,3 +192,6 @@
 .sensor-mapping-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #f1f5f9}.sensor-mapping-row>div{min-width:0}.sensor-mapping-row strong{font-size:12px}.sensor-mapping-row code{display:block;overflow-wrap:anywhere;font-size:11px;color:#64748b;line-height:1.6;margin-top:4px}.sensor-mapping-row button{flex-shrink:0}
 .sensor-actions{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-top:20px}.sensor-actions span{font-size:12px;color:#64748b}.live-do-card{margin:24px 0}
 @media(max-width:900px){.sensor-editor-grid{grid-template-columns:1fr}.sensor-heading{flex-direction:column}.sensor-setup{padding:16px}.sensor-editor{padding:16px}}
+
+.sensor-input-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:1200px){.sensor-input-grid{grid-template-columns:1fr}}

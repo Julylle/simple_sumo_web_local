@@ -1,3 +1,4 @@
+import { defaultControlMapping, controlSensorOptions } from '../config/additionalControls';
 import { defaultDoMapping, doSensorOptions } from '../config/doSensors';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { LiveSensorPlot } from './LiveSensorPlot';
@@ -43,11 +44,13 @@ async function json(url:string,init?:RequestInit) {
   return body;
 }
 export function RealTimeSumo(){
-  const [mapping,setMapping]=useState<Record<string,string>>(()=>({...defaultMapping,...defaultDoMapping}));
+  const [mapping,setMapping]=useState<Record<string,string>>(()=>({...defaultMapping,...defaultDoMapping,...defaultControlMapping}));
   const [selectedColumn,setSelectedColumn]=useState(defaultColumn);
   const [nodeDraft,setNodeDraft]=useState(defaultNode);
   const [selectedDo,setSelectedDo]=useState(doSensorOptions[0].name);
   const [doDraft,setDoDraft]=useState(defaultDoMapping[doSensorOptions[0].name]);
+  const [selectedControl,setSelectedControl]=useState(controlSensorOptions[0].name);
+  const [controlDraft,setControlDraft]=useState(defaultControlMapping[controlSensorOptions[0].name]);
   const [readings,setReadings]=useState<Reading[]>([]);
   const [history,setHistory]=useState<Sample[]>([]);
   // Display the same converted flow used by SUMO without changing raw readings.
@@ -105,7 +108,7 @@ export function RealTimeSumo(){
         if(cancelled)return;
         const receivedAt=Date.now();
         setReadings(result.readings);
-        setHistory(old=>[...old,...(result.readings as Reading[]).map(r=>({...r,receivedAt}))].filter(s=>s.receivedAt>=receivedAt-3600000).slice(-25920));
+        setHistory(old=>[...old,...(result.readings as Reading[]).map(r=>({...r,receivedAt}))].filter(s=>s.receivedAt>=receivedAt-3600000).slice(-28800));
         setSensorError('');
       }catch(e){if(!cancelled)setSensorError(String(e));}
       finally{pollingRef.current=false;}
@@ -168,7 +171,8 @@ export function RealTimeSumo(){
   }
   const liveActive=['starting','running','stopping'].includes(liveRun?.status||'');
   const running=busy||liveActive||modelUploading;
-  const influentPlotOptions=Object.keys(mapping).filter(key=>!defaultDoMapping[key]).map(key=>({
+  const sensorGroup=(key:string)=>defaultDoMapping[key]?'do':defaultControlMapping[key]?'control':'influent';
+  const influentPlotOptions=Object.keys(mapping).filter(key=>Boolean(defaultMapping[key])).map(key=>({
     key,label:options.find(o=>o.name===key)?.label||key.split('__').pop()||key,
     unit:options.find(o=>o.name===key)?.unit||''
   }));
@@ -178,19 +182,20 @@ export function RealTimeSumo(){
     <section className="config-card">
       <div className="section-title"><div><h2>Simulation settings</h2></div></div>
       <section className="sensor-setup" aria-labelledby="sensor-step-title">
-        <div className="sensor-heading"><div><h3 id="sensor-step-title">Step1: Connect sensors through KEPServer</h3><p>Review the prefilled tags, then connect to see live influent and dissolved oxygen readings.</p></div><span className={'sensor-status '+(connected?'is-connected':'')} role="status">{connected?'Connected · every 5 s':'Disconnected'}</span></div>
-        <div className="sensor-editor-grid">
-          {[{title:'Influent variable',items:options,selected:selectedColumn,draft:nodeDraft,setSelected:setSelectedColumn,setDraft:setNodeDraft,isDo:false},
-            {title:'DO sensors',items:doSensorOptions,selected:selectedDo,draft:doDraft,setSelected:setSelectedDo,setDraft:setDoDraft,isDo:true}].map(group=><article className="sensor-editor" key={group.title}>
-            <div className="sensor-editor-title"><h4>{group.title}</h4><span>{Object.keys(mapping).filter(key=>Boolean(defaultDoMapping[key])===group.isDo).length} mapped</span></div>
+        <div className="sensor-heading"><div><h3 id="sensor-step-title">Step1: Connect sensors through KEPServer</h3><p>Review the prefilled influent, DO and additional control tags, then connect to read sensor data.</p></div><span className={'sensor-status '+(connected?'is-connected':'')} role="status">{connected?'Connected · every 5 s':'Disconnected'}</span></div>
+        <div className="sensor-editor-grid sensor-input-grid">
+          {[{title:'Influent variable',items:options,selected:selectedColumn,draft:nodeDraft,setSelected:setSelectedColumn,setDraft:setNodeDraft,kind:'influent'},
+            {title:'DO sensors',items:doSensorOptions,selected:selectedDo,draft:doDraft,setSelected:setSelectedDo,setDraft:setDoDraft,kind:'do'},
+            {title:'Additional control',items:controlSensorOptions,selected:selectedControl,draft:controlDraft,setSelected:setSelectedControl,setDraft:setControlDraft,kind:'control'}].map(group=><article className="sensor-editor" key={group.title}>
+            <div className="sensor-editor-title"><h4>{group.title}</h4><span>{Object.keys(mapping).filter(key=>sensorGroup(key)===group.kind).length} mapped</span></div>
             <label className="sensor-field"><span>{group.title}</span><select value={group.selected} onChange={e=>{group.setSelected(e.target.value);group.setDraft(mapping[e.target.value]||'');}}>
               {group.items.map(option=><option key={option.name} value={option.name}>{option.label} ({option.unit})</option>)}
             </select></label>
             <label className="sensor-field"><span>KEPServer OPC UA Node ID</span><input type="text" value={group.draft} disabled={running} placeholder="ns=2;s=..." onChange={e=>group.setDraft(e.target.value)}/></label>
             <button className="secondary" disabled={running||!group.selected||!group.draft.trim()} onClick={()=>changeMapping(group.selected,group.draft.trim())}>Add / Update mapping</button>
             <details className="sensor-mapping-list" onMouseLeave={event => { event.currentTarget.open = false; }}><summary>Review mappings</summary>
-              {Object.entries(mapping).filter(([key])=>Boolean(defaultDoMapping[key])===group.isDo).map(([column,node])=><div className="sensor-mapping-row" key={column}>
-                <div><strong>{[...options,...doSensorOptions].find(o=>o.name===column)?.label||column.split('__').pop()}</strong><code>{node}</code></div>
+              {Object.entries(mapping).filter(([key])=>sensorGroup(key)===group.kind).map(([column,node])=><div className="sensor-mapping-row" key={column}>
+                <div><strong>{[...options,...doSensorOptions,...controlSensorOptions].find(o=>o.name===column)?.label||column.split('__').pop()}</strong><code>{node}</code></div>
                 <button className="secondary" aria-label={'Remove '+column} disabled={running} onClick={()=>{
                   setConnected(false);setHistory([]);setReadings([]);setSensorError('');
                   setMapping(old=>{const next={...old};delete next[column];return next;});
