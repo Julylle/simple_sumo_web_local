@@ -1,3 +1,4 @@
+import { defaultDoMapping, doSensorOptions } from '../config/doSensors';
 import { useEffect, useRef, useState } from 'react';
 import Plot from 'react-plotly.js';
 import { SumoOutputDashboard } from './SumoOutputDashboard';
@@ -32,9 +33,12 @@ async function json(url:string,init?:RequestInit) {
 }
 export function RealTimeSumo(){
   const [options,setOptions]=useState<Option[]>([]);
-  const [mapping,setMapping]=useState<Record<string,string>>(()=>({...defaultMapping}));
+  const [mapping,setMapping]=useState<Record<string,string>>(()=>({...defaultMapping,...defaultDoMapping}));
   const [selectedColumn,setSelectedColumn]=useState(defaultColumn);
   const [nodeDraft,setNodeDraft]=useState(defaultNode);
+  const [selectedDo,setSelectedDo]=useState(doSensorOptions[0].name);
+  const [doDraft,setDoDraft]=useState(defaultDoMapping[doSensorOptions[0].name]);
+  const [visibleDo,setVisibleDo]=useState(Object.keys(defaultDoMapping));
   const [readings,setReadings]=useState<Reading[]>([]);
   const [history,setHistory]=useState<Sample[]>([]);
   const [secondaryAxis,setSecondaryAxis]=useState(false);
@@ -81,7 +85,7 @@ export function RealTimeSumo(){
         if(cancelled)return;
         const receivedAt=Date.now();
         setReadings(result.readings);
-        setHistory(old=>[...old,...(result.readings as Reading[]).map(r=>({...r,receivedAt}))].filter(s=>s.receivedAt>=receivedAt-3600000).slice(-7200));
+        setHistory(old=>[...old,...(result.readings as Reading[]).map(r=>({...r,receivedAt}))].filter(s=>s.receivedAt>=receivedAt-3600000).slice(-25920));
         setSensorError('');
       }catch(e){if(!cancelled)setSensorError(String(e));}
       finally{pollingRef.current=false;}
@@ -134,36 +138,32 @@ export function RealTimeSumo(){
     <section className="page-head"><div><h1>SUMO Real-time Simulation</h1><p>Cixi Eastern WWTP · KEPServer OPC UA · Manual simulation</p></div></section>
     <section className="config-card">
       <div className="section-title"><div><h2>Simulation settings</h2></div></div>
-      <h3>Step1: Connect sensors through KEPServer</h3>
-      <p className="calibration-note">The 12 influent sensor mappings are prefilled. Select a SUMO influent variable to edit its KEPServer OPC UA Node ID, then click Add / Update sensor mapping. Existing mappings can be changed or removed below.</p>
-      <div className="fields">
-        <label className="field"><span className="field-label">Influent variable</span>
-          <select value={selectedColumn} disabled={running} onChange={e=>{const key=e.target.value;setSelectedColumn(key);setNodeDraft(mapping[key]||'');}}>
-            {options.map(option=><option key={option.name} value={option.name}>{option.label} ({option.unit})</option>)}
-          </select>
-        </label>
-        <label className="field"><span className="field-label">KEPServer OPC UA Node ID</span>
-          <div className="input-wrap"><input type="text" value={nodeDraft} disabled={running} placeholder="ns=2;s=..." onChange={e=>setNodeDraft(e.target.value)}/></div>
-        </label>
-      </div>
-      <p><button className="secondary" disabled={running||!selectedColumn||!nodeDraft.trim()} onClick={()=>changeMapping(selectedColumn,nodeDraft.trim())}>Add / Update sensor mapping</button></p>
-      <div className="sumo-group-dropdowns">
-        <details className="sumo-variable-dropdown"><summary>Connected sensor mappings <span>{Object.keys(mapping).length} selected</span></summary>
-          <div className="sumo-variable-options">
-            {Object.entries(mapping).map(([column,node])=><div key={column} style={{padding:'8px 0'}}>
-              <strong>{options.find(o=>o.name===column)?.label||column.split('__').pop()}</strong>
-              <div style={{overflowWrap:'anywhere',fontSize:12}}>{node}</div>
-              <button className="secondary" disabled={running} onClick={()=>{
-                setConnected(false);setHistory([]);setReadings([]);setSensorError('');
-                setMapping(old=>{const next={...old};delete next[column];return next;});
-                if(selectedColumn===column)setNodeDraft('');
-              }}>Remove</button>
-            </div>)}
-          </div>
-        </details>
-      </div>
-      <p><button className="secondary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{busy?'Reading sensors...':'Connect / Refresh sensor data'}</button> <button className="secondary" disabled={!connected} onClick={()=>setConnected(false)}>Disconnect</button> <span role="status">{connected?'Connected · sampling every 5 s':'Disconnected'}</span></p>
-      {sensorError&&<div className="alert" role="alert">Sensor update failed: {sensorError}</div>}
+      <section className="sensor-setup" aria-labelledby="sensor-step-title">
+        <div className="sensor-heading"><div><h3 id="sensor-step-title">Step1: Connect sensors through KEPServer</h3><p>Review the prefilled tags, then connect to see live influent and dissolved oxygen readings.</p></div><span className={'sensor-status '+(connected?'is-connected':'')} role="status">{connected?'Connected · every 5 s':'Disconnected'}</span></div>
+        <div className="sensor-editor-grid">
+          {[{title:'Influent variable',items:options,selected:selectedColumn,draft:nodeDraft,setSelected:setSelectedColumn,setDraft:setNodeDraft,isDo:false},
+            {title:'DO sensors',items:doSensorOptions,selected:selectedDo,draft:doDraft,setSelected:setSelectedDo,setDraft:setDoDraft,isDo:true}].map(group=><article className="sensor-editor" key={group.title}>
+            <div className="sensor-editor-title"><h4>{group.title}</h4><span>{Object.keys(mapping).filter(key=>Boolean(defaultDoMapping[key])===group.isDo).length} mapped</span></div>
+            <label className="sensor-field"><span>{group.title}</span><select value={group.selected} disabled={running} onChange={e=>{group.setSelected(e.target.value);group.setDraft(mapping[e.target.value]||'');}}>
+              {group.items.map(option=><option key={option.name} value={option.name}>{option.label} ({option.unit})</option>)}
+            </select></label>
+            <label className="sensor-field"><span>KEPServer OPC UA Node ID</span><input type="text" value={group.draft} disabled={running} placeholder="ns=2;s=..." onChange={e=>group.setDraft(e.target.value)}/></label>
+            <button className="secondary" disabled={running||!group.selected||!group.draft.trim()} onClick={()=>changeMapping(group.selected,group.draft.trim())}>Add / Update mapping</button>
+            <details className="sensor-mapping-list"><summary>Review mappings</summary>
+              {Object.entries(mapping).filter(([key])=>Boolean(defaultDoMapping[key])===group.isDo).map(([column,node])=><div className="sensor-mapping-row" key={column}>
+                <div><strong>{[...options,...doSensorOptions].find(o=>o.name===column)?.label||column.split('__').pop()}</strong><code>{node}</code></div>
+                <button className="secondary" aria-label={'Remove '+column} disabled={running} onClick={()=>{
+                  setConnected(false);setHistory([]);setReadings([]);setSensorError('');
+                  setMapping(old=>{const next={...old};delete next[column];return next;});
+                  if(group.selected===column)group.setDraft('');
+                }}>Remove</button>
+              </div>)}
+            </details>
+          </article>)}
+        </div>
+        <div className="sensor-actions"><button className="primary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{busy?'Reading sensors...':connected?'Refresh sensor data':'Connect sensor data'}</button><button className="secondary" disabled={!connected||busy} onClick={()=>setConnected(false)}>Disconnect</button><span>Live charts update automatically after connecting.</span></div>
+        {sensorError&&<div className="alert" role="alert">Sensor update failed: {sensorError}</div>}
+      </section>
       <h3 className="sumo-step-title">Step2: Set up real time simulation</h3>
       <div className="fields">
         <label className="field"><span className="field-label">Simulation mode</span>
@@ -193,7 +193,7 @@ export function RealTimeSumo(){
           {secondaryAxis && <details className="sumo-variable-dropdown">
             <summary>Right Y axis <span>{rightAxisVariables.filter(key=>history.some(s=>s.column===key)).length} selected</span></summary>
             <div className="sumo-variable-options">
-              {Object.keys(mapping).filter(key=>history.some(s=>s.column===key)).map(key=><label key={key}>
+              {Object.keys(mapping).filter(key=>!defaultDoMapping[key]&&history.some(s=>s.column===key)).map(key=><label key={key}>
                 <input type="checkbox" checked={rightAxisVariables.includes(key)}
                   onChange={e=>setRightAxisVariables(old=>e.target.checked?[...old,key]:old.filter(item=>item!==key))}/>
                 {key.split('__').pop()} <small>{options.find(o=>o.name===key)?.unit||''}</small>
@@ -202,7 +202,7 @@ export function RealTimeSumo(){
           </details>}
         </div>
         {history.length?<Plot style={{width:'100%',height:380}} useResizeHandler
-          data={Object.keys(mapping).filter(key=>history.some(s=>s.column===key)).map(key=>({
+          data={Object.keys(mapping).filter(key=>!defaultDoMapping[key]&&history.some(s=>s.column===key)).map(key=>({
             x:history.filter(s=>s.column===key).map(s=>new Date(s.receivedAt)),
             y:history.filter(s=>s.column===key).map(s=>s.value),
             type:'scatter' as const,mode:'lines+markers' as const,
@@ -218,7 +218,22 @@ export function RealTimeSumo(){
           config={{responsive:true,displaylogo:false}}/>
           :<p className="calibration-note">Connect KEPServer to display live influent sensor trends.</p>}
       </section>
-      <SumoOutputDashboard showInfluent={false} influent={readings.map(r=>({key:r.column,label:`Influent ${r.column.split('__').pop()}`,unit:options.find(o=>o.name===r.column)?.unit||''}))} result={liveRun?.result} runId={liveRun?.id||''}/>
+      <section className="sumo-overlay-card live-do-card">
+        <div className="chart-head"><h3>DO concentrations · live sensor trends</h3><span className="sensor-unit">mg O₂/L</span></div>
+        <div className="sumo-group-dropdowns"><details className="sumo-variable-dropdown"><summary>DO sensors <span>{visibleDo.filter(key=>mapping[key]).length} selected</span></summary><div className="sumo-variable-options">
+          <div className="measurement-actions"><button className="secondary" onClick={()=>setVisibleDo(Object.keys(defaultDoMapping))}>Select all</button><button className="secondary" onClick={()=>setVisibleDo([])}>Clear</button></div>
+          {doSensorOptions.filter(o=>mapping[o.name]).map(o=><label key={o.name}><input type="checkbox" checked={visibleDo.includes(o.name)} onChange={e=>setVisibleDo(old=>e.target.checked?[...old,o.name]:old.filter(k=>k!==o.name))}/>{o.label}</label>)}
+        </div></details></div>
+        {history.some(s=>defaultDoMapping[s.column])&&visibleDo.some(key=>mapping[key])?<Plot style={{width:'100%',height:380}} useResizeHandler
+          data={doSensorOptions.filter(o=>mapping[o.name]&&visibleDo.includes(o.name)).map(o=>({
+            x:history.filter(s=>s.column===o.name).map(s=>new Date(s.receivedAt)),
+            y:history.filter(s=>s.column===o.name).map(s=>s.value),
+            type:'scatter' as const,mode:'lines+markers' as const,name:o.label
+          }))}
+          layout={{autosize:true,height:380,margin:{t:20,b:65,l:75,r:30},xaxis:{title:{text:'Sensor timestamp'}},yaxis:{title:{text:'DO concentration (mg O₂/L)'}},showlegend:true}}
+          config={{responsive:true,displaylogo:false}}/>:<p className="calibration-note">{!visibleDo.length?'Select DO sensors to display their trends.':'Connect KEPServer to display live DO concentrations.'}</p>}
+      </section>
+      <SumoOutputDashboard showInfluent={false} showDo={false} influent={readings.filter(r=>!defaultDoMapping[r.column]).map(r=>({key:r.column,label:`Influent ${r.column.split('__').pop()}`,unit:options.find(o=>o.name===r.column)?.unit||''}))} result={liveRun?.result} runId={liveRun?.id||''}/>
     </section>
   </>;
 }

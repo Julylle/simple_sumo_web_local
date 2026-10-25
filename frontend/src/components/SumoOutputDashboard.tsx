@@ -40,13 +40,13 @@ function OutputCard({title, groups, result, runId, remove}: {
       </>}
   </article>;
 }
-export function SumoOutputDashboard({influent, result, runId, showInfluent = true}: {influent: OutputOption[]; result?: SumoResult; runId: string; showInfluent?: boolean}) {
+export function SumoOutputDashboard({influent, result, runId, showInfluent = true, showDo = true}: {influent: OutputOption[]; result?: SumoResult; runId: string; showInfluent?: boolean; showDo?: boolean}) {
   useLanguage();
   const [custom, setCustom] = useState<number[]>([]);
   const [nextId, setNextId] = useState(1);
   const groups = [...(showInfluent ? [{title: 'Influent variables', options: influent}] : []), {title: 'Effluent pollutants', options: pollutantOptions}, {title: 'DO concentrations', options: doOptions}];
   return <div className="sumo-output-dashboard">
-    {groups.map(group => <OutputCard key={group.title} title={group.title} groups={[group]} result={result} runId={runId} />)}
+    {groups.filter(group => showDo || group.title !== 'DO concentrations').map(group => <OutputCard key={group.title} title={group.title} groups={[group]} result={result} runId={runId} />)}
     <div className="section-title"><div><h3>{t("Custom comparison plots")}</h3><p>{t("Add a blank plot and compare variables across all three groups.")}</p></div>
       <button className="secondary" onClick={() => {setCustom(current => [...current, nextId]); setNextId(nextId + 1);}}>{t("Add comparison plot")}</button></div>
     {custom.map(id => <OutputCard key={id} title={t(`Comparison ${id}`)} groups={groups} result={result} runId={runId} remove={() => setCustom(current => current.filter(k => k !== id))} />)}

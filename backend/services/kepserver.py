@@ -4,14 +4,14 @@ import os
 from datetime import datetime, timezone
 
 from asyncua import Client
-from services.sumo_data import ALLOWED_COLUMNS
+from services.sensor_inputs import SENSOR_COLUMNS
 
 DEFAULT_NODE = "ns=2;s=GEeth.PLC128.Influent_ammonia_sensor"
 
 async def read_snapshot(mapping: dict[str, str]):
     if not mapping:
         raise ValueError("Configure at least one sensor mapping.")
-    if any(key not in ALLOWED_COLUMNS for key in mapping):
+    if any(key not in SENSOR_COLUMNS for key in mapping):
         raise ValueError("Unsupported SUMO input parameter.")
     if any(not isinstance(node, str) or not node.strip() for node in mapping.values()):
         raise ValueError("Every mapped parameter requires an OPC UA node ID.")

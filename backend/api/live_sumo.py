@@ -6,7 +6,7 @@ from liveSimulation import liveSimulation as live_sumo
 router = APIRouter()
 
 class LiveStart(BaseModel):
-    mapping: dict[str, str] = Field(min_length=1, max_length=12)
+    mapping: dict[str, str] = Field(min_length=1, max_length=36)
     interval_minutes: int = Field(default=5, ge=1, le=60)
 
 @router.post("/sumo/live/start", status_code=202)

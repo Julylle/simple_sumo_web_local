@@ -15,7 +15,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from services.kepserver import read_snapshot
-from services.sumo_data import ALLOWED_COLUMNS
+from services.sensor_inputs import SENSOR_COLUMNS
 
 ROOT = Path(__file__).resolve().parents[1]
 _lock = threading.RLock()
@@ -33,7 +33,7 @@ def snapshot():
 
 def start(mapping, interval_minutes):
     global _session
-    if not mapping or any(k not in ALLOWED_COLUMNS or not isinstance(v, str) or not v.strip() for k,v in mapping.items()):
+    if not mapping or any(k not in SENSOR_COLUMNS or not isinstance(v, str) or not v.strip() for k,v in mapping.items()):
         raise ValueError("Provide valid OPC UA node IDs for supported SUMO inputs.")
     if not isinstance(interval_minutes, int) or not 1 <= interval_minutes <= 60:
         raise ValueError("Limit time must be 1–60 whole minutes.")
@@ -147,7 +147,7 @@ def _worker(s):
                     with _lock:
                         s["sim_ms"] = int(ms)
                         s["times"].append(float(ms)/3600000)
-                        for name in [*s["mapping"], *OUTPUT_VARIABLES]:
+                        for name in dict.fromkeys([*s["mapping"], *OUTPUT_VARIABLES]):
                             s["variables"].setdefault(name, []).append(float(data.get(name, float("nan"))))
                         # Keep arrays aligned and finite for the plot.
                         if any(not math.isfinite(s["variables"][k][-1]) for k in s["variables"]):
