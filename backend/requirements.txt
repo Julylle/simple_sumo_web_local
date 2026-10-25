@@ -9,3 +9,5 @@ openpyxl
 # Assimulo/CVode is installed with its native dependencies via environment.yml.
 
 asyncua>=1.1,<2
+
+python-multipart>=0.0.18,<1

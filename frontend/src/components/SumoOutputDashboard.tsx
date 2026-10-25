@@ -3,11 +3,11 @@ import { useState } from 'react';
 import { SumoOutputPlot } from './SumoOutputPlot';
 import { doOptions, pollutantOptions, type OutputOption, type SumoResult } from './sumoOutputs';
 
-function VariableDropdown({ title, options, selected, onChange }: {
+export function VariableDropdown({ title, options, selected, onChange }: {
   title: string; options: OutputOption[]; selected: string[]; onChange: (keys: string[]) => void;
 }) {
   useLanguage();
-  return <details className="sumo-variable-dropdown"><summary>{t(title)} <span>{selected.filter(k => options.some(o => o.key === k)).length} {t("selected")}</span></summary>
+  return <details className="sumo-variable-dropdown" onMouseLeave={event => { event.currentTarget.open = false; }}><summary>{t(title)} <span>{selected.filter(k => options.some(o => o.key === k)).length} {t("selected")}</span></summary>
     <div className="sumo-variable-options"><div className="measurement-actions">
       <button className="secondary" onClick={() => onChange(options.map(o => o.key))}>{t("Select all")}</button>
       <button className="secondary" onClick={() => onChange([])}>{t("Clear")}</button></div>
@@ -40,13 +40,13 @@ function OutputCard({title, groups, result, runId, remove}: {
       </>}
   </article>;
 }
-export function SumoOutputDashboard({influent, result, runId}: {influent: OutputOption[]; result?: SumoResult; runId: string}) {
+export function SumoOutputDashboard({influent, result, runId, showInfluent = true, showDo = true}: {influent: OutputOption[]; result?: SumoResult; runId: string; showInfluent?: boolean; showDo?: boolean}) {
   useLanguage();
   const [custom, setCustom] = useState<number[]>([]);
   const [nextId, setNextId] = useState(1);
   const groups = [{title: 'Influent variables', options: influent}, {title: 'Effluent pollutants', options: pollutantOptions}, {title: 'DO concentrations', options: doOptions}];
   return <div className="sumo-output-dashboard">
-    {groups.map(group => <OutputCard key={group.title} title={group.title} groups={[group]} result={result} runId={runId} />)}
+    {groups.filter(group => (showInfluent || group.title !== 'Influent variables') && (showDo || group.title !== 'DO concentrations')).map(group => <OutputCard key={group.title} title={group.title} groups={[group]} result={result} runId={runId} />)}
     <div className="section-title"><div><h3>{t("Custom comparison plots")}</h3><p>{t("Add a blank plot and compare variables across all three groups.")}</p></div>
       <button className="secondary" onClick={() => {setCustom(current => [...current, nextId]); setNextId(nextId + 1);}}>{t("Add comparison plot")}</button></div>
     {custom.map(id => <OutputCard key={id} title={t(`Comparison ${id}`)} groups={groups} result={result} runId={runId} remove={() => setCustom(current => current.filter(k => k !== id))} />)}

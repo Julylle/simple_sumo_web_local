@@ -159,6 +159,7 @@ export function SumoSimulation() {
         </div>
         <div className="sumo-input-toolbar">
         <div className="sumo-input-dropdown" ref={inputMenuRef}
+          onMouseLeave={() => setInputMenuOpen(false)}
           onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setInputMenuOpen(false); }}
           onKeyDown={event => {
             if (event.key === 'Escape' && inputMenuOpen) {

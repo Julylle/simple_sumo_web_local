@@ -1,11 +1,44 @@
-import { useEffect, useState } from 'react';
+import { sensorDisplayValue } from '../utils/liveSensorDisplay';
+import { defaultControlMapping, controlSensorOptions } from '../config/additionalControls';
+import { defaultDoMapping, doSensorOptions } from '../config/doSensors';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { LiveSensorPlot } from './LiveSensorPlot';
 import { SumoOutputDashboard } from './SumoOutputDashboard';
 
 type Option = {name:string;label:string;unit:string};
 type Reading = {column:string;node_id:string;value:number;timestamp:string};
+type Sample = Reading & { receivedAt: number };
+type UploadedModel = {id:string;name:string;state_name:string};
+type Checkpoint = {error?:string;model_name?:string;saved_at?:string;simulated_h?:number;interval_minutes?:number;mapping?:Record<string,string>};
+type LiveRun = {checkpoint?:Checkpoint|null;id?:string;model_id?:string;model_name?:string;status:string;phase?:string;error?:string;simulated_h?:number;samples?:number;result?:{time_h:number[];variables:Record<string,number[]>}};
 type Run = {id:string;status:'running'|'completed'|'failed';error?:string;progress_pct?:number;phase?:string;result?:{time_h:number[];variables:Record<string,number[]>}};
-const defaultNode = 'ns=2;s=GEeth.PLC128.Influent_ammonia_sensor';
+// Default influent mappings from Julylle/Sumo_web/demo_MLE/cx_opcua1124.csv.
+const defaultMapping: Record<string,string> = {
+  "Sumo__Plant__Influent__param__Q": "ns=2;s=SiemensEth.PLC204.F_Q0",
+  "Sumo__Plant__Influent__param__pH": "ns=2;s=GEeth.PLC128.pH",
+  "Sumo__Plant__Influent__param__T": "ns=2;s=GEeth.PLC128.Temperature",
+  "Sumo__Plant__Influent__param__Ammonia_sensor_Horiba": "ns=2;s=GEeth.PLC132.Influent_ammonia_sensor(Horiba)",
+  "Sumo__Plant__Influent__param__COD_lab": "ns=2;s=MySQL.Dev1.inlet_cod.inlet_cod__1_",
+  "Sumo__Plant__Influent__param__TKN_lab": "ns=2;s=MySQL.Dev1.inlet_tn.inlet_tn__1_",
+  "Sumo__Plant__Influent__param__Ammonia_lab": "ns=2;s=MySQL.Dev1.inlet_nh3n.inlet_nh3n__1_",
+  "Sumo__Plant__Influent__param__TSS_sensor": "ns=2;s=GEeth.PLC128.Influent_TSS_sensor(HACH)",
+  "Sumo__Plant__Influent__param__Ammonia_analyzer": "ns=2;s=GEeth.PLC128.JS_NH3N",
+  "Sumo__Plant__Influent__param__TCOD": "ns=2;s=MySQL.Dev4.COD_nh3_sen_ratio",
+  "Sumo__Plant__Influent__param__TKN": "ns=2;s=MySQL.Dev4.TN_nh3_sen_ratio",
+  "Sumo__Plant__Influent__param__TP": "ns=2;s=MySQL.Dev1.inlet_tp.inlet_tp__1_"
+};
+// These 12 configured inputs must remain selectable even if the SUMO API is offline.
+const influentUnits: Record<string,string> = {
+  Q: 'm3/d', pH: 'pH', T: 'deg C', Ammonia_sensor_Horiba: 'mg/L',
+  COD_lab: 'mg/L', TKN_lab: 'mg/L', Ammonia_lab: 'mg/L', TSS_sensor: 'mg/L',
+  Ammonia_analyzer: 'mg/L', TCOD: 'mg COD/L', TKN: 'mg N/L', TP: 'mg P/L',
+};
+const options: Option[] = Object.keys(defaultMapping).map(name => {
+  const label = name.split('__').pop()!;
+  return {name, label, unit: influentUnits[label]};
+});
 const defaultColumn = 'Sumo__Plant__Influent__param__Ammonia_sensor_Horiba';
+const defaultNode = defaultMapping[defaultColumn];
 async function json(url:string,init?:RequestInit) {
   const response=await fetch(url,init);
   const body=await response.json().catch(()=>null);
@@ -13,39 +46,165 @@ async function json(url:string,init?:RequestInit) {
   return body;
 }
 export function RealTimeSumo(){
-  const [options,setOptions]=useState<Option[]>([]);
-  const [mapping,setMapping]=useState<Record<string,string>>({[defaultColumn]:defaultNode});
+  const [mapping,setMapping]=useState<Record<string,string>>(()=>({...defaultMapping,...defaultDoMapping,...defaultControlMapping}));
+  const [selectedColumn,setSelectedColumn]=useState(defaultColumn);
+  const [nodeDraft,setNodeDraft]=useState(defaultNode);
+  const [selectedDo,setSelectedDo]=useState(doSensorOptions[0].name);
+  const [doDraft,setDoDraft]=useState(defaultDoMapping[doSensorOptions[0].name]);
+  const [selectedControl,setSelectedControl]=useState(controlSensorOptions[0].name);
+  const [controlDraft,setControlDraft]=useState(defaultControlMapping[controlSensorOptions[0].name]);
   const [readings,setReadings]=useState<Reading[]>([]);
+  const [history,setHistory]=useState<Sample[]>([]);
+  // Convert a display copy; keep raw sensor readings intact.
+  const influentPlotHistory=useMemo(()=>history.map(sample=>({
+    ...sample,value:sensorDisplayValue(sample.column,sample.value)
+  })),[history]);
+  const [connected,setConnected]=useState(false);
+  const [sensorError,setSensorError]=useState('');
+  const pollingRef=useRef(false);
+  const mappingRef=useRef(mapping);
+  mappingRef.current=mapping;
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
-  const [duration,setDuration]=useState('168');
+  const [limitMinutes,setLimitMinutes]=useState('5');
+  const [modelSource,setModelSource]=useState('builtin');
+  const [stateMode,setStateMode]=useState('upload');
+  const [stateFile,setStateFile]=useState<File|null>(null);
+  const [steadyTolerance,setSteadyTolerance]=useState('0.000001');
+  const [modelFile,setModelFile]=useState<File|null>(null);
+  const [preparingModel,setPreparingModel]=useState<UploadedModel|null>(null);
+  const [uploadedModel,setUploadedModel]=useState<UploadedModel|null>(null);
+  const [modelUploading,setModelUploading]=useState(false);
+  const [modelError,setModelError]=useState('');
+  const modelReady=!!uploadedModel||(modelSource==='builtin'&&stateMode==='upload'&&!stateFile);
+
   const [run,setRun]=useState<Run|null>(null);
+  const [liveRun,setLiveRun]=useState<LiveRun|null>(null);
+  const [checkpoint,setCheckpoint]=useState<Checkpoint|null>(null);
   const [downloading,setDownloading]=useState(false);
-  useEffect(()=>{json('/api/sumo/input-options').then(setOptions).catch(e=>setError(String(e)));},[]);
   useEffect(()=>{
     if(run?.status!=='running')return;
     let active=true;
     const timer=setInterval(()=>{json(`/api/sumo/runs/${run.id}`).then(next=>{if(active)setRun(next);}).catch(e=>{if(active)setError(String(e));});},2000);
     return ()=>{active=false;clearInterval(timer);};
   },[run?.id,run?.status]);
+  useEffect(()=>{
+    let active=true;
+    const poll=async()=>{
+      try{
+        const next:LiveRun=await json('/api/sumo/live/status');
+        if(active){setLiveRun(next.status==='idle'?null:next);setCheckpoint(next.checkpoint||null);}
+      }catch(e){if(active)setError(String(e));}
+    };
+    void poll();
+    const timer=setInterval(()=>{void poll();},2000);
+    return()=>{active=false;clearInterval(timer);};
+  },[]);
+  useEffect(()=>{
+    if(!connected)return;
+    let cancelled=false;
+    const poll=async()=>{
+      if(pollingRef.current)return;
+      pollingRef.current=true;
+      try{
+        const selected=Object.fromEntries(Object.entries(mappingRef.current).filter(([,node])=>node.trim()));
+        const result=await json('/api/kepserver/snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mapping:selected})});
+        if(cancelled)return;
+        const receivedAt=Date.now();
+        setReadings(result.readings);
+        setHistory(old=>[...old,...(result.readings as Reading[]).map(r=>({...r,receivedAt}))].filter(s=>s.receivedAt>=receivedAt-3600000).slice(-28800));
+        setSensorError('');
+      }catch(e){if(!cancelled)setSensorError(String(e));}
+      finally{pollingRef.current=false;}
+    };
+    const timer=setInterval(()=>{void poll();},5000);
+    return()=>{cancelled=true;clearInterval(timer);};
+  },[connected]);
   function changeMapping(column:string,node:string){
+    setConnected(false);setHistory([]);setSensorError('');
     setMapping(old=>({...old,[column]:node}));setReadings([]);setRun(null);
   }
   async function refresh(){
-    setBusy(true);setError('');setReadings([]);setRun(null);
+    setConnected(false);setBusy(true);setError('');setSensorError('');setReadings([]);setHistory([]);setRun(null);
     try {
       const selected=Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()));
       const result=await json('/api/kepserver/snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mapping:selected})});
       setReadings(result.readings);
+      const receivedAt=Date.now();
+      setHistory((result.readings as Reading[]).map(r=>({...r,receivedAt})));
+      setConnected(true);
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
+  async function uploadModel(){
+    if(modelSource==='upload'&&!modelFile)return;
+    setModelUploading(true);setModelError('');setUploadedModel(null);
+    try{
+      if(modelFile&&(!modelFile.name.toLowerCase().endsWith('.sumo')||modelFile.size>50*1024*1024))
+        throw new Error('Choose a .sumo project no larger than 50 MB.');
+      const form=new FormData();
+      if(modelSource==='upload'&&modelFile)form.append('project',modelFile);
+      form.append('state_mode',stateMode);
+      if(stateMode==='upload'){
+        if(!stateFile||!stateFile.name.toLowerCase().endsWith('.xml')||stateFile.size>20*1024*1024)
+          throw new Error('Choose a steady-state XML no larger than 20 MB.');
+        form.append('initial_state',stateFile);
+      }else{
+        if(!connected)throw new Error('Connect sensor data first.');
+        if(!Number.isFinite(Number(steadyTolerance))||Number(steadyTolerance)<=0)
+          throw new Error('Convergence tolerance must be positive.');
+        form.append('tolerance',steadyTolerance);
+        form.append('mapping',JSON.stringify(Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()))));
+      }
+      const model=await json('/api/sumo/live/models',{method:'POST',body:form});
+      if(model.status==='ready')setUploadedModel(model);
+      else setPreparingModel(model);
+    }catch(e){setModelError(String(e));}finally{setModelUploading(false);}
+  }
+  useEffect(()=>{
+    if(!preparingModel)return;
+    let cancelled=false;
+    let timer:ReturnType<typeof setTimeout>;
+    async function pollModel(){
+      try{
+        const model=await json('/api/sumo/live/models/'+preparingModel!.id);
+        if(cancelled)return;
+        setModelError('');
+        if(model.status==='ready'){setUploadedModel(model);setPreparingModel(null);return;}
+        if(model.status==='failed'){setModelError(model.error||'Initial-state generation failed.');setPreparingModel(null);return;}
+      }catch(e){
+        if(cancelled)return;
+        setModelError(String(e));
+      }
+      timer=setTimeout(()=>void pollModel(),3000);
+    }
+    void pollModel();
+    return ()=>{cancelled=true;clearTimeout(timer);};
+  },[preparingModel]);
+
   async function start(){
+    if(!modelReady)return;
     setBusy(true);setError('');
     try{
-      const prepared=await json('/api/kepserver/prepare-input',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({readings})});
-      const result=await json('/api/sumo/runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({duration_h:Number(duration),input_id:prepared.id,input_columns:prepared.columns})});
-      setRun(result);
+      const selected=Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()));
+      const result:LiveRun=await json('/api/sumo/live/start',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({mapping:selected,interval_minutes:Number(limitMinutes),model_id:uploadedModel?.id||'builtin'})});
+      setLiveRun(result);
     }catch(e){setError(String(e));}finally{setBusy(false);}
+  }
+  async function resume(){
+    setBusy(true);setError('');
+    try{
+      const result:LiveRun=await json('/api/sumo/live/resume',{method:'POST'});
+      setLiveRun(result);
+      if(result.checkpoint?.mapping)setMapping(result.checkpoint.mapping);
+      if(result.checkpoint?.interval_minutes)setLimitMinutes(String(result.checkpoint.interval_minutes));
+      setConnected(true);
+    }catch(e){setError(String(e));}finally{setBusy(false);}
+  }
+  async function stop(){
+    setBusy(true);setError('');
+    try{setLiveRun(await json('/api/sumo/live/stop',{method:'POST'}));}
+    catch(e){setError(String(e));}finally{setBusy(false);}
   }
   async function download(){
     if(!run?.id)return;
@@ -58,33 +217,113 @@ export function RealTimeSumo(){
       URL.revokeObjectURL(url);
     }catch(e){setError(String(e));}finally{setDownloading(false);}
   }
-  const running=busy||run?.status==='running';
+  const liveActive=['starting','running','stopping'].includes(liveRun?.status||'');
+  const running=busy||liveActive||modelUploading||!!preparingModel;
+  const sensorGroup=(key:string)=>defaultDoMapping[key]?'do':defaultControlMapping[key]?'control':'influent';
+  const influentPlotOptions=Object.keys(mapping).filter(key=>Boolean(defaultMapping[key]||defaultControlMapping[key])).map(key=>({
+    key,label:[...options,...controlSensorOptions].find(o=>o.name===key)?.label||key.split('__').pop()||key,
+    unit:[...options,...controlSensorOptions].find(o=>o.name===key)?.unit||''
+  }));
+  const doPlotOptions=doSensorOptions.filter(o=>mapping[o.name]).map(o=>({key:o.name,label:o.label,unit:o.unit}));
   return <>
     <section className="page-head"><div><h1>SUMO Real-time Simulation</h1><p>Cixi Eastern WWTP · KEPServer OPC UA · Manual simulation</p></div></section>
     <section className="config-card">
       <div className="section-title"><div><h2>Simulation settings</h2></div></div>
-      <h3>Step1: Connect sensors through KEPServer</h3>
-      <p className="calibration-note">Enter OPC UA Node IDs for the desired SUMO influent parameters. The backend connection URL is configured using KEPSERVER_OPC_URL.</p>
-      <div className="fields">
-        {options.map(option=><label className="field" key={option.name}>
-          <span className="field-label">{option.label} ({option.unit})</span>
-          <div className="input-wrap"><input type="text" value={mapping[option.name]||''} disabled={running} placeholder="ns=2;s=..." onChange={e=>changeMapping(option.name,e.target.value)}/></div>
-        </label>)}
-      </div>
-      <p><button className="secondary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{busy?'Reading sensors...':'Connect / Refresh sensor data'}</button></p>
-      <h3 className="sumo-step-title">Step2: Review sensor snapshot and model inputs</h3>
-      {readings.length>0?<table><thead><tr><th>SUMO parameter</th><th>Sensor value</th><th>UTC timestamp</th></tr></thead><tbody>
-        {readings.map(r=><tr key={r.column}><td>{r.column.split('__').pop()}</td><td>{r.value} {options.find(o=>o.name===r.column)?.unit}</td><td>{r.timestamp}</td></tr>)}
-      </tbody></table>:<p className="calibration-note">No sensor snapshot loaded. Read sensors before starting a simulation.</p>}
-      <p className="calibration-note">The latest manually fetched snapshot is held constant throughout the simulation. No automatic polling or scheduling is enabled.</p>
-      <h3 className="sumo-step-title">Step3: Set up simulation duration</h3>
-      <label className="field"><span className="field-label">Duration (hours)</span><div className="input-wrap"><input type="number" min="1" max="168" step="any" value={duration} disabled={running} onChange={e=>setDuration(e.target.value)}/></div></label>
-      <p><button className="primary" disabled={running||!readings.length||!(Number(duration)>=1&&Number(duration)<=168)} onClick={start}>{running?'Running / preparing...':'Run SUMO'}</button></p>
+      <section className="sensor-setup" aria-labelledby="sensor-step-title">
+        <div className="sensor-heading"><div><h3 id="sensor-step-title">Step1: Connect sensors through KEPServer</h3><p>Review the prefilled influent, DO and additional control tags, then connect to read sensor data.</p></div><span className={'sensor-status '+(connected?'is-connected':'')} role="status">{connected?'Connected · every 5 s':'Disconnected'}</span></div>
+        <div className="sensor-editor-grid sensor-input-grid">
+          {[{title:'Influent variable',items:options,selected:selectedColumn,draft:nodeDraft,setSelected:setSelectedColumn,setDraft:setNodeDraft,kind:'influent'},
+            {title:'DO sensors',items:doSensorOptions,selected:selectedDo,draft:doDraft,setSelected:setSelectedDo,setDraft:setDoDraft,kind:'do'},
+            {title:'Additional control',items:controlSensorOptions,selected:selectedControl,draft:controlDraft,setSelected:setSelectedControl,setDraft:setControlDraft,kind:'control'}].map(group=><article className="sensor-editor" key={group.title}>
+            <div className="sensor-editor-title"><h4>{group.title}</h4><span>{Object.keys(mapping).filter(key=>sensorGroup(key)===group.kind).length} mapped</span></div>
+            <label className="sensor-field"><span>{group.title}</span><select value={group.selected} onChange={e=>{group.setSelected(e.target.value);group.setDraft(mapping[e.target.value]||'');}}>
+              {group.items.map(option=><option key={option.name} value={option.name}>{option.label} ({option.unit})</option>)}
+            </select></label>
+            <label className="sensor-field"><span>KEPServer OPC UA Node ID</span><input type="text" value={group.draft} disabled={running} placeholder="ns=2;s=..." onChange={e=>group.setDraft(e.target.value)}/></label>
+            <button className="secondary" disabled={running||!group.selected||!group.draft.trim()} onClick={()=>changeMapping(group.selected,group.draft.trim())}>Add / Update mapping</button>
+            <details className="sensor-mapping-list" onMouseLeave={event => { event.currentTarget.open = false; }}><summary>Review mappings</summary>
+              {Object.entries(mapping).filter(([key])=>sensorGroup(key)===group.kind).map(([column,node])=><div className="sensor-mapping-row" key={column}>
+                <div><strong>{[...options,...doSensorOptions,...controlSensorOptions].find(o=>o.name===column)?.label||column.split('__').pop()}</strong><code>{node}</code></div>
+                <button className="secondary" aria-label={'Remove '+column} disabled={running} onClick={()=>{
+                  setConnected(false);setHistory([]);setReadings([]);setSensorError('');
+                  setMapping(old=>{const next={...old};delete next[column];return next;});
+                  if(group.selected===column)group.setDraft('');
+                }}>Remove</button>
+              </div>)}
+            </details>
+          </article>)}
+        </div>
+        <div className="sensor-actions"><button className="primary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{busy?'Reading sensors...':connected?'Refresh sensor data':'Connect sensor data'}</button><button className="secondary" disabled={!connected||busy} onClick={()=>setConnected(false)}>Disconnect</button><span>Live charts update automatically after connecting.</span></div>
+        {sensorError&&<div className="alert" role="alert">Sensor update failed: {sensorError}</div>}
+      </section>
+      <section className="sensor-setup simulation-setup" aria-labelledby="simulation-step-title">
+        <div className="sensor-heading"><div><h3 id="simulation-step-title">Step2: Set up real time simulation</h3><p>Choose a model, prepare its initial state and set the sensor update interval.</p></div><span className={'sensor-status '+(modelReady?'is-connected':'')} role="status">{liveActive?'Simulation active':preparingModel?'Preparing state':modelReady?'Model ready':'Setup required'}</span></div>
+        <div className="sensor-editor-grid sensor-input-grid">
+        <article className="sensor-editor" aria-label="SUMO model selection">
+          <div className="sensor-editor-title"><h4>SUMO model</h4><span>01 · Model</span></div>
+        <label className="sensor-field"><span>SUMO model</span>
+          <select value={modelSource} disabled={running} onChange={e=>{setModelSource(e.target.value);setUploadedModel(null);setModelError('');}}>
+            <option value="builtin">Built-in · Cixi Eastern WWTP_20260920</option>
+            <option value="upload">Upload a SUMO model</option>
+          </select>
+        </label>
+        {modelSource==='upload'&&<label className="sensor-field"><span>SUMO project (.sumo, max 50 MB)</span><input type="file" accept=".sumo" disabled={running} onChange={e=>{setModelFile(e.target.files?.[0]||null);setUploadedModel(null);setModelError('');}}/></label>}
+          <p className="calibration-note">Use the built-in plant model or upload a compiled SUMO project that supports your sensor variables.</p>
+          <p className="calibration-note simulation-card-footnote">Prepared models are available until the backend restarts.</p>
+        </article>
+        <article className="sensor-editor">
+          <div className="sensor-editor-title"><h4>Initial state</h4><span>02 · Preparation</span></div>
+        <label className="sensor-field"><span>Steady state</span>
+          <select value={stateMode} disabled={running} onChange={e=>{setStateMode(e.target.value);setUploadedModel(null);setModelError('');}}>
+            <option value="upload">Upload steady-state file</option>
+            <option value="calculate">Calculate from latest sensor data</option>
+          </select>
+        </label>
+        {stateMode==='upload'?<>
+          <label className="sensor-field"><span>Steady-state file (.xml, max 20 MB)</span><input type="file" accept=".xml" disabled={running} onChange={e=>{setStateFile(e.target.files?.[0]||null);setUploadedModel(null);setModelError('');}}/></label>
+          <p className="calibration-note">{modelSource==='builtin'&&!stateFile?'Using the built-in sumo_steady_state.xml. Select a file to replace it.':'Choose a steady-state XML matching the selected model.'}</p>
+        </>:<>
+          <p className="calibration-note">Reads a fresh sensor snapshot when calculation starts, applies scaling, and holds those inputs constant until convergence. Connect sensor data first.</p>
+          <label className="sensor-field"><span>Convergence tolerance (MaxAbsDer)</span><input type="number" min="0" step="any" value={steadyTolerance} disabled={running} onChange={e=>{setSteadyTolerance(e.target.value);setUploadedModel(null);}}/></label>
+          <p className="calibration-note">Requires MaxAbsDer at or below the tolerance for three consecutive samples, or at the solver's natural finish. A 3.5-hour timeout reports failure without accepting an unconverged state.</p>
+        </>}
+        <div className="sensor-actions simulation-prepare-action"><button className="secondary"
+          disabled={running||(modelSource==='upload'&&!modelFile)||(stateMode==='upload'?!stateFile:(!connected||!Number.isFinite(Number(steadyTolerance))||Number(steadyTolerance)<=0))}
+          onClick={()=>void uploadModel()}>{modelUploading?'Preparing model...':stateMode==='upload'?'Use uploaded steady state':'Calculate steady state'}</button></div>
+        {preparingModel&&<p role="status">Calculating steady state for {preparingModel.name}. Run SUMO will be available after convergence and saving.</p>}
+        {uploadedModel&&<p role="status" className="measurement-ready">Ready: {uploadedModel.name} · {uploadedModel.state_name}</p>}
+
+        {modelError&&<div className="alert" role="alert">{modelError}</div>}
+        </article>
+        <article className="sensor-editor">
+          <div className="sensor-editor-title"><h4>Live operation</h4><span>03 · Timing</span></div>
+          <label className="sensor-field"><span>Simulation mode</span><input value="Live · continuous (1×)" readOnly aria-label="Simulation mode"/></label>
+          <label className="sensor-field"><span>Input update interval / Limit time (minutes)</span><input type="number" min="1" max="60" step="1" value={limitMinutes} disabled={running} onChange={e=>setLimitMinutes(e.target.value)}/></label>
+          <label className="sensor-field"><span>Operation</span><input value="Continuous · until Stop SUMO" readOnly aria-label="Simulation operation"/></label>
+          <p className="calibration-note">Sensor inputs refresh at each interval. The model continues from the previous interval's state until you stop it.</p>
+        </article>
+        </div>
+        {liveActive&&liveRun?.model_name&&<p className="simulation-model-status" role="status">Running model: {liveRun.model_name}</p>}
+      {checkpoint&&<div className="sensor-editor simulation-recovery">
+        <div className="sensor-editor-title"><h4>Resume a saved simulation</h4><span>Latest checkpoint</span></div>
+        {checkpoint.error?<p className="alert">{checkpoint.error}</p>:<>
+          <p>Latest checkpoint: {checkpoint.model_name} · simulation time {checkpoint.simulated_h?.toFixed(3)} h · saved {checkpoint.saved_at?new Date(checkpoint.saved_at).toLocaleString():''}</p>
+          <p className="calibration-note">Resume restores the saved model, state, sensor mappings and interval, then reads fresh sensors. Downtime is not replayed. Only the latest checkpoint is retained.</p>
+          <button className="secondary" disabled={running} onClick={()=>void resume()}>Resume latest checkpoint</button>
+        </>}
+      </div>}
+      <div className="sensor-actions simulation-run-actions"><button className="primary" disabled={running||!modelReady||!connected||!(Number(limitMinutes)>=1&&Number(limitMinutes)<=60)} onClick={()=>void start()}>Run SUMO</button> <button className="secondary" disabled={busy||!['starting','running'].includes(liveRun?.status||'')} onClick={()=>void stop()}>Stop SUMO</button><span>Each completed interval saves the latest checkpoint. Stop finishes and saves the current interval.</span></div>
+      {liveRun&&<div className="sumo-progress"><p role="status">{liveRun.status} · {liveRun.phase||''} · {(liveRun.simulated_h||0).toFixed(2)} simulated hours · {liveRun.samples||0} output samples</p>{liveRun.error&&<div className="alert">{liveRun.error}</div>}</div>}
       {run&&<div className="sumo-progress"><p role="status">{run.phase||run.status} · {Math.floor(run.progress_pct||0)}%</p><progress max="100" value={run.progress_pct||0}/></div>}
       {(error||run?.error)&&<div className="alert" role="alert">{error||run?.error}</div>}
+      </section>
     </section>
-    <section className="config-card"><div className="section-title"><div><h2>Output variables visualisation</h2></div><button className="secondary" disabled={run?.status!=='completed'||downloading} onClick={download}>Download results CSV</button></div>
-      <SumoOutputDashboard influent={readings.map(r=>({key:r.column,label:`Influent ${r.column.split('__').pop()}`,unit:options.find(o=>o.name===r.column)?.unit||''}))} result={run?.result} runId={run?.id||''}/>
+    <section className="config-card"><div className="section-title"><div><h2>Output variables visualisation</h2></div><button className="secondary" disabled={!liveRun?.result?.time_h?.length||downloading} onClick={async()=>{setDownloading(true);try{const response=await fetch('/api/sumo/live/download');if(!response.ok)throw Error('Download failed');const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download='sumo_live_results.csv';link.click();URL.revokeObjectURL(url);}catch(e){setError(String(e));}finally{setDownloading(false);}}}>Download results CSV</button></div>
+      <LiveSensorPlot title="Influent variables · live sensor trends" groupTitle="Influent variables"
+        options={influentPlotOptions} history={influentPlotHistory} />
+      <LiveSensorPlot title="DO concentrations · live sensor trends" groupTitle="DO concentrations"
+        options={doPlotOptions} history={history} className="live-do-card" />
+      <SumoOutputDashboard showInfluent={false} showDo={false} influent={influentPlotOptions} result={liveRun?.result} runId={liveRun?.id||''}/>
     </section>
   </>;
 }
