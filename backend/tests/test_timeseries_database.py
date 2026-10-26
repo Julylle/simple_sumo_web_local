@@ -164,67 +164,42 @@ def test_history_default_destination_and_write_connection_failure(project, monke
         store.close.assert_called_once()
 
 
-@pytest.mark.parametrize('mode,replace', [('history_then_live', True), ('history_then_live', False), ('live', True)])
-def test_only_first_successful_sample_of_new_history_replaces_results(project, mode, replace):
+@pytest.mark.parametrize('mode', ['history_then_live', 'live', 'offline'])
+def test_history_upserts_every_sample_even_with_legacy_replacement_flag(project, mode):
     from unittest.mock import MagicMock
     store = MagicMock()
     store.register_run.return_value = {'state': 1}
     with patch('database.simulation.Store', return_value=store):
-        recorder = SimulationRecorder(project, 'new-run', mode, {'replace_existing_results': replace})
-    store.write_simulation.assert_not_called()  # startup/validation does not delete anything
+        recorder = SimulationRecorder(project, 'new-run', mode, {'replace_existing_results': True})
     recorder.submit(60000, {'state': 1})
     recorder.submit(120000, {'state': 2})
     recorder.close()
-    first, second = store.write_simulation.call_args_list
-    assert first.kwargs == ({'replace_previous': True} if mode == 'history_then_live' and replace else {})
-    assert second.kwargs == {}
+    assert len(store.write_simulation.call_args_list) == 2
+    for call in store.write_simulation.call_args_list:
+        assert call.kwargs == ({'overwrite_history': True} if mode == 'history_then_live' else {})
 
 
-def test_replacement_write_failure_stops_writer_without_clearing_flag(project):
-    from unittest.mock import MagicMock
-    store = MagicMock()
-    store.register_run.return_value = {'state': 1}
-    store.write_simulation.side_effect = RuntimeError('write failed')
-    with patch('database.simulation.Store', return_value=store):
-        recorder = SimulationRecorder(project, 'new-run', 'history_then_live', {'replace_existing_results': True})
-    recorder.submit(60000, {'state': 1})
-    with pytest.raises(RuntimeError, match='MySQL write failed'):
-        recorder.close()
-    assert recorder.replace_pending
-    store.close.assert_called_once()
-
-
-@pytest.mark.parametrize('failure', [False, True])
-def test_replacement_deletion_is_transactional_and_never_touches_raw_data(failure):
+@pytest.mark.parametrize('rows,expected_id', [([None, (42,)], 42), ([(43,)], 43), ([None, None], 123)])
+def test_history_reuses_matching_sample_without_deleting(rows, expected_id):
     from unittest.mock import MagicMock
     from database.store import Store
     store = Store()
     store.connection = MagicMock()
     cursor = store.connection.cursor.return_value.__enter__.return_value
     cursor.lastrowid = 123
-    def execute(sql, params):
-        if failure and sql.startswith('DELETE FROM sumo_runs'):
-            raise RuntimeError('delete failed')
-    cursor.execute.side_effect = execute
-    if failure:
-        with pytest.raises(RuntimeError, match='delete failed'):
-            store.write_simulation('new-run', {'state': 1}, 60000, {'state': 2}, replace_previous=True)
-        store.connection.rollback.assert_called_once()
-        store.connection.commit.assert_not_called()
-    else:
-        store.write_simulation('new-run', {'state': 1}, 60000, {'state': 2}, replace_previous=True)
-        store.connection.commit.assert_called_once()
-        store.connection.rollback.assert_not_called()
-    deletes = [call.args for call in cursor.execute.call_args_list if call.args[0].startswith('DELETE')]
-    assert len(deletes) == 3
-    assert deletes[0][0].startswith('DELETE v FROM sumo_values v')
-    assert 's.run_id <> %s' in deletes[0][0]
-    assert deletes[0][1] == ('new-run',)
-    assert deletes[1:] == [('DELETE FROM sumo_samples WHERE run_id <> %s', ('new-run',)),
-                       ('DELETE FROM sumo_runs WHERE run_id <> %s', ('new-run',))]
-    assert all('raw_' not in call.args[0] for call in cursor.execute.call_args_list)
-    methods = [call[0] for call in cursor.method_calls]
-    assert methods.index('executemany') < len(methods) - 2  # insert values before cleanup
+    cursor.fetchone.side_effect = rows
+    store.write_simulation('new-run', {'state': 1}, 60000, {'state': 2},
+                           '2026-01-01T08:01:00+08:00', overwrite_history=True)
+    sql = [c.args[0] for c in cursor.execute.call_args_list]
+    assert not any('DELETE' in q for q in sql)
+    assert any(q.startswith('INSERT INTO sumo_samples') for q in sql) == (expected_id == 123)
+    assert cursor.executemany.call_args.args[1][0][0] == expected_id
+    if len(rows) == 2:
+        lookup = cursor.execute.call_args_list[1]
+        assert 'r.model_sha=current_run.model_sha' in lookup.args[0]
+        assert "r.run_mode='history_then_live'" in lookup.args[0]
+        assert lookup.args[1][1] == datetime(2026, 1, 1, 0, 1)
+    store.connection.commit.assert_called_once()
 
 
 @pytest.mark.parametrize('code,phrase', [(1142,'permission'),(1451,'Foreign key'),(1205,'lock wait'),(2013,'timed out')])
@@ -239,8 +214,43 @@ def test_write_errors_show_code_and_reason_without_private_server_message(code, 
 def test_recorder_check_identifies_failed_replacement_and_preserves_cause():
     recorder = SimulationRecorder.__new__(SimulationRecorder)
     recorder.error = RuntimeError(1451, 'private constraint message')
-    recorder.replace_pending = True
-    with pytest.raises(RuntimeError, match='first sample and replacement') as result:
+    with pytest.raises(RuntimeError, match='sample write') as result:
         recorder.check()
     assert 'MySQL 1451' in str(result.value)
     assert result.value.__cause__ is recorder.error
+
+
+@pytest.mark.parametrize('stage', ['sample', 'values', 'commit'])
+def test_failed_rollback_preserves_original_simulation_error(stage, caplog):
+    from unittest.mock import MagicMock
+    from database.store import Store
+    store = Store()
+    store.connection = MagicMock()
+    cursor = store.connection.cursor.return_value.__enter__.return_value
+    cursor.lastrowid = 123
+    original = RuntimeError(2013, 'Lost connection during query')
+
+    def execute(sql, params):
+        if (stage == 'sample' and sql.startswith('INSERT INTO sumo_samples')):
+            raise original
+
+    cursor.execute.side_effect = execute
+    if stage == 'values':
+        cursor.executemany.side_effect = original
+    if stage == 'commit':
+        store.connection.commit.side_effect = original
+    store.connection.rollback.side_effect = RuntimeError(0, '')
+    with pytest.raises(RuntimeError) as result:
+        store.write_simulation('new-run', {'state': 1}, 60000, {'state': 2})
+    assert result.value is original
+    store.connection.rollback.assert_called_once()
+    if stage != 'commit':
+        store.connection.commit.assert_not_called()
+    assert 'preserving the original database error' in caplog.text
+    from database.simulation import write_error_detail
+    assert 'MySQL 2013' in write_error_detail(result.value)
+
+
+def test_zero_error_code_explains_unavailable_connection():
+    from database.simulation import write_error_detail
+    assert 'connection is unavailable' in write_error_detail(RuntimeError(0, ''))

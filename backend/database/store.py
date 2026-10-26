@@ -1,5 +1,6 @@
 """Parameterized MySQL writes; each time-step/batch commits atomically."""
 import json
+import logging
 import math
 import os
 import re
@@ -77,6 +78,14 @@ class Store:
             self.connection.close()
             self.connection = None
 
+    def _rollback_after_error(self):
+        """Best-effort cleanup; a lost connection must not hide the write error."""
+        try:
+            self.connection.rollback()
+        except Exception:
+            logging.warning('MySQL rollback failed; preserving the original database error.',
+                            exc_info=True)
+
     def initialize(self, display_timezone=None):
         with self.connection.cursor() as cursor:
             for statement in Path(__file__).with_name('schema.sql').read_text().split(';'):
@@ -98,7 +107,7 @@ class Store:
             self.connection.commit()
             return [ids[i] for i in range(1, len(rows)+1)]
         except Exception:
-            self.connection.rollback()
+            self._rollback_after_error()
             raise
 
     def write_raw(self, batch_id, ids, samples):
@@ -114,7 +123,7 @@ class Store:
                      for vid, s in zip(ids, samples, strict=True)])
             self.connection.commit()
         except Exception:
-            self.connection.rollback()
+            self._rollback_after_error()
             raise
 
     def register_run(self, run_id, digest, model_name, catalog, mode, configuration):
@@ -138,17 +147,39 @@ class Store:
             self.connection.commit()
             return {v['name']: ids[v['name']] for v in catalog}
         except Exception:
-            self.connection.rollback()
+            self._rollback_after_error()
             raise
 
-    def write_simulation(self, run_id, ids, simulated_ms, data, sensor_time=None, *, replace_previous=False):
+    def write_simulation(self, run_id, ids, simulated_ms, data, sensor_time=None, *, overwrite_history=False):
         try:
             with self.connection.cursor() as c:
-                c.execute('''INSERT INTO sumo_samples (run_id,simulated_ms,acquired_at,sensor_read_at)
-                    VALUES (%s,%s,%s,%s) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id),
-                    acquired_at=VALUES(acquired_at),sensor_read_at=VALUES(sensor_read_at)''',
-                          (run_id, int(simulated_ms), dbtime(utcnow()), dbtime(sensor_time)))
-                sample_id = c.lastrowid
+                # Same-run retries keep their sample; new historical runs reuse
+                # the latest sample at the same absolute time for the same model.
+                sample_id = None
+                stamp = dbtime(sensor_time)
+                if overwrite_history and stamp is not None:
+                    c.execute("SELECT id FROM sumo_samples WHERE run_id=%s AND simulated_ms=%s FOR UPDATE",
+                              (run_id, int(simulated_ms)))
+                    existing = c.fetchone()
+                    if existing is None:
+                        c.execute('''SELECT s.id FROM sumo_samples s
+                            JOIN sumo_runs r ON r.run_id=s.run_id
+                            JOIN sumo_runs current_run ON current_run.run_id=%s
+                            WHERE r.model_sha=current_run.model_sha
+                              AND r.run_mode='history_then_live' AND s.sensor_read_at=%s
+                            ORDER BY s.acquired_at DESC,s.id DESC LIMIT 1 FOR UPDATE''', (run_id, stamp))
+                        existing = c.fetchone()
+                    if existing is not None:
+                        sample_id = existing[0]
+                        c.execute('''UPDATE sumo_samples SET run_id=%s,simulated_ms=%s,
+                            acquired_at=%s,sensor_read_at=%s WHERE id=%s''',
+                                  (run_id, int(simulated_ms), dbtime(utcnow()), stamp, sample_id))
+                if sample_id is None:
+                    c.execute('''INSERT INTO sumo_samples (run_id,simulated_ms,acquired_at,sensor_read_at)
+                        VALUES (%s,%s,%s,%s) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id),
+                        acquired_at=VALUES(acquired_at),sensor_read_at=VALUES(sensor_read_at)''',
+                              (run_id, int(simulated_ms), dbtime(utcnow()), stamp))
+                    sample_id = c.lastrowid
                 values = []
                 for name, vid in ids.items():
                     value = data.get(name)
@@ -159,15 +190,7 @@ class Store:
                 for start in range(0, len(values), 500):
                     c.executemany('''INSERT INTO sumo_values VALUES (%s,%s,%s,%s,%s)
                         ON DUPLICATE KEY UPDATE value_json=VALUES(value_json),numeric_value=VALUES(numeric_value),quality=VALUES(quality)''', values[start:start+500])
-                if replace_previous:
-                    # Explicit child-first cleanup also supports older databases
-                    # whose existing foreign key does not use ON DELETE CASCADE.
-                    # Raw sensor tables and shared model catalogs are untouched.
-                    c.execute('''DELETE v FROM sumo_values v
-                        JOIN sumo_samples s ON s.id=v.sample_id WHERE s.run_id <> %s''', (run_id,))
-                    c.execute('DELETE FROM sumo_samples WHERE run_id <> %s', (run_id,))
-                    c.execute('DELETE FROM sumo_runs WHERE run_id <> %s', (run_id,))
             self.connection.commit()
         except Exception:
-            self.connection.rollback()
+            self._rollback_after_error()
             raise

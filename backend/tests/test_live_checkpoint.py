@@ -291,4 +291,4 @@ def test_only_new_history_launch_requests_database_replacement(session, monkeypa
     with patch.object(live.threading, 'Thread'):
         live._launch(session['mapping'], 1, 'checkpoint' if resume_id else 'builtin', session['model'],
                      run_id=resume_id, resume_ms=0, history=plan)
-    assert live._session['replace_existing_results'] is expected
+    assert 'replace_existing_results' not in live._session

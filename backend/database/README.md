@@ -333,20 +333,15 @@ source. It is independent of `SUMO_HISTORY_DATABASE`, `MYSQL_DATABASE`, and
 the database stored in a model checkpoint. Previously saved plot selections are respected;
 select the new variables in the Effluent pollutants dropdown if needed.
 
-### Replacing results when starting a new historical run
+### Overwriting matching historical results
 
-A new Historical data → Live run replaces **all previous SUMO simulation results**
-in its history database (normally `sumo_web_database`), including timestamps outside
-the new replay range. It does not append another run to the `sumo simulation` view.
-Replacement happens once, in the same InnoDB transaction as the first successfully
-written sample: old `sumo_values`, then `sumo_samples`, followed by old `sumo_runs`, are
-deleted explicitly in child-first order, including on older schemas without cascading deletion. Startup without a successful sample leaves old results
-intact; a failed replacement transaction rolls back both the new sample and deletes.
-Raw sensor data/mappings and model/variable catalogs are retained. The view definition
-and local-time display settings are unchanged. Download any old results you want to
-keep before starting a new historical run.
-
-Resume a saved simulation retains its run ID and appends/upserts results; it never
-requests this cleanup, even for a checkpoint at simulation time zero. Replacement
-is not inferred from timestamps. Existing running processes pick up this behavior
-only after the backend code is restarted and a new historical run is started.
+Historical data → Live never bulk-deletes previous simulation results. Each sample
+reuses the latest historical sample for the same model SHA and exact UTC
+`sensor_read_at`, updating its values and associating it with the current run.
+Other timestamps, models, raw sensor data and run metadata are retained. Same-run
+retries still upsert by `(run_id, simulated_ms)`. Without an absolute timestamp,
+only that same-run key is used; relative time zero across runs is not a match.
+Sample ownership and values commit atomically; failed writes roll back together.
+Previously accumulated duplicate timestamps are not bulk-cleaned. Old run-specific
+queries no longer include samples transferred to the new run. Restart the backend
+to load this behavior; existing database tables require no migration.
