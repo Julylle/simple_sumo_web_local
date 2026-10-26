@@ -1,5 +1,6 @@
 """Parameterized MySQL writes; each time-step/batch commits atomically."""
 import json
+import logging
 import math
 import os
 import re
@@ -77,6 +78,14 @@ class Store:
             self.connection.close()
             self.connection = None
 
+    def _rollback_after_error(self):
+        """Best-effort cleanup; a lost connection must not hide the write error."""
+        try:
+            self.connection.rollback()
+        except Exception:
+            logging.warning('MySQL rollback failed; preserving the original database error.',
+                            exc_info=True)
+
     def initialize(self, display_timezone=None):
         with self.connection.cursor() as cursor:
             for statement in Path(__file__).with_name('schema.sql').read_text().split(';'):
@@ -98,7 +107,7 @@ class Store:
             self.connection.commit()
             return [ids[i] for i in range(1, len(rows)+1)]
         except Exception:
-            self.connection.rollback()
+            self._rollback_after_error()
             raise
 
     def write_raw(self, batch_id, ids, samples):
@@ -114,7 +123,7 @@ class Store:
                      for vid, s in zip(ids, samples, strict=True)])
             self.connection.commit()
         except Exception:
-            self.connection.rollback()
+            self._rollback_after_error()
             raise
 
     def register_run(self, run_id, digest, model_name, catalog, mode, configuration):
@@ -138,7 +147,7 @@ class Store:
             self.connection.commit()
             return {v['name']: ids[v['name']] for v in catalog}
         except Exception:
-            self.connection.rollback()
+            self._rollback_after_error()
             raise
 
     def write_simulation(self, run_id, ids, simulated_ms, data, sensor_time=None, *, replace_previous=False):
@@ -169,5 +178,5 @@ class Store:
                     c.execute('DELETE FROM sumo_runs WHERE run_id <> %s', (run_id,))
             self.connection.commit()
         except Exception:
-            self.connection.rollback()
+            self._rollback_after_error()
             raise

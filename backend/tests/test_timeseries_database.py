@@ -244,3 +244,39 @@ def test_recorder_check_identifies_failed_replacement_and_preserves_cause():
         recorder.check()
     assert 'MySQL 1451' in str(result.value)
     assert result.value.__cause__ is recorder.error
+
+
+@pytest.mark.parametrize('stage', ['sample', 'replacement', 'commit'])
+def test_failed_rollback_preserves_original_simulation_error(stage, caplog):
+    from unittest.mock import MagicMock
+    from database.store import Store
+    store = Store()
+    store.connection = MagicMock()
+    cursor = store.connection.cursor.return_value.__enter__.return_value
+    cursor.lastrowid = 123
+    original = RuntimeError(2013, 'Lost connection during query')
+
+    def execute(sql, params):
+        if (stage == 'sample' and sql.startswith('INSERT INTO sumo_samples')) or (
+                stage == 'replacement' and sql.startswith('DELETE v FROM sumo_values')):
+            raise original
+
+    cursor.execute.side_effect = execute
+    if stage == 'commit':
+        store.connection.commit.side_effect = original
+    store.connection.rollback.side_effect = RuntimeError(0, '')
+    with pytest.raises(RuntimeError) as result:
+        store.write_simulation('new-run', {'state': 1}, 60000, {'state': 2},
+                               replace_previous=True)
+    assert result.value is original
+    store.connection.rollback.assert_called_once()
+    if stage != 'commit':
+        store.connection.commit.assert_not_called()
+    assert 'preserving the original database error' in caplog.text
+    from database.simulation import write_error_detail
+    assert 'MySQL 2013' in write_error_detail(result.value)
+
+
+def test_zero_error_code_explains_unavailable_connection():
+    from database.simulation import write_error_detail
+    assert 'connection is unavailable' in write_error_detail(RuntimeError(0, ''))

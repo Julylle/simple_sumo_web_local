@@ -14,6 +14,7 @@ def write_error_detail(error):
     """Show actionable database errors without returning SQL or credentials."""
     code = error.args[0] if error.args and isinstance(error.args[0], int) else None
     reasons = {
+        0: 'MySQL connection is unavailable. Check the backend traceback for the original connection or write failure.',
         1142: 'Database account lacks permission for the requested write or deletion.',
         1146: 'Required simulation tables are missing.',
         1451: 'Foreign key constraints prevent deletion of old simulation results.',
