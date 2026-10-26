@@ -283,7 +283,7 @@ export function RealTimeSumo(){
     key,label:[...options,...controlSensorOptions].find(o=>o.name===key)?.label||key.split('__').pop()||key,
     unit:[...options,...controlSensorOptions].find(o=>o.name===key)?.unit||''
   }));
-  const doPlotOptions=doSensorOptions.filter(o=>chartMapping[o.name]).map(o=>({key:o.name,label:o.label,unit:o.unit}));
+  const doPlotOptions=doSensorOptions.filter(o=>/^Sumo__Plant__CSTR[34]_/.test(o.name)&&chartMapping[o.name]).map(o=>({key:o.name,label:o.label,unit:o.unit}));
   return <>
     <section className="page-head"><div><h1>SUMO Real-time Simulation</h1><p>Cixi Eastern WWTP · KEPServer OPC UA · Manual simulation</p></div></section>
     <section className="config-card">
