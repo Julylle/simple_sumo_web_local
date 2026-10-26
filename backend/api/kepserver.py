@@ -4,13 +4,14 @@ import csv
 import io
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from services.sensor_inputs import SENSOR_COLUMNS
 from services.kepserver import read_snapshot
 from services.sumo_data import save_input
 
 router = APIRouter()
 
 class SnapshotRequest(BaseModel):
-    mapping: dict[str, str] = Field(min_length=1, max_length=40)
+    mapping: dict[str, str] = Field(min_length=1, max_length=len(SENSOR_COLUMNS))
 
 @router.post("/kepserver/snapshot")
 async def snapshot(request: SnapshotRequest):
