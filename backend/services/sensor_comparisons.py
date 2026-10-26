@@ -17,10 +17,15 @@ COMPARISON_SENSORS = {
 }
 
 
+def comparison_database():
+    # Measurement source is independent of the model's checkpoint/history DB.
+    return os.getenv('SUMO_COMPARISON_DATABASE', 'sumo_web_database')
+
+
 def read_comparisons(snapshot):
     stamps = (snapshot.get('result') or {}).get('sensor_timestamps') or []
     times = [parse_time(value) for value in stamps if value]
-    result = {'run_id': snapshot.get('id'), 'series': {}, 'aggregation_seconds': None}
+    result = {'run_id': snapshot.get('id'), 'series': {}, 'aggregation_seconds': None, 'database': comparison_database()}
     if not times:
         return result
     interval = snapshot.get('interval_minutes', 1) * 60
@@ -45,8 +50,7 @@ def read_comparisons(snapshot):
           AND (''' + filters + ') GROUP BY bucket,v.sumo_name ORDER BY bucket,v.sumo_name'
     store = Store()
     try:
-        store.connect(database=(snapshot.get('history') or {}).get('database') or
-                      os.getenv('SUMO_HISTORY_DATABASE', 'sumo_web_database'))
+        store.connect(database=result['database'])
         with store.connection.cursor() as cursor:
             cursor.execute(sql, params)
             rows = cursor.fetchall()

@@ -317,7 +317,7 @@ Two measured nitrate curves use the existing collector CSV mappings:
 - CSTR3_10: `SiemensEth.PLC200.II_aerobic_nitrate`.
 
 No CSTR4 or NHx sensor is inferred from another tank. These read-only comparisons
-query good numeric `raw_data` measurements from the historical database and do
+query good numeric `raw_data` measurements from `sumo_web_database` and do
 not assign sensor values to SUMO. Nitrate measurements are labelled separately
 from simulated SNOx. Dotted lines/markers use the corresponding model-line color
 and the same browser-local time axis. Missing observations remain null gaps.
@@ -327,6 +327,8 @@ time. Queries refresh no faster than once per selected LimitTime (minimum one
 minute), independently of two-second result polling. Interval means are labelled;
 long runs use a larger multiple of LimitTime to bound each series to 5,000 points.
 Database comparison failures report a chart message without stopping simulation.
-The collector must be writing these mapped tags into the selected history database
-(default `sumo_web_database`). Previously saved plot selections are respected;
+The collector must be writing these mapped tags into `sumo_web_database`.
+Set `SUMO_COMPARISON_DATABASE` only to explicitly override this measurement
+source. It is independent of `SUMO_HISTORY_DATABASE`, `MYSQL_DATABASE`, and
+the database stored in a model checkpoint. Previously saved plot selections are respected;
 select the new variables in the Effluent pollutants dropdown if needed.

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ComparisonSeries } from '../components/sumoOutputs';
 
-type Comparisons = {run_id: string; series: ComparisonSeries; aggregation_seconds: number | null; error?: string};
+type Comparisons = {database?: string; run_id: string; series: ComparisonSeries; aggregation_seconds: number | null; error?: string};
 export function useSensorComparisons(runId: string | undefined, hasSamples: boolean, intervalMinutes = 1) {
   const [value, setValue] = useState<Comparisons>();
   useEffect(() => {
@@ -13,7 +13,10 @@ export function useSensorComparisons(runId: string | undefined, hasSamples: bool
       pending = true;
       try {
         const response = await fetch(`/api/sumo/live/comparisons?run_id=${encodeURIComponent(runId)}`, {signal: controller.signal});
-        if (!response.ok) throw Error('Sensor comparisons unavailable. Check collector/database access.');
+        if (!response.ok) {
+          const body = await response.json().catch(() => null);
+          throw Error(typeof body?.detail === 'string' ? body.detail : 'Sensor comparisons unavailable. Check collector/database access.');
+        }
         const next: Comparisons = await response.json();
         if (active && next.run_id === runId) setValue(next);
       } catch (error) {

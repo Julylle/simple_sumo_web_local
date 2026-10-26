@@ -92,7 +92,7 @@ def resume():
 
 @router.get("/sumo/live/comparisons")
 def comparisons(run_id: str):
-    from services.sensor_comparisons import read_comparisons
+    from services.sensor_comparisons import read_comparisons, comparison_database
     snapshot = live_sumo.snapshot()
     if snapshot.get('id') != run_id:
         raise HTTPException(status_code=409, detail='Simulation changed; refresh sensor comparisons.')
@@ -101,4 +101,13 @@ def comparisons(run_id: str):
     except Exception as exc:
         import logging
         logging.exception('Sensor comparison read failed')
-        raise HTTPException(status_code=503, detail='Sensor comparisons unavailable. Check collector/database access.') from exc
+        reasons = {1049: 'Database does not exist.', 1045: 'MySQL login denied.',
+                   1044: 'MySQL account cannot access this database.',
+                   1146: 'Required raw_data/raw_variables tables are missing.',
+                   2003: 'Cannot connect to MySQL.', 2013: 'MySQL connection lost or query timed out.'}
+        code = exc.args[0] if exc.args and isinstance(exc.args[0], int) else None
+        reason = reasons.get(code, 'Check collector/database access and backend logs.')
+        if isinstance(exc, KeyError) and exc.args == ('MYSQL_PASSWORD',):
+            reason = 'MYSQL_PASSWORD is not configured in the backend environment.'
+        raise HTTPException(status_code=503,
+                            detail=f'Sensor comparisons from {comparison_database()} unavailable. {reason}') from exc

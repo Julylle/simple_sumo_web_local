@@ -407,7 +407,7 @@ export function RealTimeSumo(){
         options={doPlotOptions} history={history} className="live-do-card" source={historicalCharts?'simulation':'sensor'}
         simulationResult={historicalChartResult} runId={historicalCharts?liveRun?.id||'history-inputs':'live-sensors'} />
       {comparisons?.error&&<p role="status">{comparisons.error}</p>}
-      {comparisons?.aggregation_seconds&&<p className="calibration-note">Dotted sensor curves: recorded nitrate means over {comparisons.aggregation_seconds} seconds, compared with simulated SNOx. Missing measurements remain gaps.</p>}
+      {comparisons?.aggregation_seconds&&<p className="calibration-note">Dotted sensor curves from {comparisons.database || 'sumo_web_database'}: recorded nitrate means over {comparisons.aggregation_seconds} seconds, compared with simulated SNOx. Missing measurements remain gaps.</p>}
       <SumoOutputDashboard localTime pollutants={realtimePollutantOptions} showInfluent={false} showDo={false} influent={influentPlotOptions} result={visualisationResult} runId={liveRun?.id||''}/>
     </section>
   </>;

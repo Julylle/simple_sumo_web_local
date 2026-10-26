@@ -75,5 +75,40 @@ def test_api_rejects_stale_run_and_measurement_failures_do_not_stop_model(monkey
     reader.assert_not_called()
     response=client.get('/api/sumo/live/comparisons?run_id=run-1')
     assert response.status_code==503
+    assert 'sumo_web_database' in response.json()['detail']
     stop.assert_not_called()
     assert snapshot==fixture_snapshot()
+
+
+def test_comparison_database_is_independent_of_history_and_collector_settings(monkeypatch):
+    monkeypatch.delenv('SUMO_COMPARISON_DATABASE', raising=False)
+    monkeypatch.setenv('SUMO_HISTORY_DATABASE', 'old_history')
+    monkeypatch.setenv('MYSQL_DATABASE', 'collector_database')
+    assert comparisons.comparison_database() == 'sumo_web_database'
+    store=MagicMock()
+    store.connection.cursor.return_value.__enter__.return_value.fetchall.return_value=[]
+    monkeypatch.setattr(comparisons,'Store',lambda:store)
+    monkeypatch.setenv('SUMO_COMPARISON_DATABASE', 'measurements')
+    result=comparisons.read_comparisons(fixture_snapshot())
+    store.connect.assert_called_once_with(database='measurements')
+    assert result['database']=='measurements'
+
+
+def test_api_returns_specific_database_failure_without_credentials(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from api.live_sumo import router
+    from liveSimulation import liveSimulation as live
+    app=FastAPI();app.include_router(router,prefix='/api')
+    client=TestClient(app)
+    monkeypatch.setattr(live,'snapshot',fixture_snapshot)
+    for error, expected in [(KeyError('MYSQL_PASSWORD'),'MYSQL_PASSWORD is not configured'),
+                            (RuntimeError(1049,'private diagnostic'),'Database does not exist'),
+                            (RuntimeError(1146,'private diagnostic'),'tables are missing'),
+                            (RuntimeError(1045,'private diagnostic'),'login denied')]:
+        monkeypatch.setattr(comparisons,'read_comparisons',MagicMock(side_effect=error))
+        response=client.get('/api/sumo/live/comparisons?run_id=run-1')
+        assert response.status_code==503
+        assert expected in response.json()['detail']
+        assert 'sumo_web_database' in response.json()['detail']
+        assert 'private diagnostic' not in response.json()['detail']
