@@ -21,7 +21,7 @@ logging.basicConfig(
 )
 
 MODEL_DIR = Path(__file__).resolve().parent
-SUMO_PROJECT = str(MODEL_DIR / "real_sim_1202.sumo")
+SUMO_PROJECT = str(MODEL_DIR / "real_sim_1202_test.sumo")
 SUMO_STATE = str(MODEL_DIR / "sumo_steady_state.xml")
 OUTPUT_VARIABLES = [
     "Sumo__Plant__Effluent1__SNHx",
