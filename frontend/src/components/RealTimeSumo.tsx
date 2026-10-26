@@ -72,7 +72,8 @@ export function RealTimeSumo(){
   mappingRef.current=mapping;
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
-  const [limitMinutes,setLimitMinutes]=useLiveSetting('limitMinutes','5');
+  const [limitMinutes,setLimitMinutes]=useLiveSetting('limitMinutes','1');
+  const limitInterval=limitMinutes.trim()===''?1:Number(limitMinutes);
   const [simulationMode,setSimulationMode]=useLiveSetting('simulationMode','live');
   const [historyStart,setHistoryStart]=useLiveSetting('historyStart','');
   const historyValid=!!historyStart&&Number.isFinite(Date.parse(historyStart))&&Date.parse(historyStart)<=Date.now();
@@ -232,7 +233,7 @@ export function RealTimeSumo(){
     try{
       const selected=Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()));
       const result:LiveRun=await json('/api/sumo/live/start',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({mapping:selected,interval_minutes:Number(limitMinutes),model_id:uploadedModel?.id||'builtin',mode:simulationMode,
+        body:JSON.stringify({mapping:selected,interval_minutes:limitInterval,model_id:uploadedModel?.id||'builtin',mode:simulationMode,
           ...(simulationMode==='history_then_live'?{history_start:new Date(historyStart).toISOString()}: {})})});
       setLiveRun(result);
     }catch(e){setError(String(e));}finally{setBusy(false);}
@@ -369,11 +370,11 @@ export function RealTimeSumo(){
             <label className="sensor-field"><span>History start (local time)</span><input type="datetime-local" value={historyStart} disabled={running} onChange={e=>setHistoryStart(e.target.value)}/></label>
             <ul className="calibration-note">
               <li><strong>Database:</strong> sumo_web_database for historical inputs and simulation results.</li>
-              <li><strong>Mode:</strong> Runs historical data as fast as possible, then waits for each new LimitTime interval to be collected before continuing.</li>
+              <li><strong>Mode:</strong> Runs history in LimitTime intervals as fast as possible, then checks for new data at the same interval (default: 1 minute).</li>
             </ul>
             {!historyValid&&<p role="status">Select a historical start time in the past.</p>}
           </>}
-          <label className="sensor-field"><span>Input update interval / Limit time (minutes)</span><input type="number" min="1" max="60" step="1" value={limitMinutes} disabled={running} onChange={e=>setLimitMinutes(e.target.value)}/></label>
+          <label className="sensor-field"><span>Input update interval / Limit time (minutes, default 1)</span><input type="number" min="1" max="60" step="1" placeholder="1" value={limitMinutes} disabled={running} onChange={e=>setLimitMinutes(e.target.value)}/></label>
           <label className="sensor-field"><span>Operation</span><input value="Continuous · until Stop SUMO" readOnly aria-label="Simulation operation"/></label>
           <p className="calibration-note">Sensor inputs refresh at each interval. The model continues from the previous interval's state until you stop it.</p>
           </>}
@@ -382,7 +383,7 @@ export function RealTimeSumo(){
         {liveActive&&liveRun?.model_name&&<p className="simulation-model-status" role="status">Running model: {liveRun.model_name}</p>}
       <p className="calibration-note">Refreshing or closing this page does not stop the server simulation. Saved output history is restored after a backend restart; choose Resume a saved simulation to continue. Sensor preview history and draft settings are retained in this browser. File selections must be reselected if not yet uploaded.</p>
       {!statusReady&&<p role="status">Reconnecting to the live simulation…</p>}
-      <div className="sensor-actions simulation-run-actions"><button className="primary" disabled={running||(resumeMode?!checkpointReady:(!modelReady||(simulationMode==='live'?!connected:!historyValid)||!(Number(limitMinutes)>=1&&Number(limitMinutes)<=60)))} onClick={()=>void (resumeMode?resume():start())}>{resumeMode?'Resume SUMO':'Run SUMO'}</button> <button className="secondary" disabled={busy||!['starting','running'].includes(liveRun?.status||'')} onClick={()=>void stop()}>Stop SUMO</button><span>Each completed interval saves the latest checkpoint. Stop finishes and saves the current interval.</span></div>
+      <div className="sensor-actions simulation-run-actions"><button className="primary" disabled={running||(resumeMode?!checkpointReady:(!modelReady||(simulationMode==='live'?!connected:!historyValid)||!(Number.isInteger(limitInterval)&&limitInterval>=1&&limitInterval<=60)))} onClick={()=>void (resumeMode?resume():start())}>{resumeMode?'Resume SUMO':'Run SUMO'}</button> <button className="secondary" disabled={busy||!['starting','running'].includes(liveRun?.status||'')} onClick={()=>void stop()}>Stop SUMO</button><span>Each completed interval saves the latest checkpoint. Stop finishes and saves the current interval.</span></div>
       {liveRun&&<div className="sumo-progress"><p role="status">{liveRun.status} · {liveRun.mode==='history'?'Historical replay':liveRun.mode==='live'?'Live operation':''} · {liveRun.phase||''} · {(liveRun.simulated_h||0).toFixed(2)} simulated hours · {liveRun.samples||0} output samples</p>{liveRun.history&&(liveRun.history.follow?<p role="status">{liveRun.history.caught_up?'Caught up · following sensor collection':'Catching up with collected data'} · {liveRun.history.completed} completed intervals{liveRun.history.total>liveRun.history.completed?` · ${liveRun.history.total-liveRun.history.completed} loaded intervals remaining`:''}</p>:<><progress aria-label="History replay progress" max={liveRun.history.total} value={liveRun.history.completed}/><p>Historical intervals: {liveRun.history.completed} / {liveRun.history.total}</p></>)}{liveRun.error&&<div className="alert">{liveRun.error}</div>}</div>}
       {run&&<div className="sumo-progress"><p role="status">{run.phase||run.status} · {Math.floor(run.progress_pct||0)}%</p><progress max="100" value={run.progress_pct||0}/></div>}
       {(error||run?.error)&&<div className="alert" role="alert">{error||run?.error}</div>}

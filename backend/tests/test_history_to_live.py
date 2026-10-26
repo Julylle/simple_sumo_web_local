@@ -131,7 +131,7 @@ def test_follow_waits_for_collector_then_advances_same_job_and_can_stop(session,
         def wait(self,timeout=None):
             assert session['phase']=='waiting_for_sensor_collection'
             clock[0]+=timeout
-            if clock[0]>=4:self.set()
+            if clock[0]>=120:self.set()
             return self.is_set()
     session['stop']=Stop()
     def emit(ms):
@@ -146,12 +146,12 @@ def test_follow_waits_for_collector_then_advances_same_job_and_can_stop(session,
         elif command.startswith('set Sumo__LimitTime '):emit(int(command.split()[-1].rstrip(';')))
     engine.schedule.side_effect=schedule;engine.sendCommand.side_effect=send
     live._worker(session)
-    assert emissions==[(60000,0),(120000,0),(180000,2)]
+    assert emissions==[(60000,0),(120000,0),(180000,60)]
     assert session['status']=='stopped' and session['mode']=='live'
     assert session['history']['completed']==3 and session['history']['caught_up']
     assert session['sensor_timestamps']==[f'2026-01-01T00:0{i}:00+00:00' for i in (1,2,3)]
     read.assert_not_called();engine.schedule.assert_called_once()
-    assert loader.call_count==5
+    assert loader.call_count==4
     assert cp.checkpoint_info()['history']['completed']==3
     store.connect.assert_called_once_with(database='sumo_web_database')
     assert store.register_run.call_args.args[0]==session['id']
@@ -190,3 +190,27 @@ def test_stop_during_history_query_does_not_release_another_interval(session,mon
     monkeypatch.setattr(live,'load_available_history',load)
     assert live._wait_for_collected_windows(session)==[]
     assert session['history']['completed']==0
+
+
+@pytest.mark.parametrize('interval', [60,300])
+def test_follow_throttles_reads_even_when_new_data_is_available(session,monkeypatch,interval):
+    session['interval']=interval
+    session['history']=history_request('2026-01-01T00:00Z',None,interval//60)
+    session['history']['caught_up']=True
+    clock=[0.0]; reads=[]
+    monkeypatch.setattr(live.time,'monotonic',lambda:clock[0])
+    def wait(timeout): clock[0]+=timeout
+    session['stop'].wait=wait
+    def load(*args):
+        reads.append(clock[0])
+        return [HistoryWindow(interval*1000,'2026-01-01T00:05:00Z',{Q:1})]
+    monkeypatch.setattr(live,'load_available_history',load)
+    for _ in range(3):
+        assert live._wait_for_collected_windows(session)
+        clock[0]+=5  # quick model calculation does not trigger another immediate read
+    assert reads==[0,interval,2*interval]
+
+
+def test_missing_limit_time_defaults_to_one_minute():
+    from api.live_sumo import LiveStart
+    assert LiveStart(mapping={Q:'ns=2;s=tag'}).interval_minutes==1

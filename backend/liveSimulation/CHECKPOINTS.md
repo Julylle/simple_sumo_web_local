@@ -44,8 +44,9 @@ latest disk checkpoint. The browser polls results every two seconds.
 
 Once caught up, the mode becomes live and displays
 `waiting_for_sensor_collection`. The same SUMO job stays paused at the last
-boundary. Every two seconds the backend checks for the next complete LimitTime
-interval; once collected, that interval runs and the process repeats. This mode
+boundary. The backend checks for new data once per selected LimitTime (minimum
+and default: one minute), including between successfully collected live intervals.
+Once collected, that interval runs and the process repeats. This mode
 continues using the database collector's records, not a direct OPC snapshot.
 Keep `python -m database.collector` / `runCollector.ps1` running. If acquisition
 stops, simulation waits without advancing; Stop remains available. Database
@@ -56,3 +57,12 @@ start time; it loads only unprocessed intervals. Data collected during downtime
 is replayed without gaps. The database must remain available and unchanged for
 reproducible recovery. Old fixed-end checkpoints retain their original behavior.
 The ordinary **Live · continuous (1×)** mode still reads OPC directly.
+
+LimitTime controls the model input window and output communication interval in
+both replay and live-following modes. Replay processes already collected windows
+without artificial wall-clock waiting. After catching up, database read cycles
+are separated by at least the selected interval, never less than 60 seconds.
+Browser result polling and sensor preview refresh do not advance the model.
+SUMO's internal adaptive numerical integration steps remain solver-controlled.
+Existing saved settings and checkpoints keep their selected interval; the
+one-minute default applies when no interval is supplied or saved.

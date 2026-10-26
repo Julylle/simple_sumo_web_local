@@ -13,7 +13,7 @@ class LiveStart(BaseModel):
     history_start: str | None = None
     history_end: str | None = None
     mapping: dict[str, str] = Field(min_length=1, max_length=40)
-    interval_minutes: int = Field(default=5, ge=1, le=60)
+    interval_minutes: int = Field(default=1, ge=1, le=60)
     model_id: str = Field(default="builtin", min_length=1, max_length=64)
 
 @router.post("/sumo/live/start", status_code=202)

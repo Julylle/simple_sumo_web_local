@@ -46,7 +46,7 @@ def snapshot():
                     "sensor_timestamps": list(s.get("sensor_timestamps", [None] * len(s["times"]))),
                     "time_h": list(s["times"]), "variables": {k: list(v) for k, v in s["variables"].items()}}}
 
-def start(mapping, interval_minutes, model_id="builtin", mode="live", history_start=None, history_end=None):
+def start(mapping, interval_minutes=1, model_id="builtin", mode="live", history_start=None, history_end=None):
     global _session
     if not mapping or any(k not in SENSOR_COLUMNS or not isinstance(v, str) or not v.strip() for k,v in mapping.items()):
         raise ValueError("Provide valid OPC UA node IDs for supported SUMO inputs.")
@@ -125,7 +125,17 @@ def _wait_for_collected_windows(s, done=None):
     while not s['stop'].is_set():
         if done is not None and done.is_set():
             raise RuntimeError('SUMO stopped while waiting for sensor collection.')
+        if s['history'].get('caught_up'):
+            with _lock:
+                s['phase'] = 'waiting_for_sensor_collection'
+            delay = s.get('_history_next_read_at', 0) - time.monotonic()
+            if delay > 0:
+                # Wake for stop/error handling, without querying the database.
+                s['stop'].wait(min(1, delay))
+                continue
+        read_started = time.monotonic()
         windows = load_available_history(s['mapping'], s['interval'], s['history'])
+        s['_history_next_read_at'] = read_started + max(60, s['interval'])
         if s['stop'].is_set():
             return []
         if done is not None and done.is_set():
@@ -139,7 +149,7 @@ def _wait_for_collected_windows(s, done=None):
             s['mode'] = 'live'
             s['phase'] = 'waiting_for_sensor_collection'
         # A halted collector leaves the model paused at its last saved boundary.
-        s['stop'].wait(2)
+        # The next iteration waits until the selected LimitTime has elapsed.
     return []
 
 
