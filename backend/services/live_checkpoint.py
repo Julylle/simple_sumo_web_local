@@ -26,7 +26,8 @@ def save_checkpoint(session, state_file, simulated_ms):
     metadata = {'version': 1, 'run_id': session['id'], 'simulated_ms': simulated_ms,
                 'saved_at': datetime.now(timezone.utc).isoformat(),
                 'model_name': session['model']['name'], 'mapping': session['mapping'],
-                'interval_minutes': session['interval'] // 60}
+                'interval_minutes': session['interval'] // 60,
+                'history': session.get('history')}
     with _lock:
         target = checkpoint_path()
         pending = target.with_suffix('.pending')
@@ -134,4 +135,6 @@ def saved_snapshot():
                 'model_id': 'checkpoint', 'model_name': metadata['model_name'],
                 'mapping': metadata['mapping'], 'interval_minutes': metadata['interval_minutes'],
                 'simulated_h': metadata['simulated_ms'] / 3600000,
-                'samples': len(result['time_h']), 'result': result}
+                'samples': len(result['time_h']), 'result': result,
+                'history': metadata.get('history'),
+                'mode': 'history' if metadata.get('history') and metadata['history']['completed'] < metadata['history']['total'] else 'live'}

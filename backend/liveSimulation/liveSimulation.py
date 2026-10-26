@@ -1,7 +1,7 @@
 """Single persistent live SUMO session. Scheduler callbacks never block on OPC I/O."""
 import asyncio
 import csv
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import io
 import math
 import logging
@@ -16,6 +16,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from database.simulation import open_recorder
+from services.historical_inputs import history_request, load_history, parse_time
 from services.kepserver import read_snapshot
 from services.model_inputs import scale_model_inputs
 from services.sensor_inputs import SENSOR_COLUMNS
@@ -38,22 +39,26 @@ def snapshot():
         return {"id": s["id"], "status": s["status"], "error": s.get("error"),
                 "model_id": s["model_id"], "model_name": s["model"]["name"],
                 "mapping": dict(s["mapping"]), "interval_minutes": s["interval"] // 60,
-                "checkpoint": checkpoint_info(),
+                "checkpoint": checkpoint_info(), "mode": s.get("mode", "live"),
+                "history": dict(s["history"]) if s.get("history") else None,
                 "phase": s["phase"], "simulated_h": s["sim_ms"] / 3600000,
                 "samples": len(s["times"]), "result": {
                     "sensor_timestamps": list(s.get("sensor_timestamps", [None] * len(s["times"]))),
                     "time_h": list(s["times"]), "variables": {k: list(v) for k, v in s["variables"].items()}}}
 
-def start(mapping, interval_minutes, model_id="builtin"):
+def start(mapping, interval_minutes, model_id="builtin", mode="live", history_start=None, history_end=None):
     global _session
     if not mapping or any(k not in SENSOR_COLUMNS or not isinstance(v, str) or not v.strip() for k,v in mapping.items()):
         raise ValueError("Provide valid OPC UA node IDs for supported SUMO inputs.")
     if not isinstance(interval_minutes, int) or not 1 <= interval_minutes <= 60:
         raise ValueError("Limit time must be 1–60 whole minutes.")
+    if mode not in ('live', 'history_then_live'):
+        raise ValueError('Unknown simulation mode.')
+    history = history_request(history_start, history_end, interval_minutes) if mode == 'history_then_live' else None
     selected_model = resolve_model(model_id)
-    return _launch(mapping, interval_minutes, model_id, selected_model)
+    return _launch(mapping, interval_minutes, model_id, selected_model, history=history)
 
-def _launch(mapping, interval_minutes, model_id, selected_model, resume_ms=0, resume_folder=None, result=None, run_id=None):
+def _launch(mapping, interval_minutes, model_id, selected_model, resume_ms=0, resume_folder=None, result=None, run_id=None, history=None):
     global _session
     with _lock:
         if _session is not None and _session["status"] in ("starting", "running", "stopping"):
@@ -65,6 +70,8 @@ def _launch(mapping, interval_minutes, model_id, selected_model, resume_ms=0, re
              "sensor_timestamps": list((result or {}).get("sensor_timestamps", [None] * len((result or {}).get("time_h", [])))),
              "mapping": dict(mapping), "interval": interval_minutes * 60,
              "model": selected_model, "model_id": model_id,
+             "history": dict(history) if history else None,
+             "mode": "history" if history and history["completed"] < history["total"] else "live",
              "stop": threading.Event()}
         _session = s
     threading.Thread(target=_worker, args=(s,), daemon=True, name="sumo-live").start()
@@ -77,7 +84,7 @@ def resume():
         metadata, model, folder = restore_checkpoint()
         try:
             return _launch(metadata['mapping'], metadata['interval_minutes'], 'checkpoint', model,
-                           metadata['simulated_ms'], folder, metadata.get('result'), metadata['run_id'])
+                           metadata['simulated_ms'], folder, metadata.get('result'), metadata['run_id'], metadata.get('history'))
         except Exception:
             folder.cleanup()
             raise
@@ -161,14 +168,26 @@ def _worker(s):
                 raise ValueError("SUMO input not writable: "+column)
         available_names = {row[1] for row in fields if len(row) > 1}
         output_variables = [name for name in OUTPUT_VARIABLES if name in available_names]
-        recorder = open_recorder(project, s['id'], 'live',
-                                 {'mapping': s['mapping'], 'interval_seconds': s['interval']}, output_variables)
+        history = s.get('history')
+        with _lock:
+            s['phase'] = 'loading_history' if history else 'reading_initial_sensors'
+        windows = load_history(s['mapping'], s['interval'], history) if history else []
+        if s['stop'].is_set():
+            s.update(status='stopped', phase='cancelled')
+            return
+        history_index = 0
+        replaying = bool(windows)
+        s['mode'] = 'history' if replaying else 'live'
+        if replaying:
+            step_ms = windows[0].duration_ms
+            max_ms += sum(window.duration_ms for window in windows)
+        target_ms = resume_ms + step_ms
+        recorder = open_recorder(project, s['id'], 'history_then_live' if history else 'live',
+                                 {'mapping': s['mapping'], 'interval_seconds': s['interval'], 'history': history}, output_variables)
         database_variables = recorder.names if recorder else []
         # First read must succeed before creating a SUMO job.
-        with _lock:
-            s["phase"] = "reading_initial_sensors"
-        values = _read_model_inputs(s["mapping"])
-        s["input_read_at"] = datetime.now(timezone.utc).isoformat()
+        values = windows[0].values if replaying else _read_model_inputs(s["mapping"])
+        s["input_read_at"] = windows[0].timestamp if replaying else datetime.now(timezone.utc).isoformat()
         # Release the scheduler before removing a directory containing its loaded DLL.
         workspace = tempfile.TemporaryDirectory(prefix="sumo_live_", ignore_cleanup_errors=True)
         directory = workspace.name
@@ -204,7 +223,9 @@ def _worker(s):
                     if s["times"] and float(ms)/3600000 <= s["times"][-1]:
                         return
                     s["sim_ms"] = int(ms)
-                    s.setdefault("sensor_timestamps", [None] * len(s["times"])).append(s["input_read_at"])
+                    sample_time = ((parse_time(history['start']) + timedelta(milliseconds=float(ms))).isoformat()
+                                   if replaying else s["input_read_at"])
+                    s.setdefault("sensor_timestamps", [None] * len(s["times"])).append(sample_time)
                     s["times"].append(float(ms)/3600000)
                     for name in dict.fromkeys([*s["mapping"], *output_variables]):
                         s["variables"].setdefault(name, []).append(float(data.get(name, float("nan"))))
@@ -212,7 +233,7 @@ def _worker(s):
                     if any(not math.isfinite(s["variables"][k][-1]) for k in s["variables"]):
                         raise ValueError("Non-finite SUMO output.")
                 if recorder:
-                    recorder.submit(int(ms), data, s['input_read_at'])
+                    recorder.submit(int(ms), data, sample_time)
                 boundary.set()
             except Exception as exc:
                 errors.append(str(exc))
@@ -222,7 +243,7 @@ def _worker(s):
         commands = [f'load "{initial.as_posix()}";', "maptoic;", f"set Sumo__Time {resume_ms};",
                     f"set Sumo__StopTime {max_ms};", f"set Sumo__DataComm {step_ms};",
                     "mode dynamic;", *(f"set {k} {v};" for k,v in values.items()),
-                    f"set Sumo__LimitTime {resume_ms + step_ms};", "start;"]
+                    f"set Sumo__LimitTime {target_ms};", "start;"]
         with _lock:
             s["phase"] = "scheduling_job"
         job = ds.sumo.schedule(dll, commands=commands,
@@ -250,8 +271,7 @@ def _worker(s):
             finally:
                 save_requested = False
 
-        started = time.monotonic()
-        next_index = 1
+        due = time.monotonic() + s["interval"]
         while not done.is_set():
             if not boundary.wait(0.25):
                 continue
@@ -260,32 +280,51 @@ def _worker(s):
                 raise RuntimeError("SUMO initial state was not confirmed loaded.")
             with _lock:
                 current_ms = s["sim_ms"]
-            if current_ms < resume_ms + next_index * step_ms:
+            if current_ms < target_ms:
                 continue
-            if current_ms > resume_ms + next_index * step_ms:
+            if current_ms > target_ms:
                 raise RuntimeError("SUMO advanced beyond its input boundary.")
             if recorder:
                 recorder.flush()
+            if replaying:
+                with _lock:
+                    history['completed'] += 1
             checkpoint(current_ms)
-            # Do not advance before real time catches up with simulated time.
-            due = started + next_index * s["interval"]
-            while time.monotonic() < due and not s["stop"].is_set():
-                s["stop"].wait(min(0.25, due - time.monotonic()))
+            # Replay runs without wall-clock pacing. Live mode waits once per interval.
+            if not replaying:
+                with _lock:
+                    s['phase'] = 'waiting_for_live_clock'
+                while time.monotonic() < due and not s["stop"].is_set():
+                    s["stop"].wait(max(0, min(0.25, due - time.monotonic())))
             if s["stop"].is_set():
                 break
-            try:
-                new_values = _read_model_inputs(s["mapping"])
-                s["input_read_at"] = datetime.now(timezone.utc).isoformat()
-            except Exception as exc:
-                # Fail closed: do not advance with stale values.
-                raise RuntimeError("OPC UA unavailable; live simulation stopped: "+str(exc)) from exc
+            history_index += 1
+            if replaying and history_index < len(windows):
+                window = windows[history_index]
+                new_values, step_ms = window.values, window.duration_ms
+                s['input_read_at'] = window.timestamp
+            else:
+                if replaying:
+                    # Preserve the same native job/state; start a fresh live clock.
+                    replaying = False
+                    s['mode'] = 'live'
+                    due = time.monotonic() + s['interval']
+                    windows = []
+                else:
+                    due += s['interval']
+                step_ms = s['interval'] * dtool.sec
+                try:
+                    new_values = _read_model_inputs(s["mapping"])
+                    s["input_read_at"] = datetime.now(timezone.utc).isoformat()
+                except Exception as exc:
+                    raise RuntimeError("OPC UA unavailable; live simulation stopped: " + str(exc)) from exc
             for key, value in new_values.items():
                 ds.sumo.sendCommand(job, f"set {key} {value};")
-            values = new_values
-            next_index += 1
-            ds.sumo.sendCommand(job, f"set Sumo__LimitTime {resume_ms + next_index * step_ms};")
+            target_ms = current_ms + step_ms
+            ds.sumo.sendCommand(job, f"set Sumo__DataComm {step_ms};")
+            ds.sumo.sendCommand(job, f"set Sumo__LimitTime {target_ms};")
             with _lock:
-                s["phase"] = "simulating"
+                s["phase"] = "replaying_history" if replaying else "simulating_live"
         if errors:
             raise RuntimeError(errors[0])
         with _lock:

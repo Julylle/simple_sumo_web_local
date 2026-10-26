@@ -54,9 +54,9 @@ class Store:
     def __init__(self):
         self.connection = None
 
-    def connect(self, create=False):
+    def connect(self, create=False, database=None):
         import pymysql
-        name = os.getenv('MYSQL_DATABASE', 'sumo_timeseries')
+        name = database if database is not None else os.getenv('MYSQL_DATABASE', 'sumo_timeseries')
         if not re.fullmatch(r'[A-Za-z0-9_]+', name):
             raise ValueError('MYSQL_DATABASE must contain only letters, digits and underscores.')
         kwargs = dict(host=os.getenv('MYSQL_HOST', '127.0.0.1'), port=int(os.getenv('MYSQL_PORT', '3306')),

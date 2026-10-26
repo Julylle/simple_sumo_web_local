@@ -1,6 +1,7 @@
 """Live SUMO lifecycle endpoints. One active Scheduler job per backend process."""
 from fastapi import APIRouter, HTTPException, Response, UploadFile, File, Form
 import json
+from typing import Literal
 from pydantic import BaseModel, Field
 from liveSimulation import liveSimulation as live_sumo
 from services.live_models import register_model, model_status, MAX_MODEL_BYTES, MAX_STATE_BYTES, BUILTIN_DIR
@@ -8,6 +9,9 @@ from services.live_models import register_model, model_status, MAX_MODEL_BYTES, 
 router = APIRouter()
 
 class LiveStart(BaseModel):
+    mode: Literal["live", "history_then_live"] = "live"
+    history_start: str | None = None
+    history_end: str | None = None
     mapping: dict[str, str] = Field(min_length=1, max_length=40)
     interval_minutes: int = Field(default=5, ge=1, le=60)
     model_id: str = Field(default="builtin", min_length=1, max_length=64)
@@ -15,7 +19,8 @@ class LiveStart(BaseModel):
 @router.post("/sumo/live/start", status_code=202)
 def start(body: LiveStart):
     try:
-        return live_sumo.start(body.mapping, body.interval_minutes, body.model_id)
+        return live_sumo.start(body.mapping, body.interval_minutes, body.model_id,
+                               mode=body.mode, history_start=body.history_start, history_end=body.history_end)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except RuntimeError as exc:

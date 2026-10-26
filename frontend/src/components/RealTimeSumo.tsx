@@ -11,7 +11,8 @@ type Reading = {column:string;node_id:string;value:number;timestamp:string};
 type Sample = Reading & { receivedAt: number };
 type UploadedModel = {id:string;name:string;state_name:string};
 type Checkpoint = {error?:string;model_name?:string;saved_at?:string;simulated_h?:number;interval_minutes?:number;mapping?:Record<string,string>};
-type LiveRun = {mapping?:Record<string,string>;interval_minutes?:number;checkpoint?:Checkpoint|null;id?:string;model_id?:string;model_name?:string;status:string;phase?:string;error?:string;simulated_h?:number;samples?:number;result?:{sensor_timestamps?:(string|null)[];time_h:number[];variables:Record<string,number[]>}};
+type HistoryProgress = {start:string;end:string;completed:number;total:number;database:string};
+type LiveRun = {mode?:'history'|'live';history?:HistoryProgress|null;mapping?:Record<string,string>;interval_minutes?:number;checkpoint?:Checkpoint|null;id?:string;model_id?:string;model_name?:string;status:string;phase?:string;error?:string;simulated_h?:number;samples?:number;result?:{sensor_timestamps?:(string|null)[];time_h:number[];variables:Record<string,number[]>}};
 type Run = {id:string;status:'running'|'completed'|'failed';error?:string;progress_pct?:number;phase?:string;result?:{sensor_timestamps?:(string|null)[];time_h:number[];variables:Record<string,number[]>}};
 // Default influent mappings from Julylle/Sumo_web/demo_MLE/cx_opcua1124.csv.
 const defaultMapping: Record<string,string> = {
@@ -40,6 +41,10 @@ const options: Option[] = Object.keys(defaultMapping).map(name => {
 });
 const defaultColumn = 'Sumo__Plant__Influent__param__Ammonia_sensor_Horiba';
 const defaultNode = defaultMapping[defaultColumn];
+function localDateInput(value:string) {
+  const date=new Date(value);
+  return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);
+}
 async function json(url:string,init?:RequestInit) {
   const response=await fetch(url,init);
   const body=await response.json().catch(()=>null);
@@ -68,6 +73,11 @@ export function RealTimeSumo(){
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
   const [limitMinutes,setLimitMinutes]=useLiveSetting('limitMinutes','5');
+  const [simulationMode,setSimulationMode]=useLiveSetting('simulationMode','live');
+  const [historyStart,setHistoryStart]=useLiveSetting('historyStart','');
+  const [historyEnd,setHistoryEnd]=useLiveSetting('historyEnd','');
+  const historyValid=!!historyStart&&!!historyEnd&&Number.isFinite(Date.parse(historyStart))
+    &&Date.parse(historyEnd)>Date.parse(historyStart)&&Date.parse(historyEnd)<=Date.now();
   const [modelSource,setModelSource]=useLiveSetting('modelSource','builtin');
   const [stateMode,setStateMode]=useLiveSetting('stateMode','upload');
   const [stateFilename,setStateFilename]=useLiveSetting('stateFilename','');
@@ -106,7 +116,10 @@ export function RealTimeSumo(){
   },[run?.id,run?.status]);
   useEffect(()=>{
     let active=true;
+    let polling=false;
     const poll=async()=>{
+      if(polling)return;
+      polling=true;
       try{
         const next:LiveRun=await json('/api/sumo/live/status');
         if(active){
@@ -121,9 +134,12 @@ export function RealTimeSumo(){
               setControlDraft(next.mapping[selectedControl]||'');
             }
             if(next.interval_minutes)setLimitMinutes(String(next.interval_minutes));
+            setSimulationMode(next.history?'history_then_live':'live');
+            if(next.history){setHistoryStart(localDateInput(next.history.start));setHistoryEnd(localDateInput(next.history.end));}
           }
         }
       }catch(e){if(active)setError(String(e));}
+      finally{polling=false;}
     };
     void poll();
     const timer=setInterval(()=>{void poll();},2000);
@@ -212,12 +228,14 @@ export function RealTimeSumo(){
 
   async function start(){
     if(!statusReady||!modelReady)return;
+    if(simulationMode==='history_then_live'&&!historyValid){setError('Select a valid historical start and end time.');return;}
     if((liveRun?.samples||0)>0 && !window.confirm('Start a new simulation? This replaces the displayed run and, after its first interval, the latest checkpoint. Download the current results first if you need to keep them.'))return;
     setBusy(true);setError('');
     try{
       const selected=Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()));
       const result:LiveRun=await json('/api/sumo/live/start',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({mapping:selected,interval_minutes:Number(limitMinutes),model_id:uploadedModel?.id||'builtin'})});
+        body:JSON.stringify({mapping:selected,interval_minutes:Number(limitMinutes),model_id:uploadedModel?.id||'builtin',mode:simulationMode,
+          ...(simulationMode==='history_then_live'?{history_start:new Date(historyStart).toISOString(),history_end:new Date(historyEnd).toISOString()}: {})})});
       setLiveRun(result);
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
@@ -329,7 +347,18 @@ export function RealTimeSumo(){
         </article>
         <article className="sensor-editor">
           <div className="sensor-editor-title"><h4>Live operation</h4><span>03 · Timing</span></div>
-          <label className="sensor-field"><span>Simulation mode</span><input value="Live · continuous (1×)" readOnly aria-label="Simulation mode"/></label>
+          <label className="sensor-field"><span>Simulation mode</span><select value={simulationMode} disabled={running} onChange={e=>setSimulationMode(e.target.value)}>
+            <option value="live">Live · continuous (1×)</option>
+            <option value="history_then_live">Historical data → Live</option>
+          </select></label>
+          {simulationMode==='history_then_live'&&<>
+            <label className="sensor-field"><span>History start (local time)</span><input type="datetime-local" value={historyStart} disabled={running} onChange={e=>setHistoryStart(e.target.value)}/></label>
+            <label className="sensor-field"><span>History end (local time, exclusive)</span><input type="datetime-local" value={historyEnd} disabled={running} onChange={e=>setHistoryEnd(e.target.value)}/></label>
+            <p className="calibration-note">Read from sumo_web_database. Times use your browser timezone ({Intl.DateTimeFormat().resolvedOptions().timeZone}). Each LimitTime interval uses the mean of valid recorded inputs; missing intervals stop the run.</p>
+            <p className="calibration-note">History runs as fast as SUMO allows, with results updating every 2 seconds. After the selected range, the same model state continues with current KEPServer data at 1× speed. The gap to now is not replayed.</p>
+            <p className="calibration-note">Choose an initial state appropriate for the history start. A sensor connection is only required when live operation begins.</p>
+            {!historyValid&&<p role="status">Select a start and end in the past; end must be later than start.</p>}
+          </>}
           <label className="sensor-field"><span>Input update interval / Limit time (minutes)</span><input type="number" min="1" max="60" step="1" value={limitMinutes} disabled={running} onChange={e=>setLimitMinutes(e.target.value)}/></label>
           <label className="sensor-field"><span>Operation</span><input value="Continuous · until Stop SUMO" readOnly aria-label="Simulation operation"/></label>
           <p className="calibration-note">Sensor inputs refresh at each interval. The model continues from the previous interval's state until you stop it.</p>
@@ -342,12 +371,12 @@ export function RealTimeSumo(){
         <div className="sensor-editor-title"><h4>Resume a saved simulation</h4><span>Latest checkpoint</span></div>
         {checkpoint.error?<p className="alert">{checkpoint.error}</p>:<>
           <p>Latest checkpoint: {checkpoint.model_name} · simulation time {checkpoint.simulated_h?.toFixed(3)} h · saved {checkpoint.saved_at?new Date(checkpoint.saved_at).toLocaleString():''}</p>
-          <p className="calibration-note">Resume restores the saved model, state, sensor mappings and interval, then reads fresh sensors. Downtime is not replayed. Only the latest checkpoint is retained.</p>
+          <p className="calibration-note">Resume restores the saved model, state, mappings and interval. Unfinished historical replay resumes from its last completed interval, then switches to live. Live downtime is not replayed. Only the latest checkpoint is retained.</p>
           <button className="secondary" disabled={running} onClick={()=>void resume()}>Resume latest checkpoint</button>
         </>}
       </div>}
-      <div className="sensor-actions simulation-run-actions"><button className="primary" disabled={running||!modelReady||!connected||!(Number(limitMinutes)>=1&&Number(limitMinutes)<=60)} onClick={()=>void start()}>Run SUMO</button> <button className="secondary" disabled={busy||!['starting','running'].includes(liveRun?.status||'')} onClick={()=>void stop()}>Stop SUMO</button><span>Each completed interval saves the latest checkpoint. Stop finishes and saves the current interval.</span></div>
-      {liveRun&&<div className="sumo-progress"><p role="status">{liveRun.status} · {liveRun.phase||''} · {(liveRun.simulated_h||0).toFixed(2)} simulated hours · {liveRun.samples||0} output samples</p>{liveRun.error&&<div className="alert">{liveRun.error}</div>}</div>}
+      <div className="sensor-actions simulation-run-actions"><button className="primary" disabled={running||!modelReady||(simulationMode==='live'?!connected:!historyValid)||!(Number(limitMinutes)>=1&&Number(limitMinutes)<=60)} onClick={()=>void start()}>Run SUMO</button> <button className="secondary" disabled={busy||!['starting','running'].includes(liveRun?.status||'')} onClick={()=>void stop()}>Stop SUMO</button><span>Each completed interval saves the latest checkpoint. Stop finishes and saves the current interval.</span></div>
+      {liveRun&&<div className="sumo-progress"><p role="status">{liveRun.status} · {liveRun.mode==='history'?'Historical replay':liveRun.mode==='live'?'Live operation':''} · {liveRun.phase||''} · {(liveRun.simulated_h||0).toFixed(2)} simulated hours · {liveRun.samples||0} output samples</p>{liveRun.history&&<><progress aria-label="History replay progress" max={liveRun.history.total} value={liveRun.history.completed}/><p>Historical intervals: {liveRun.history.completed} / {liveRun.history.total} · {Math.round(100*liveRun.history.completed/Math.max(1,liveRun.history.total))}%</p></>}{liveRun.error&&<div className="alert">{liveRun.error}</div>}</div>}
       {run&&<div className="sumo-progress"><p role="status">{run.phase||run.status} · {Math.floor(run.progress_pct||0)}%</p><progress max="100" value={run.progress_pct||0}/></div>}
       {(error||run?.error)&&<div className="alert" role="alert">{error||run?.error}</div>}
       </section>

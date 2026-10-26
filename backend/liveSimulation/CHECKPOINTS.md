@@ -15,3 +15,41 @@ After restarting the backend, saved output is immediately available for plots an
 API: `GET /api/sumo/live/status` includes checkpoint information, including while idle after a restart. `POST /api/sumo/live/resume` starts recovery and rejects an already active run. Use a single backend worker for the live SUMO scheduler.
 
 Live output samples now include `sensor_timestamps`: UTC timestamps captured immediately after the sensor read that supplied their input interval. These are acquisition-completion times, not an estimated simulation-time offset or PLC source timestamps. They survive checkpoint recovery and export as `sensor_read_at_utc` in CSV. The realtime dashboard converts them to the viewing computer’s local time. Legacy samples without recorded timestamps remain in CSV but cannot appear on a dated axis.
+
+## Historical replay followed by live operation
+
+In Step2 choose **Historical data → Live**, enter a local start/end time, and set
+LimitTime. The browser sends timezone-qualified UTC timestamps. The end is
+exclusive. Use an initial state appropriate for the selected historical start.
+
+The backend reads the `raw_data` / `raw_variables` tables in `sumo_web_database`
+using the existing `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, and `MYSQL_PASSWORD`.
+`SUMO_HISTORY_DATABASE` can override the history database without changing the
+simulation recorder's `MYSQL_DATABASE`. The database account needs SELECT access
+to these history tables. No database creation or schema migration is performed.
+
+One indexed, parameterized SQL query computes interval means of good-quality
+`numeric_value` readings, matched by both SUMO variable and OPC tag. It uses
+`acquired_at` (UTC), not PLC source timestamps. Raw input means receive the same
+flow conversion as live OPC inputs, exactly once; `scaled_value` is not scaled
+again. Every selected input must have at least one valid reading per interval;
+missing intervals fail before creating a SUMO job. The final interval may be
+shorter than LimitTime. At most 100,000 intervals may be selected per run.
+
+Replay has no real-time sleeping: each completed boundary publishes output,
+flushes any enabled database recorder, saves the latest checkpoint, assigns the
+next historical inputs and advances the same scheduler job. Native solver,
+checkpoint and database write time still determine throughput. The browser polls
+results every two seconds and shows completed/total historical intervals.
+
+After the selected range finishes, a fresh KEPServer snapshot is read and the
+same job/state continues at the configured LimitTime with real-time pacing. The
+gap between the selected end and now is deliberately not simulated. If KEPServer
+is unavailable, the worker stops with an error and retains the completed history
+checkpoint. Resume restores that state and tries live operation again.
+
+Checkpoints include the historical selection and number of completed intervals.
+Resume during replay re-queries only the remaining historical intervals, then
+switches to live. The underlying historical database must therefore remain
+available and unchanged for reproducible recovery. Only the latest checkpoint
+is retained, including during accelerated replay.
