@@ -62,7 +62,7 @@ Every live DataComm sample and every offline DataComm sample is stored at the mo
 - `acquired_at`: database writer observation time.
 - Raw data additionally includes OPC source/server timestamps, status code, and collector acquisition time.
 
-All database DATETIME values are **UTC**. Convert for local-time displays; do not interpret simulated hours as wall-clock time. Raw collection and SUMO input reads are independent, so their timestamps are not guaranteed to be identical. Existing historical runs are not backfilled automatically.
+Base-table DATETIME values and `*_utc` view columns remain **UTC**. The `raw data` and `sumo simulation` display views expose local-time timestamps after initialization or the `local-time` update. Do not interpret simulated hours as wall-clock time. Raw collection and SUMO input reads are independent, so their timestamps are not guaranteed to be identical. Existing historical runs are not backfilled automatically.
 
 ## Durability and capacity
 
@@ -79,7 +79,7 @@ Storage remains cumulative: at 73 rows/minute raw data adds 105,120 rows/day. At
 ```sql
 SELECT * FROM `raw data`
 WHERE variable = 'Sumo__Plant__Influent__param__Q'
-  AND acquired_at >= UTC_TIMESTAMP() - INTERVAL 1 DAY
+  AND acquired_at_utc >= UTC_TIMESTAMP() - INTERVAL 1 DAY
 ORDER BY acquired_at DESC LIMIT 100;
 
 SELECT run_id, simulated_ms, sensor_read_at, variable, value_json, numeric_value
@@ -132,3 +132,59 @@ FROM sumo_web_database.`sumo simulation`
 WHERE run_id = 'YOUR-RUN-UUID'
 ORDER BY simulated_ms, variable LIMIT 1000;
 ```
+
+## Align database displays with the local computer and web plots
+
+Canonical UTC storage in `raw_data` and `sumo_samples` remains unchanged. This
+prevents double-shifting old records and keeps indexed history queries correct.
+The user-facing `raw data` and `sumo simulation` views convert their timestamp
+columns into the configured local timezone and retain explicitly named
+`acquired_at_utc`, `sensor_read_at_utc`, and raw source/server `*_utc` columns.
+Both views expose `plot_time` as `YYYY-MM-DD HH:mm:ss.SSS`, matching web hover
+labels (milliseconds are truncated from database microseconds, just as JS Date
+does), plus `display_timezone` for verification. Offline samples with no sensor
+time retain NULL `plot_time` rather than inventing a historical timestamp.
+
+For the browser computer in **Asia/Shanghai**, run once from the project root:
+
+```powershell
+. .\backend\scripts\load-database-env.ps1
+Push-Location backend
+python -m database local-time --database sumo_web_database --timezone "+08:00"
+Pop-Location
+```
+
+This replaces only the two views, including how existing rows are displayed;
+it does not rewrite stored timestamps. It requires CREATE VIEW privileges.
+Set `SUMO_DISPLAY_TIMEZONE=+08:00` in the database environment file to preserve
+this choice during future `database init` calls. Without a setting or CLI
+argument, initialization uses the backend computer's current UTC offset.
+For a browser on another timezone, configure these views to that same timezone.
+For locations with DST, use an IANA zone (e.g. `Australia/Sydney`) and load the
+MySQL timezone tables first; a fixed offset is only suitable when the offset is
+constant over the data period. Unsupported named zones fail explicitly.
+
+The web sends local history selections as timezone-qualified UTC timestamps;
+backend queries remain in UTC. For a five-minute Shanghai interval from 08:00
+to 08:05, raw inputs occupy **[08:00,08:05)** and its simulated endpoint is
+**08:05**. Query the local display views with local bounds:
+
+```sql
+SELECT acquired_at, acquired_at_utc, plot_time, variable, numeric_value
+FROM `raw data`
+WHERE acquired_at >= '2026-10-26 08:00:00'
+  AND acquired_at <  '2026-10-26 08:05:00';
+
+SELECT sensor_read_at, sensor_read_at_utc, plot_time, variable, numeric_value
+FROM `sumo simulation`
+WHERE run_id = 'YOUR-RUN-UUID'
+  AND sensor_read_at >  '2026-10-26 08:00:00'
+  AND sensor_read_at <= '2026-10-26 08:05:00';
+```
+
+Use `sensor_read_at` / `plot_time` to compare simulated history with chart dates.
+`acquired_at` on simulation rows is when the replay result was actually written,
+so it is intentionally different from the simulated historical date. For large
+queries, use UTC bounds on the indexed base tables. Live preview sensors are
+sampled independently from the database collector; timestamps share a time
+basis but samples need not represent the exact same acquisition cycle.

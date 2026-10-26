@@ -54,7 +54,7 @@ export function SumoOutputPlot({ result, variables, rightAxis, overlay, options,
       name: legend.names[index],
       yaxis: right ? 'y2' : 'y',
       line: { color: sumoOutputColors[Math.max(0, options.findIndex(o => o.key === key)) % sumoOutputColors.length], width: 2.5, dash: right ? 'dash' : 'solid' },
-      hovertemplate: `${timestamps ? '%{x|%Y-%m-%d %H:%M:%S}' : '%{x:.2f} h'}<br>%{y:.3f} ${options.find(o => o.key === key)?.unit ?? ''}<extra>%{fullData.name}</extra>`,
+      hovertemplate: `${timestamps ? '%{x|%Y-%m-%d %H:%M:%S.%L}' : '%{x:.2f} h'}<br>%{y:.3f} ${options.find(o => o.key === key)?.unit ?? ''}<extra>%{fullData.name}</extra>`,
     };
   }), [result, timestamps, variables, rightAxis, overlay, options, language, width]);
   const axisTitle = (right: boolean) => {
@@ -71,7 +71,7 @@ export function SumoOutputPlot({ result, variables, rightAxis, overlay, options,
     uirevision: `${viewportScope}:${resetRevision}`,
     paper_bgcolor: '#ffffff', plot_bgcolor: '#ffffff',
     font: { family: 'Inter, Segoe UI, sans-serif', size: 11, color: '#64748b' },
-    xaxis: { ...axisViewport(viewport, 'xaxis'), type: hasTimestamps ? 'date' : 'linear', title: { text: hasTimestamps ? t('Sensor timestamp (computer local time)') : t('Time (h)'), standoff: 12 }, gridcolor: '#f1f5f9',
+    xaxis: { ...axisViewport(viewport, 'xaxis'), type: hasTimestamps ? 'date' : 'linear', hoverformat: hasTimestamps ? '%Y-%m-%d %H:%M:%S.%L' : undefined, title: { text: hasTimestamps ? t('Sensor timestamp (computer local time)') : t('Time (h)'), standoff: 12 }, gridcolor: '#f1f5f9',
       zeroline: false, showline: true, linecolor: '#cbd5e1', ticks: 'outside', tickcolor: '#cbd5e1', automargin: false },
     yaxis: { ...axisViewport(viewport, 'yaxis'), title: { text: leftTitle, standoff: 12 },
       gridcolor: '#e8edf3', zeroline: false, rangemode: 'tozero', tickformat: '~g', automargin: false },

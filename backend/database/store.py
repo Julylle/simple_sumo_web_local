@@ -77,12 +77,14 @@ class Store:
             self.connection.close()
             self.connection = None
 
-    def initialize(self):
+    def initialize(self, display_timezone=None):
         with self.connection.cursor() as cursor:
             for statement in Path(__file__).with_name('schema.sql').read_text().split(';'):
-                if statement.strip():
+                if statement.strip() and not statement.strip().startswith('CREATE OR REPLACE VIEW'):
                     cursor.execute(statement)
         self.connection.commit()
+        from database.local_time import install_local_views
+        install_local_views(self.connection, display_timezone)
 
     def register_mapping(self, digest, content, rows):
         try:

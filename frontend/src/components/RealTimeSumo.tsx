@@ -155,7 +155,7 @@ export function RealTimeSumo(){
         if(cancelled)return;
         const receivedAt=Date.now();
         setReadings(result.readings);
-        setHistory(old=>[...old,...(result.readings as Reading[]).map(r=>({...r,receivedAt}))].filter(s=>s.receivedAt>=receivedAt-3600000).slice(-28800));
+        setHistory(old=>[...old,...(result.readings as Reading[]).map(r=>({...r,receivedAt:Number.isFinite(Date.parse(r.timestamp))?Date.parse(r.timestamp):receivedAt}))].filter(s=>s.receivedAt>=receivedAt-3600000).slice(-28800));
         setSensorError('');
       }catch(e){if(!cancelled)setSensorError(String(e));}
       finally{pollingRef.current=false;}
@@ -174,7 +174,7 @@ export function RealTimeSumo(){
       const result=await json('/api/kepserver/snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mapping:selected})});
       setReadings(result.readings);
       const receivedAt=Date.now();
-      setHistory(old=>[...old,...(result.readings as Reading[]).map(r=>({...r,receivedAt}))].filter(s=>s.receivedAt>=receivedAt-3600000).slice(-28800));
+      setHistory(old=>[...old,...(result.readings as Reading[]).map(r=>({...r,receivedAt:Number.isFinite(Date.parse(r.timestamp))?Date.parse(r.timestamp):receivedAt}))].filter(s=>s.receivedAt>=receivedAt-3600000).slice(-28800));
       setConnected(true);
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
