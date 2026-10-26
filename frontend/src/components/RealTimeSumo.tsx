@@ -271,11 +271,14 @@ export function RealTimeSumo(){
   const checkpointReady=!!checkpoint&&!checkpoint.error;
   const running=!statusReady||busy||liveActive||modelUploading||!!preparingModel;
   const sensorGroup=(key:string)=>defaultDoMapping[key]?'do':defaultControlMapping[key]?'control':'influent';
-  const influentPlotOptions=Object.keys(mapping).filter(key=>Boolean(defaultMapping[key]||defaultControlMapping[key])).map(key=>({
+  const historicalCharts=!!liveRun?.history||simulationMode==='history_then_live';
+  const historicalChartResult=liveRun?.history?liveRun.result:undefined;
+  const chartMapping=liveRun?.history?(liveRun.mapping??mapping):mapping;
+  const influentPlotOptions=Object.keys(chartMapping).filter(key=>Boolean(defaultMapping[key]||defaultControlMapping[key])).map(key=>({
     key,label:[...options,...controlSensorOptions].find(o=>o.name===key)?.label||key.split('__').pop()||key,
     unit:[...options,...controlSensorOptions].find(o=>o.name===key)?.unit||''
   }));
-  const doPlotOptions=doSensorOptions.filter(o=>mapping[o.name]).map(o=>({key:o.name,label:o.label,unit:o.unit}));
+  const doPlotOptions=doSensorOptions.filter(o=>chartMapping[o.name]).map(o=>({key:o.name,label:o.label,unit:o.unit}));
   return <>
     <section className="page-head"><div><h1>SUMO Real-time Simulation</h1><p>Cixi Eastern WWTP · KEPServer OPC UA · Manual simulation</p></div></section>
     <section className="config-card">
@@ -390,10 +393,12 @@ export function RealTimeSumo(){
       </section>
     </section>
     <section className="config-card"><div className="section-title"><div><h2>Output variables visualisation</h2></div><button className="secondary" disabled={!liveRun?.result?.time_h?.length||downloading} onClick={async()=>{setDownloading(true);try{const response=await fetch('/api/sumo/live/download');if(!response.ok)throw Error('Download failed');const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download='sumo_live_results.csv';link.click();URL.revokeObjectURL(url);}catch(e){setError(String(e));}finally{setDownloading(false);}}}>Download results CSV</button></div>
-      <LiveSensorPlot title="Influent variables · live sensor trends" groupTitle="Influent variables"
-        options={influentPlotOptions} history={influentPlotHistory} />
-      <LiveSensorPlot title="DO concentrations · live sensor trends" groupTitle="DO concentrations"
-        options={doPlotOptions} history={history} className="live-do-card" />
+      <LiveSensorPlot title={historicalCharts?'Influent variables · simulation inputs':'Influent variables · live sensor trends'} groupTitle="Influent variables"
+        options={influentPlotOptions} history={influentPlotHistory} source={historicalCharts?'simulation':'sensor'}
+        simulationResult={historicalChartResult} runId={historicalCharts?liveRun?.id||'history-inputs':'live-sensors'} />
+      <LiveSensorPlot title={historicalCharts?'DO concentrations · simulation inputs':'DO concentrations · live sensor trends'} groupTitle="DO concentrations"
+        options={doPlotOptions} history={history} className="live-do-card" source={historicalCharts?'simulation':'sensor'}
+        simulationResult={historicalChartResult} runId={historicalCharts?liveRun?.id||'history-inputs':'live-sensors'} />
       <SumoOutputDashboard localTime showInfluent={false} showDo={false} influent={influentPlotOptions} result={liveRun?.result} runId={liveRun?.id||''}/>
     </section>
   </>;
