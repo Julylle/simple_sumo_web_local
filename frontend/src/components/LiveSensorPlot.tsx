@@ -50,7 +50,7 @@ export function LiveSensorPlot({ title, groupTitle, options, history, className 
       {secondary && <VariableDropdown title="Right Y axis" options={selected} selected={right} onChange={setRight} />}
     </div>
     {!selected.length ? <div className="empty"><b>{t("Select variables to build this plot")}</b><span>{t("Choose one or more variables from the dropdowns above.")}</span></div>
-      : !available.length ? <div className="empty"><b>{source === 'simulation' ? 'No simulated inputs yet' : t("No sensor readings yet")}</b><span>{source === 'simulation' ? 'Database inputs appear as simulation progresses.' : t("Connect KEPServer to display live sensor trends.")}</span></div>
+      : !available.length ? <div className="empty"><b>{source === 'simulation' ? 'No simulated inputs yet' : t("No sensor readings yet")}</b><span>{source === 'simulation' ? 'Inputs reported by SUMO appear after each completed simulation interval.' : t("Connect KEPServer to display live sensor trends.")}</span></div>
       : <SumoOutputPlot settingsKey={settingsKey} result={result} timestamps={timestamps} variables={available.map(o => o.key)}
           rightAxis={secondary ? right : []} overlay runId={runId} options={options} />}
   </section>;

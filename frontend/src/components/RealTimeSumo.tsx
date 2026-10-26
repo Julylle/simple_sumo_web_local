@@ -284,7 +284,8 @@ export function RealTimeSumo(){
     key,label:[...options,...controlSensorOptions].find(o=>o.name===key)?.label||key.split('__').pop()||key,
     unit:[...options,...controlSensorOptions].find(o=>o.name===key)?.unit||''
   }));
-  const doPlotOptions=doSensorOptions.filter(o=>/^Sumo__Plant__CSTR[34]_/.test(o.name)&&chartMapping[o.name]).map(o=>({key:o.name,label:o.label,unit:o.unit}));
+  const doChartMapping=liveRun?.mapping??mapping;
+  const doPlotOptions=doSensorOptions.filter(o=>/^Sumo__Plant__CSTR[34]_/.test(o.name)&&doChartMapping[o.name]).map(o=>({key:o.name,label:o.label,unit:o.unit}));
   return <>
     <section className="page-head"><div><h1>SUMO Real-time Simulation</h1><p>Cixi Eastern WWTP · KEPServer OPC UA · Manual simulation</p></div></section>
     <section className="config-card">
@@ -404,9 +405,9 @@ export function RealTimeSumo(){
       <LiveSensorPlot title={historicalCharts?'Influent variables · simulation inputs':'Influent variables · live sensor trends'} groupTitle="Influent variables"
         options={influentPlotOptions} history={influentPlotHistory} source={historicalCharts?'simulation':'sensor'}
         simulationResult={historicalChartResult} runId={historicalCharts?liveRun?.id||'history-inputs':'live-sensors'} />
-      <LiveSensorPlot title={historicalCharts?'DO concentrations · simulation inputs':'DO concentrations · live sensor trends'} groupTitle="DO concentrations"
-        options={doPlotOptions} history={history} className="live-do-card" source={historicalCharts?'simulation':'sensor'}
-        simulationResult={historicalChartResult} runId={historicalCharts?liveRun?.id||'history-inputs':'live-sensors'} />
+      <LiveSensorPlot title="DO concentrations · simulation inputs" groupTitle="DO concentrations"
+        options={doPlotOptions} history={history} className="live-do-card" source="simulation"
+        simulationResult={liveRun?.result} runId={liveRun?.id||'simulation-inputs'} />
       {comparisons?.error&&<p role="status">{comparisons.error}</p>}
       {comparisons?.aggregation_seconds&&<p className="calibration-note">Dotted sensor curves from {comparisons.database || 'sumo_web_database'}: recorded nitrate means over {comparisons.aggregation_seconds} seconds, compared with simulated SNOx. Missing measurements remain gaps.</p>}
       <SumoOutputDashboard localTime pollutants={realtimePollutantOptions} showInfluent={false} showDo={false} influent={influentPlotOptions} result={visualisationResult} runId={liveRun?.id||''}/>
