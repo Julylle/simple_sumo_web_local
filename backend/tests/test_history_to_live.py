@@ -216,7 +216,7 @@ def test_missing_limit_time_defaults_to_one_minute():
     assert LiveStart(mapping={Q:'ns=2;s=tag'}).interval_minutes==1
 
 
-@pytest.mark.parametrize('outcome', ['timeout', 'stop', 'rejected'])
+@pytest.mark.parametrize('outcome', ['timeout', 'stop', 'rejected', 'unknown_command'])
 def test_missing_native_boundary_does_not_wait_forever(session, tmp_path, monkeypatch, outcome):
     session['history'] = history_request('2026-01-01T00:00Z', None, 1)
     cp.save_checkpoint(session, session['model']['state'], 0)
@@ -242,7 +242,7 @@ def test_missing_native_boundary_does_not_wait_forever(session, tmp_path, monkey
     for module in (package, tool, scheduler, fixed):
         monkeypatch.setitem(sys.modules, module.__name__, module)
     def schedule(*args, **kwargs):
-        engine.message_callback(1, 'Native startup diagnostic')
+        engine.message_callback(1, '230013 Unknown command fol' if outcome == 'unknown_command' else 'Native startup diagnostic')
         if outcome == 'stop':
             session['stop'].set()
         return -1 if outcome == 'rejected' else 1
@@ -250,13 +250,16 @@ def test_missing_native_boundary_does_not_wait_forever(session, tmp_path, monkey
     live._worker(session)
     assert cp.checkpoint_path().read_bytes() == previous
     assert session['history']['completed'] == 0
-    assert session['last_sumo_message'] == 'Native startup diagnostic'
+    diagnostic = '230013 Unknown command fol' if outcome == 'unknown_command' else 'Native startup diagnostic'
+    assert session['last_sumo_message'] == diagnostic
+    assert session['sumo_commands'][0].startswith('load ')
+    assert session['sumo_commands'][-1] == 'start;'
     if outcome == 'stop':
         assert session['status'] == 'stopped'
         assert session['phase'] == 'stopped_before_boundary'
     else:
         assert session['status'] == 'failed'
-        assert 'Native startup diagnostic' in session['error']
-        assert ('did not reach LimitTime' if outcome == 'timeout' else 'rejected the job') in session['error']
+        assert diagnostic in session['error']
+        assert {'timeout': 'did not reach LimitTime', 'rejected': 'rejected the job', 'unknown_command': 'SUMO rejected command'}[outcome] in session['error']
     engine.cleanup.assert_called_once()
     assert not any(call.args[1].startswith('save ') for call in engine.sendCommand.call_args_list)

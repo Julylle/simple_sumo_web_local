@@ -42,6 +42,7 @@ def snapshot():
                 "checkpoint": checkpoint_info(), "mode": s.get("mode", "live"),
                 "history": dict(s["history"]) if s.get("history") else None,
                 "last_sumo_message": s.get("last_sumo_message"),
+                "sumo_commands": list(s.get("sumo_commands", [])),
                 "phase": s["phase"], "simulated_h": s["sim_ms"] / 3600000,
                 "samples": len(s["times"]), "result": {
                     "sensor_timestamps": list(s.get("sensor_timestamps", [None] * len(s["times"]))),
@@ -249,8 +250,11 @@ def _worker(s):
                 s["last_sumo_message"] = msg
             if msg.startswith("530041"):
                 state_loaded = True
-            if msg.startswith(("230046","230008")):
-                errors.append("SUMO rejected assignment: "+msg)
+            if msg.startswith(("230013", "230046", "230008")):
+                # Unknown commands must fail immediately, not wait for DataComm.
+                errors.append("SUMO rejected command: " + msg)
+                logging.error("Live SUMO %s rejected command; recent commands: %r",
+                              s["id"], s.get("sumo_commands", []))
                 done.set()
             if msg.startswith("530045") and save_requested:
                 save_done.set()
@@ -288,6 +292,21 @@ def _worker(s):
                     f"set Sumo__StopTime {max_ms};", f"set Sumo__DataComm {step_ms};",
                     "mode dynamic;", *(f"set {k} {v};" for k,v in values.items()),
                     f"set Sumo__LimitTime {target_ms};", "start;"]
+        def record_commands(items):
+            for command in items:
+                logging.info("Live SUMO %s command: %r", s["id"], command)
+            with _lock:
+                s["sumo_commands"] = (s.get("sumo_commands", []) + list(items))[-80:]
+
+        def send_command(job_id, command):
+            if errors:
+                raise RuntimeError(errors[0])
+            record_commands([command])
+            ds.sumo.sendCommand(job_id, command)
+            if errors:
+                raise RuntimeError(errors[0])
+
+        record_commands(commands)
         with _lock:
             s["phase"] = "scheduling_job"
         job = ds.sumo.schedule(dll, commands=commands,
@@ -306,7 +325,7 @@ def _worker(s):
             save_done.clear()
             save_requested = True
             try:
-                ds.sumo.sendCommand(job, f'save "{output_state}";')
+                send_command(job, f'save "{output_state}";')
                 deadline = time.monotonic() + 60
                 while not save_done.wait(0.1):
                     if done.is_set() or time.monotonic() >= deadline:
@@ -386,14 +405,14 @@ def _worker(s):
                 except Exception as exc:
                     raise RuntimeError("OPC UA unavailable; live simulation stopped: " + str(exc)) from exc
             for key, value in new_values.items():
-                ds.sumo.sendCommand(job, f"set {key} {value};")
+                send_command(job, f"set {key} {value};")
             target_ms = current_ms + step_ms
             if following and target_ms >= max_ms:
                 max_ms = target_ms + 365 * dtool.day
-                ds.sumo.sendCommand(job, f'set Sumo__StopTime {max_ms};')
-            ds.sumo.sendCommand(job, f"set Sumo__DataComm {step_ms};")
+                send_command(job, f'set Sumo__StopTime {max_ms};')
+            send_command(job, f"set Sumo__DataComm {step_ms};")
             boundary_started = time.monotonic()
-            ds.sumo.sendCommand(job, f"set Sumo__LimitTime {target_ms};")
+            send_command(job, f"set Sumo__LimitTime {target_ms};")
             with _lock:
                 s["phase"] = "replaying_history" if s.get("mode") == "history" else "simulating_live"
         if errors:
