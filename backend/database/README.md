@@ -45,7 +45,7 @@ Set-Location backend
 python -m uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
 ```
 
-If you use another port/start script, keep that existing command and make sure it inherits these environment variables. `SUMO_MYSQL_ENABLED=1` enables recording in both the realtime worker and the web offline worker. The standalone `steady_run.py` is not a time-series collector. With the flag unset/0, simulation behavior remains unchanged and MySQL is not required. Credentials are read from environment variables; `.env` and raw spool files are gitignored. If the offline worker uses a different `SUMO_PYTHON`, install the database requirements in that Python environment as well.
+If you use another port/start script, keep that existing command and make sure it inherits these environment variables. `SUMO_MYSQL_ENABLED=1` enables recording in both the realtime worker and the web offline worker. The standalone `steady_run.py` is not a time-series collector. With the flag unset/0, direct live and offline modes do not require MySQL recording. Historical data → Live always records its outputs to the history database, regardless of this flag. Credentials are read from environment variables; `.env` and raw spool files are gitignored. If the offline worker uses a different `SUMO_PYTHON`, install the database requirements in that Python environment as well.
 
 Use the OPC namespace URI when possible (`KEPSERVER_NAMESPACE_URI`); otherwise the supplied default is `ns=2`. OPC node IDs are constructed as `ns=<index>;s=<OpcTag>` without trimming or altering the tag. Only no-security/anonymous OPC UA connections are configured here, matching the existing project; server-specific certificate/user authentication requires additional configuration.
 
@@ -58,7 +58,7 @@ The recorder parses the **actual selected `.sumo` project's `variables.var`**, p
 Every live DataComm sample and every offline DataComm sample is stored at the model's communication interval. Live sampling follows LimitTime; offline sampling follows the runner's DataComm setting. Each run is linked to its model SHA-256 and configuration. Live checkpoint resume keeps the run ID; `(run_id, simulated_ms)` uniqueness prevents duplicate history. If an interval is recomputed after an interrupted checkpoint save, its timestamp and values are transactionally replaced by the recomputed result. Offline runs get independent database UUIDs, exposed as `database_run_id` in the API result. Simulation time and real time remain separate:
 
 - `simulated_ms` / `time_h`: model clock.
-- `sensor_read_at`: acquisition-completion time for the live interval's input snapshot, NULL for offline runs.
+- `sensor_read_at`: acquisition-completion time for a direct live input snapshot; the historical/collected interval's model timestamp in Historical data → Live; NULL for offline runs.
 - `acquired_at`: database writer observation time.
 - Raw data additionally includes OPC source/server timestamps, status code, and collector acquisition time.
 
@@ -98,3 +98,37 @@ FROM information_schema.tables WHERE table_schema = 'sumo_timeseries';
 ## Validation
 
 Run `python -m pytest tests/test_timeseries_database.py tests/test_live_checkpoint.py tests/test_live_flow_scaling.py`. `tests/test_timeseries_mysql.py` is an opt-in real MySQL integration test: set `MYSQL_TEST_ENABLED=1` with a **disposable, initialized test database** to run it. Native Scheduler subscriptions and the actual KEPServer tags still require validation on the Windows SUMO host. No running database or live sensor connection is provisioned merely by pulling this repository.
+
+## Historical data → Live result recording
+
+This mode always enables the SUMO result writer, even when `SUMO_MYSQL_ENABLED`
+is unset or 0. Its output destination is the same database as its historical
+input source: `sumo_web_database` by default, or `SUMO_HISTORY_DATABASE`. The
+selected database is preserved in the checkpoint. `MYSQL_DATABASE` continues to
+control direct-live/offline output recording and the separate raw collector.
+Ensure the raw collector is configured to write into the history database too.
+
+The selected project's state-variable catalog and dashboard outputs are written
+after every DataComm sample, both during accelerated replay and after catching
+up. Data goes to `sumo_runs`, `sumo_samples`, and `sumo_values` with catalog data
+in `sumo_models`/`sumo_variables`; query it through the existing `sumo simulation`
+view. Raw sensor tables are not overwritten or duplicated by replay.
+
+The raw collector collects sensors independently; the backend's simulation
+recorder collects actual SUMO callbacks and commits them on a separate thread.
+Each interval flushes its writes before saving the checkpoint or advancing.
+A database error stops the model instead of dropping results. The same `run_id`
+continues across replay, live following and checkpoint resume; `(run_id,
+simulated_ms)` makes retries idempotent. `sensor_read_at` preserves the simulated
+historical timestamp, while `acquired_at` is the actual recording time.
+
+The database schema must already be initialized and the backend account must
+have result-table/catalog write privileges. No prior unrecorded results are
+backfilled merely by updating the application.
+
+```sql
+SELECT run_id, time_h, sensor_read_at, acquired_at, variable, numeric_value
+FROM sumo_web_database.`sumo simulation`
+WHERE run_id = 'YOUR-RUN-UUID'
+ORDER BY simulated_ms, variable LIMIT 1000;
+```

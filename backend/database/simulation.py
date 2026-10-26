@@ -10,12 +10,14 @@ from database.store import Store
 
 
 class SimulationRecorder:
-    def __init__(self, project, run_id, mode, configuration, extra_names=()):
+    def __init__(self, project, run_id, mode, configuration, extra_names=(), *, database=None):
         digest, catalog = model_catalog(project, extra_names)
-        configuration = {**configuration, 'variable_catalog_sha': hashlib.sha256(
+        configuration = {**configuration, 'recording_database': database or os.getenv('MYSQL_DATABASE', 'sumo_timeseries'),
+                         'variable_catalog_sha': hashlib.sha256(
             '\n'.join(sorted(v['name'] for v in catalog)).encode()).hexdigest()}
-        self.store = Store().connect()
+        self.store = Store()
         try:
+            self.store.connect(database=database) if database is not None else self.store.connect()
             self.ids = self.store.register_run(run_id, digest, project.name, catalog, mode, configuration)
         except Exception:
             self.store.close()
@@ -73,6 +75,12 @@ class SimulationRecorder:
 
 
 def open_recorder(project, run_id, mode, configuration, extra_names=()):
+    if mode == 'history_then_live':
+        # This mode already requires the history database. Always store its model
+        # outputs there too, including after catching up and on checkpoint resume.
+        history = configuration.get('history') or {}
+        database = history.get('database') or os.getenv('SUMO_HISTORY_DATABASE', 'sumo_web_database')
+        return SimulationRecorder(project, run_id, mode, configuration, extra_names, database=database)
     if os.getenv('SUMO_MYSQL_ENABLED', '0') != '1':
         return None
     return SimulationRecorder(project, run_id, mode, configuration, extra_names)

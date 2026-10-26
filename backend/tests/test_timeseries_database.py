@@ -137,3 +137,28 @@ def test_only_one_collector_can_own_spool(tmp_path):
     finally:
         lock.close()
     lock_collector(tmp_path).close()
+
+
+@pytest.mark.parametrize('flag', [None, '0', '1'])
+def test_history_recording_is_required_and_uses_checkpoint_database(project, monkeypatch, flag):
+    if flag is None: monkeypatch.delenv('SUMO_MYSQL_ENABLED', raising=False)
+    else: monkeypatch.setenv('SUMO_MYSQL_ENABLED', flag)
+    monkeypatch.setenv('MYSQL_DATABASE', 'different_live_database')
+    monkeypatch.setenv('SUMO_HISTORY_DATABASE', 'different_history_setting')
+    config = {'history': {'database': 'sumo_web_database'}}
+    with patch('database.simulation.SimulationRecorder') as recorder:
+        result = open_recorder(project, 'run', 'history_then_live', config, ['derived'])
+        recorder.assert_called_once_with(project, 'run', 'history_then_live', config, ['derived'], database='sumo_web_database')
+        assert result is recorder.return_value
+
+
+def test_history_default_destination_and_write_connection_failure(project, monkeypatch):
+    monkeypatch.delenv('SUMO_MYSQL_ENABLED', raising=False)
+    monkeypatch.delenv('SUMO_HISTORY_DATABASE', raising=False)
+    with patch('database.simulation.Store') as factory:
+        store = factory.return_value
+        store.connect.side_effect = ConnectionError('write connection unavailable')
+        with pytest.raises(ConnectionError):
+            open_recorder(project, 'run', 'history_then_live', {})
+        store.connect.assert_called_once_with(database='sumo_web_database')
+        store.close.assert_called_once()

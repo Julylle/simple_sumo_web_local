@@ -101,7 +101,16 @@ def test_follow_waits_for_collector_then_advances_same_job_and_can_stop(session,
     plan=history_request('2026-01-01T00:00Z',None,1)
     session['history']=plan
     monkeypatch.setattr(live,'ROOT',tmp_path)
-    monkeypatch.setattr(live,'open_recorder',Mock(return_value=None))
+    # Use the real asynchronous writer against a fake store. No enable flag:
+    # historical and subsequent live-following samples must still be persisted.
+    import database.simulation as recording
+    from database.store import dbtime
+    monkeypatch.delenv('SUMO_MYSQL_ENABLED', raising=False)
+    store=Mock()
+    store.register_run.return_value={Q:1}
+    monkeypatch.setattr(recording,'Store',lambda:store)
+    monkeypatch.setattr(recording,'model_catalog',lambda *args:('model-sha',[{'name':Q}]))
+    monkeypatch.setattr(live,'open_recorder',recording.open_recorder)
     # The second batch arrives during fast replay. Only after both batches are
     # exhausted do we wait. The third batch arrives from fresh sensor collection.
     window=lambda minute:HistoryWindow(60000,f'2026-01-01T00:0{minute}:00+00:00',{Q:minute*1000})
@@ -144,6 +153,16 @@ def test_follow_waits_for_collector_then_advances_same_job_and_can_stop(session,
     read.assert_not_called();engine.schedule.assert_called_once()
     assert loader.call_count==5
     assert cp.checkpoint_info()['history']['completed']==3
+    store.connect.assert_called_once_with(database='sumo_web_database')
+    assert store.register_run.call_args.args[0]==session['id']
+    assert store.register_run.call_args.args[4]=='history_then_live'
+    assert store.register_run.call_args.args[5]['recording_database']=='sumo_web_database'
+    writes=[call.args for call in store.write_simulation.call_args_list]
+    assert [w[0] for w in writes]==[session['id']]*3
+    assert [w[2] for w in writes]==[60000,120000,180000]
+    assert [w[3] for w in writes]==[{Q:1000}]*3
+    assert [w[4] for w in writes]==session['sensor_timestamps']
+    store.close.assert_called_once()
     monkeypatch.setattr(live,'_session',None)
     with patch.object(live.threading,'Thread'):
         restored=live.resume()

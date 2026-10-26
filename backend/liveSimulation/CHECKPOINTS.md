@@ -25,7 +25,7 @@ selected start. The browser sends timezone-qualified UTC timestamps.
 The backend reads `raw_data` / `raw_variables` in `sumo_web_database` using
 `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, and `MYSQL_PASSWORD`.
 `SUMO_HISTORY_DATABASE` can override the history database independently of the
-simulation recorder's `MYSQL_DATABASE`. The account needs SELECT access. No
+simulation recorder's `MYSQL_DATABASE`. The account needs SELECT access to raw history and write access to simulation result/catalog tables. No
 schema migration or database creation is performed.
 
 The selected inputs' latest good acquisition timestamps determine the newest
@@ -39,7 +39,7 @@ they are not filled with zero or skipped.
 
 Replay runs without real-time sleeping. After each chunk it checks again for
 newly collected data, so data arriving during replay is also simulated. Each
-completed interval updates results, flushes an enabled recorder and replaces the
+completed interval updates results, commits the required simulation recorder to the same database and replaces the
 latest disk checkpoint. The browser polls results every two seconds.
 
 Once caught up, the mode becomes live and displays
