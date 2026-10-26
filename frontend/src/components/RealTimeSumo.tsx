@@ -367,9 +367,10 @@ export function RealTimeSumo(){
           </>:<>
           {simulationMode==='history_then_live'&&<>
             <label className="sensor-field"><span>History start (local time)</span><input type="datetime-local" value={historyStart} disabled={running} onChange={e=>setHistoryStart(e.target.value)}/></label>
-            <p className="calibration-note">Read from sumo_web_database. Times use your browser timezone ({Intl.DateTimeFormat().resolvedOptions().timeZone}). Each complete LimitTime interval uses the mean of valid recorded inputs. Incomplete newest intervals wait for collection; gaps within older data stop the run.</p>
-            <p className="calibration-note">History runs as fast as SUMO allows and keeps catching up to newly collected data. Once caught up, the same model waits for sensor collection to complete each new LimitTime interval, then continues automatically. Results update every 2 seconds.</p>
-            <p className="calibration-note">Choose an initial state appropriate for the history start. Keep the database sensor collector running; no end time is needed. Historical and subsequent live model outputs are automatically saved to the same database (sumo simulation).</p>
+            <ul className="calibration-note">
+              <li><strong>Database:</strong> sumo_web_database for historical inputs and simulation results.</li>
+              <li><strong>Mode:</strong> Runs historical data as fast as possible, then waits for each new LimitTime interval to be collected before continuing.</li>
+            </ul>
             {!historyValid&&<p role="status">Select a historical start time in the past.</p>}
           </>}
           <label className="sensor-field"><span>Input update interval / Limit time (minutes)</span><input type="number" min="1" max="60" step="1" value={limitMinutes} disabled={running} onChange={e=>setLimitMinutes(e.target.value)}/></label>
