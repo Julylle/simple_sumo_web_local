@@ -34,7 +34,7 @@ OUTPUT_VARIABLES = [
     "Sumo__MaxAbsDer",
 ]
 
-def prepare_steady_state(sumo_project_path, out_state_path, wall_run_seconds=1*60*60, inputs=None, tolerance=1e-6, work_dir=None):
+def prepare_steady_state(sumo_project_path, out_state_path, wall_run_seconds=1*60*60, inputs=None, tolerance=1e-6, work_dir=None, timeout_state_path=None):
     import dynamita.tool as dtool
     import dynamita.scheduler as ds
     runtime_dir = str(Path(work_dir or os.getcwd()).resolve())
@@ -155,7 +155,44 @@ def prepare_steady_state(sumo_project_path, out_state_path, wall_run_seconds=1*6
         deadline = time.monotonic() + wall_run_seconds
         while not converged_event.is_set() and not done_event.is_set():
             if time.monotonic() >= deadline:
-                raise TimeoutError('Steady state did not converge within the time limit; no usable state was saved.')
+                if timeout_state_path is None:
+                    raise TimeoutError('Steady state did not converge within the time limit; no usable state was saved.')
+                if output_errors or solver_errors or sample_index == 0:
+                    raise RuntimeError('Cannot save timeout state: solver errors or no received samples.')
+                recovery = Path(timeout_state_path).resolve()
+                if recovery in (Path(out_state_path).resolve(), Path(sumo_project_path).resolve()):
+                    raise ValueError('Timeout state must have a separate output path.')
+                # Stop first so the saved state is stable; retain the native job until save confirmation.
+                with output_lock:
+                    phase = "timeout_unconverged"
+                ds.sumo.sendCommand(job, "stop;")
+                if not done_event.wait(timeout=60):
+                    raise TimeoutError('SUMO did not confirm stopping; timeout state was not saved.')
+                if output_errors or solver_errors:
+                    raise RuntimeError('SUMO reported an error while stopping; timeout state was not saved.')
+                from uuid import uuid4
+                recovery.parent.mkdir(parents=True, exist_ok=True)
+                staging = recovery.with_name(f'.{recovery.stem}-{uuid4().hex}.pending.xml')
+                try:
+                    saved_event.clear()
+                    ds.sumo.sendCommand(job, f'save "{norm(staging)}";')
+                    if not saved_event.wait(timeout=60):
+                        raise TimeoutError('SUMO did not confirm timeout state saving within 60 seconds.')
+                    if solver_errors or output_errors:
+                        raise RuntimeError('SUMO reported an error while saving timeout state.')
+                    root = ET.parse(staging).getroot()
+                    if root.tag != 'systemstate' or not len(root):
+                        raise ValueError('Timeout state is not a non-empty SUMO systemstate.')
+                    os.replace(staging, recovery)
+                finally:
+                    staging.unlink(missing_ok=True)
+                ds.sumo.finish(job)
+                message = (f'Steady solver timed out. UNCONVERGED state saved: {recovery}; '
+                           f'MaxAbsDer={last_derivative}, tolerance={tolerance}. '
+                           'The converged steady-state output was not replaced.')
+                print(message, flush=True)
+                logging.warning(message)
+                raise TimeoutError(message)
             converged_event.wait(timeout=min(0.2, max(0, deadline-time.monotonic())))
         if output_errors or solver_errors:
             raise RuntimeError(f'Steady solver failed: {output_errors or solver_errors}')
@@ -277,13 +314,14 @@ def main(argv=None):
     print(f'Read {len(values)} fresh inputs. Snapshot: {snapshot}', flush=True)
     for name, value in values.items():
         print(f'  {name} = {value:.15g}', flush=True)
+    recovery = output.with_name(f'{output.stem}_unconverged_{datetime.now():%Y%m%d_%H%M%S_%f}.xml')
     pending = output.with_name(f'.{output.stem}-{uuid4().hex}.pending.xml')
     try:
         # Keep native DLLs isolated; cleanup may be delayed by Windows DLL handles.
         with tempfile.TemporaryDirectory(prefix='sumo_steady_', ignore_cleanup_errors=True) as runtime:
             prepare_steady_state(str(project), str(pending),
                 wall_run_seconds=args.timeout_hours * 3600, inputs=values,
-                tolerance=args.tolerance, work_dir=runtime)
+                tolerance=args.tolerance, work_dir=runtime, timeout_state_path=recovery)
         root = ET.parse(pending).getroot()
         if root.tag != 'systemstate' or not len(root):
             raise ValueError('Solver did not produce a non-empty SUMO systemstate.')

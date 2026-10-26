@@ -46,7 +46,12 @@ def test_cli_reads_once_applies_web_scaling_and_only_replaces_success(tmp_path, 
         assert kwargs['tolerance'] == 1e-6
         assert kwargs['wall_run_seconds'] == 3.5*3600
         assert Path(kwargs['work_dir']).exists()
-        if failure == 'solver': raise TimeoutError('not converged')
+        recovery = Path(kwargs['timeout_state_path'])
+        assert recovery.parent == output.parent
+        assert recovery.name.startswith('state_unconverged_')
+        if failure == 'solver':
+            recovery.write_text('<systemstate><partial/></systemstate>')
+            raise TimeoutError('not converged')
         Path(output_path).write_text('<wrong/>' if failure == 'invalid_state' else '<systemstate><new/></systemstate>')
     monkeypatch.setattr(steady_run, 'prepare_steady_state', solve)
     monkeypatch.chdir(tmp_path)
@@ -65,6 +70,8 @@ def test_cli_reads_once_applies_web_scaling_and_only_replaces_success(tmp_path, 
         with pytest.raises((ValueError, TimeoutError, ConnectionError)):
             steady_run.main(args)
         assert '<old/>' in output.read_text()
+        if failure == 'solver':
+            assert '<partial/>' in next(tmp_path.glob('state_unconverged_*.xml')).read_text()
     else:
         steady_run.main(args)
         assert '<new/>' in output.read_text()

@@ -26,3 +26,15 @@ A fresh snapshot uses the same `read_snapshot` and `scale_model_inputs` function
 Raw readings, mapping, UTC read time and applied inputs are saved to a timestamped `steady_sensor_inputs_*.json` alongside the chosen output XML. Solver observations go to a timestamped `steady_results_*.csv` in the script directory, and the terminal. Convergence follows the existing web solver: three consecutive MaxAbsDer readings below tolerance, or a natural solver finish with a verified residual below tolerance. Only a successfully saved non-empty systemstate replaces the requested XML; failures retain the previous output. DLLs use an isolated temporary directory to avoid reusing a loaded DLL on Windows.
 
 The web's existing `prepare_steady_state(..., inputs=...)` API remains unchanged in behavior. Directly invoking that Python function still uses the inputs supplied by its caller; fresh KEPServer acquisition is performed by this script's CLI entry point. Do not launch many steady jobs concurrently on a single SUMO license.
+
+## Timeout recovery
+
+The standalone CLI attempts to save the latest state on a wall-clock timeout to
+`<output_stem>_unconverged_<timestamp>.xml` beside the requested output. It waits
+for stop and save confirmation, validates the XML, and only then publishes the file.
+The command still exits with a TimeoutError: this is an **unconverged** snapshot,
+not a verified steady state. The existing steady-state XML is not replaced.
+No snapshot is published if no samples were received or the solver reports errors.
+A crash or already-terminated process cannot be recovered by this feature.
+The callable API remains strict by default; callers must explicitly supply a
+separate `timeout_state_path` to enable this behavior.

@@ -11,6 +11,7 @@ import pytest
 Q = 'Sumo__Plant__Influent__param__Q'
 
 
+@pytest.mark.parametrize('recovery_mode', ['disabled', 'valid', 'invalid_xml'])
 @pytest.mark.parametrize('samples,finished,success', [
     ([1, 1e-7, 1e-7, 1e-7], False, True),
     ([1e-7], True, True),
@@ -19,7 +20,7 @@ Q = 'Sumo__Plant__Influent__param__Q'
     ([], False, False),
     ([1e-7, 1, 1e-7], False, False),
 ])
-def test_only_converged_states_are_saved(tmp_path, monkeypatch, samples, finished, success):
+def test_only_converged_states_are_saved(tmp_path, monkeypatch, samples, finished, success, recovery_mode):
     monkeypatch.chdir(tmp_path)
     package = ModuleType('dynamita')
     tool = ModuleType('dynamita.tool')
@@ -41,6 +42,9 @@ def test_only_converged_states_are_saved(tmp_path, monkeypatch, samples, finishe
     module.__file__ = str(tmp_path / 'steady_run.py')
     project = tmp_path / 'test.sumo'
     state = tmp_path / 'state.xml'
+    recovery = tmp_path / 'unconverged.xml'
+    recovery.write_text('<systemstate><previous/></systemstate>')
+    options = {} if recovery_mode == 'disabled' else {'timeout_state_path': recovery}
     with zipfile.ZipFile(project, 'w') as archive:
         archive.writestr('variables.var', f'0\t{Q}\tREAL\tm3/d\tParameter\n1\tSumo__MaxAbsDer\tREAL\t-\tVariable')
     def schedule(model, commands, **kwargs):
@@ -56,16 +60,26 @@ def test_only_converged_states_are_saved(tmp_path, monkeypatch, samples, finishe
         if command == 'stop;':
             engine.message_callback(1, '530004 Simulation ended.')
         if command.startswith('save '):
-            state.write_text('<systemstate><state/></systemstate>')
+            target = Path(command.split(chr(34))[1])
+            target.write_text('<wrong/>' if recovery_mode == 'invalid_xml' and target != state else '<systemstate><state/></systemstate>')
             engine.message_callback(1, '530045 Saved.')
     engine.schedule.side_effect = schedule
     engine.sendCommand.side_effect = send
     if success:
-        assert module.prepare_steady_state(str(project), str(state), wall_run_seconds=0.01, inputs={Q:1000})
+        assert module.prepare_steady_state(str(project), str(state), wall_run_seconds=0.01, inputs={Q:1000}, **options)
         assert state.exists()
     else:
-        with pytest.raises((RuntimeError, TimeoutError)):
-            module.prepare_steady_state(str(project), str(state), wall_run_seconds=0.01, inputs={Q:1000})
+        with pytest.raises((RuntimeError, TimeoutError, ValueError)):
+            module.prepare_steady_state(str(project), str(state), wall_run_seconds=0.01, inputs={Q:1000}, **options)
         assert not state.exists()
-        assert not any(call.args[1].startswith('save ') for call in engine.sendCommand.call_args_list)
+        attempted = recovery_mode != 'disabled' and bool(samples) and not finished
+        commands = [call.args[1] for call in engine.sendCommand.call_args_list]
+        assert any(command.startswith('save ') for command in commands) == attempted
+        if attempted:
+            assert commands[0] == 'stop;'
+        if attempted and recovery_mode == 'valid':
+            assert '<state/>' in recovery.read_text()
+        else:
+            assert '<previous/>' in recovery.read_text()
+    assert not list(tmp_path.glob('*.pending.xml'))
     engine.cleanup.assert_called_once()
