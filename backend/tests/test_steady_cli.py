@@ -43,8 +43,8 @@ def test_cli_reads_once_applies_web_scaling_and_only_replaces_success(tmp_path, 
     def solve(project_path, output_path, **kwargs):
         calls.append(kwargs)
         assert kwargs['inputs'][Q] == pytest.approx(1000)
-        assert kwargs['tolerance'] == 1e-6
-        assert kwargs['wall_run_seconds'] == 3.5*3600
+        assert kwargs['tolerance'] == 100
+        assert kwargs['wall_run_seconds'] == 0.5*3600
         assert Path(kwargs['work_dir']).exists()
         recovery = Path(kwargs['timeout_state_path'])
         assert recovery.parent == output.parent

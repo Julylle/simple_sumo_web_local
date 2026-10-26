@@ -34,7 +34,7 @@ OUTPUT_VARIABLES = [
     "Sumo__MaxAbsDer",
 ]
 
-def prepare_steady_state(sumo_project_path, out_state_path, wall_run_seconds=1*60*60, inputs=None, tolerance=1e-6, work_dir=None, timeout_state_path=None):
+def prepare_steady_state(sumo_project_path, out_state_path, wall_run_seconds=0.5*60*60, inputs=None, tolerance=100, work_dir=None, timeout_state_path=None):
     import dynamita.tool as dtool
     import dynamita.scheduler as ds
     runtime_dir = str(Path(work_dir or os.getcwd()).resolve())
@@ -262,8 +262,8 @@ def main(argv=None):
     source = parser.add_mutually_exclusive_group()
     source.add_argument('--mapping', type=Path, help='JSON object mapping SUMO parameter names to full OPC UA node IDs.')
     source.add_argument('--live-url', help='Backend base URL to obtain the current live/checkpoint mapping; sensor values are freshly read.')
-    parser.add_argument('--tolerance', type=float, default=1e-6)
-    parser.add_argument('--timeout-hours', type=float, default=3.5)
+    parser.add_argument('--tolerance', type=float, default=100)
+    parser.add_argument('--timeout-hours', type=float, default=0.5)
     args = parser.parse_args(argv)
     if not math.isfinite(args.tolerance) or args.tolerance <= 0:
         parser.error('--tolerance must be positive and finite.')

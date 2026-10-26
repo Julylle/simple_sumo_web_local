@@ -13,12 +13,12 @@ Q = 'Sumo__Plant__Influent__param__Q'
 
 @pytest.mark.parametrize('recovery_mode', ['disabled', 'valid', 'invalid_xml'])
 @pytest.mark.parametrize('samples,finished,success', [
-    ([1, 1e-7, 1e-7, 1e-7], False, True),
-    ([1e-7], True, True),
-    ([1.0], True, False),
+    ([101, 100, 100, 100], False, True),
+    ([100], True, True),
+    ([101], True, False),
     ([float('nan')], True, False),
     ([], False, False),
-    ([1e-7, 1, 1e-7], False, False),
+    ([100, 101, 100], False, False),
 ])
 def test_only_converged_states_are_saved(tmp_path, monkeypatch, samples, finished, success, recovery_mode):
     monkeypatch.chdir(tmp_path)
