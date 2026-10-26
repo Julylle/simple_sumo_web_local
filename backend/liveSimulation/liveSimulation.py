@@ -41,6 +41,7 @@ def snapshot():
                 "mapping": dict(s["mapping"]), "interval_minutes": s["interval"] // 60,
                 "checkpoint": checkpoint_info(), "mode": s.get("mode", "live"),
                 "history": dict(s["history"]) if s.get("history") else None,
+                "last_sumo_message": s.get("last_sumo_message"),
                 "phase": s["phase"], "simulated_h": s["sim_ms"] / 3600000,
                 "samples": len(s["times"]), "result": {
                     "sensor_timestamps": list(s.get("sensor_timestamps", [None] * len(s["times"]))),
@@ -186,7 +187,11 @@ def _worker(s):
     job = None
     workspace = None
     recorder = None
+    interrupted_before_boundary = False
     try:
+        boundary_timeout = float(os.environ.get("SUMO_BOUNDARY_TIMEOUT_SECONDS", "300"))
+        if not math.isfinite(boundary_timeout) or boundary_timeout <= 0:
+            raise ValueError("SUMO_BOUNDARY_TIMEOUT_SECONDS must be a positive finite number.")
         logging.info("Live SUMO %s validating model files", s["id"])
         with _lock:
             s["phase"] = "validating_model"
@@ -239,6 +244,9 @@ def _worker(s):
         ds.sumo.setParallelJobs(1)
         def message(job_id, msg):
             nonlocal state_loaded
+            logging.info("Live SUMO %s job %s: %s", s["id"], job_id, msg)
+            with _lock:
+                s["last_sumo_message"] = msg
             if msg.startswith("530041"):
                 state_loaded = True
             if msg.startswith(("230046","230008")):
@@ -285,6 +293,9 @@ def _worker(s):
         job = ds.sumo.schedule(dll, commands=commands,
             variables=list(dict.fromkeys(["Sumo__Time", *s["mapping"], *output_variables, *database_variables])),
             jobData={getattr(ds.sumo, "persistent", "persistent"): True})
+        if not isinstance(job, int) or job < 0:
+            rejected_job, job = job, None
+            raise RuntimeError(f"SUMO scheduler rejected the job: {rejected_job}. Last message: {s.get('last_sumo_message', 'none')}")
         with _lock:
             s["status"] = "running"
             s["phase"] = "waiting_for_boundary"
@@ -308,8 +319,23 @@ def _worker(s):
                 save_requested = False
 
         due = time.monotonic() + s["interval"]
+        boundary_started = time.monotonic()
         while not done.is_set():
             if not boundary.wait(0.25):
+                if done.is_set():
+                    break
+                if s["stop"].is_set():
+                    # Do not label an unfinished interval as a saved checkpoint.
+                    interrupted_before_boundary = True
+                    break
+                if time.monotonic() - boundary_started >= boundary_timeout:
+                    raise RuntimeError(
+                        f"SUMO did not reach LimitTime {target_ms / 1000:g} s within "
+                        f"{boundary_timeout:g} seconds of wall time. Last model time: "
+                        f"{s['sim_ms'] / 1000:g} s; initial state loaded: {state_loaded}. "
+                        f"Last SUMO message: {s.get('last_sumo_message', 'none received')}. "
+                        "Previous completed checkpoint retained. Inspect backend SUMO logs; "
+                        "for a known slow model, increase SUMO_BOUNDARY_TIMEOUT_SECONDS.")
                 continue
             boundary.clear()
             if not state_loaded:
@@ -366,6 +392,7 @@ def _worker(s):
                 max_ms = target_ms + 365 * dtool.day
                 ds.sumo.sendCommand(job, f'set Sumo__StopTime {max_ms};')
             ds.sumo.sendCommand(job, f"set Sumo__DataComm {step_ms};")
+            boundary_started = time.monotonic()
             ds.sumo.sendCommand(job, f"set Sumo__LimitTime {target_ms};")
             with _lock:
                 s["phase"] = "replaying_history" if s.get("mode") == "history" else "simulating_live"
@@ -373,7 +400,7 @@ def _worker(s):
             raise RuntimeError(errors[0])
         with _lock:
             s["status"] = "stopped"
-            s["phase"] = "saved"
+            s["phase"] = "stopped_before_boundary" if interrupted_before_boundary else "saved"
     except Exception as exc:
         logging.exception("Live SUMO worker failed")
         with _lock:

@@ -214,3 +214,49 @@ def test_follow_throttles_reads_even_when_new_data_is_available(session,monkeypa
 def test_missing_limit_time_defaults_to_one_minute():
     from api.live_sumo import LiveStart
     assert LiveStart(mapping={Q:'ns=2;s=tag'}).interval_minutes==1
+
+
+@pytest.mark.parametrize('outcome', ['timeout', 'stop', 'rejected'])
+def test_missing_native_boundary_does_not_wait_forever(session, tmp_path, monkeypatch, outcome):
+    session['history'] = history_request('2026-01-01T00:00Z', None, 1)
+    cp.save_checkpoint(session, session['model']['state'], 0)
+    previous = cp.checkpoint_path().read_bytes()
+    monkeypatch.setenv('SUMO_BOUNDARY_TIMEOUT_SECONDS', '0.001')
+    monkeypatch.setattr(live, 'ROOT', tmp_path)
+    monkeypatch.setattr(live, 'open_recorder', Mock(return_value=None))
+    monkeypatch.setattr(live, 'load_available_history', Mock(return_value=[
+        HistoryWindow(60000, '2026-01-01T00:01:00Z', {Q: 1000})]))
+    package, tool, scheduler, fixed = [ModuleType(n) for n in (
+        'dynamita', 'dynamita.tool', 'dynamita.scheduler', 'real_sim_1202.fixed_dynamic_run')]
+    tool.sec = 1000
+    tool.day = 86400000
+    tool.extract_dll_from_project = Mock()
+    fixed.OUTPUT_VARIABLES = []
+    fixed.validate_state_file = lambda path: None
+    engine = Mock()
+    engine.persistent = 'persistent'
+    engine.isSimFinishedMsg = lambda msg: False
+    scheduler.sumo = engine
+    package.tool = tool
+    package.scheduler = scheduler
+    for module in (package, tool, scheduler, fixed):
+        monkeypatch.setitem(sys.modules, module.__name__, module)
+    def schedule(*args, **kwargs):
+        engine.message_callback(1, 'Native startup diagnostic')
+        if outcome == 'stop':
+            session['stop'].set()
+        return -1 if outcome == 'rejected' else 1
+    engine.schedule.side_effect = schedule
+    live._worker(session)
+    assert cp.checkpoint_path().read_bytes() == previous
+    assert session['history']['completed'] == 0
+    assert session['last_sumo_message'] == 'Native startup diagnostic'
+    if outcome == 'stop':
+        assert session['status'] == 'stopped'
+        assert session['phase'] == 'stopped_before_boundary'
+    else:
+        assert session['status'] == 'failed'
+        assert 'Native startup diagnostic' in session['error']
+        assert ('did not reach LimitTime' if outcome == 'timeout' else 'rejected the job') in session['error']
+    engine.cleanup.assert_called_once()
+    assert not any(call.args[1].startswith('save ') for call in engine.sendCommand.call_args_list)
