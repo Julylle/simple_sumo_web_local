@@ -230,7 +230,7 @@ export function RealTimeSumo(){
   async function start(){
     if(!statusReady||!modelReady)return;
     if(simulationMode==='history_then_live'&&!historyValid){setError('Select a historical start time in the past.');return;}
-    if(!window.confirm(t('Start a new historical simulation? After the first successful result write, all previous SUMO simulation results in the history database will be replaced. Raw sensor data is kept. The latest checkpoint is replaced after the first completed interval. Download old results first if needed.')))return;
+    if(!window.confirm(t('Start a new historical simulation? Results at matching timestamps for the same model will be updated. Other timestamps and raw sensor data are kept. The latest checkpoint is replaced after the first completed interval.')))return;
     setBusy(true);setError('');
     try{
       const selected=Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()));
@@ -313,15 +313,15 @@ export function RealTimeSumo(){
         <div className="sensor-actions"><button className="primary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{t(busy?'Connecting...':'Connect')}</button><button className="secondary" disabled={!connected||busy} onClick={()=>setConnected(false)}>{t("Disconnect")}</button><span>{t("Check sensor connectivity and current readings. Plots update with simulation results.")}</span></div>
         {sensorError&&<div className="alert" role="alert">{t("Sensor update failed: ")}{t(sensorError)}</div>}
       </section>
-      <section className="sensor-setup simulation-setup" aria-labelledby="simulation-step-title">
+      <section className={`sensor-setup simulation-setup ${resumeMode ? "" : "history-setup"}`} aria-labelledby="simulation-step-title">
         <div className="sensor-heading"><div><h3 id="simulation-step-title">{t("Step2: Set up real time simulation")}</h3><p>{t("Choose a simulation mode, then configure a new run or resume the latest saved simulation.")}</p></div><span className={'sensor-status '+((resumeMode?checkpointReady:modelReady)?'is-connected':'')} role="status">{t(liveActive?'Simulation active':preparingModel?'Preparing state':resumeMode?(checkpointReady?'Checkpoint ready':'No usable checkpoint'):modelReady?'Model ready':'Setup required')}</span></div>
-          <label className="sensor-field"><span>{t("Simulation mode")}</span><select value={simulationMode} disabled={running} onChange={e=>setSimulationMode(e.target.value)}>
+          <label className="sensor-field simulation-mode-field"><span>{t("Simulation mode")}</span><select value={simulationMode} disabled={running} onChange={e=>setSimulationMode(e.target.value)}>
             <option value="resume">{t("Resume a saved simulation")}</option>
             <option value="history_then_live">{t("Historical data → Live")}</option>
           </select></label>
-        <div className="sensor-editor-grid sensor-input-grid" style={resumeMode?{gridTemplateColumns:'1fr'}:undefined}>
+        <div className={`sensor-editor-grid sensor-input-grid ${resumeMode ? "" : "history-setup-grid"}`} style={resumeMode?{gridTemplateColumns:'1fr'}:undefined}>
         {!resumeMode&&<>
-        <article className="sensor-editor" aria-label={t("SUMO model selection")}>
+        <article className="sensor-editor history-model-card" aria-label={t("SUMO model selection")}>
           <div className="sensor-editor-title"><h4>{t("SUMO model")}</h4><span>{t("01 · Model")}</span></div>
         <label className="sensor-field"><span>{t("SUMO model")}</span>
           <select value={modelSource} disabled={running} onChange={e=>{setModelSource(e.target.value);setUploadedModel(null);setModelError('');}}>
@@ -333,7 +333,7 @@ export function RealTimeSumo(){
           <p className="calibration-note">{t("Use the built-in plant model or upload a compiled SUMO project that supports your sensor variables.")}</p>
           <p className="calibration-note simulation-card-footnote">{t("Prepared models are available until the backend restarts.")}</p>
         </article>
-        <article className="sensor-editor">
+        <article className="sensor-editor history-state-card">
           <div className="sensor-editor-title"><h4>{t("Initial state")}</h4><span>{t("02 · Preparation")}</span></div>
         <label className="sensor-field"><span>{t("Steady state")}</span>
           <select value={stateMode} disabled={running} onChange={e=>{setStateMode(e.target.value);setUploadedModel(null);setModelError('');}}>
@@ -359,7 +359,7 @@ export function RealTimeSumo(){
         {modelError&&<div className="alert" role="alert">{t(modelError)}</div>}
         </article>
         </>}
-        <article className="sensor-editor">
+        <article className={`sensor-editor ${resumeMode ? "" : "history-timing-card"}`}>
           <div className="sensor-editor-title"><h4>{t(resumeMode?'Saved simulation':'Simulation timing')}</h4><span>{t(resumeMode?'Latest checkpoint':'03 · Timing')}</span></div>
           {resumeMode?<>
             {!checkpoint?<p role="status">{t("No saved simulation is available yet. Run a simulation to create a checkpoint.")}</p>
@@ -386,7 +386,7 @@ export function RealTimeSumo(){
           </>:<>
           {simulationMode==='history_then_live'&&<>
             <label className="sensor-field"><span>{t("History start (local time)")}</span><input type="datetime-local" value={historyStart} disabled={running} onChange={e=>setHistoryStart(e.target.value)}/></label>
-            <ul className="calibration-note">
+            <ul className="calibration-note history-behavior">
               <li><strong>{t("Database:")}</strong>{t(" sumo_web_database for historical inputs and simulation results.")}</li>
               <li><strong>{t("Mode:")}</strong>{t(" Runs history in LimitTime intervals as fast as possible, then checks for new data at the same interval (default: 1 minute). Missing inputs keep their previous values.")}</li>
             </ul>
