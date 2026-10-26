@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ComparisonSeries } from '../components/sumoOutputs';
 
-type Comparisons = {database?: string; run_id: string; series: ComparisonSeries; aggregation_seconds: number | null; error?: string};
+type Comparisons = {stored_series?: ComparisonSeries; database?: string; run_id: string; series: ComparisonSeries; aggregation_seconds: number | null; error?: string};
 export function useSensorComparisons(runId: string | undefined, hasSamples: boolean, intervalMinutes = 1) {
   const [value, setValue] = useState<Comparisons>();
   useEffect(() => {

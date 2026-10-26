@@ -23,8 +23,8 @@ def test_measured_means_are_time_aligned_and_gaps_are_not_forward_filled(monkeyp
     store=MagicMock()
     cursor=store.connection.cursor.return_value.__enter__.return_value
     first, second = list(comparisons.COMPARISON_SENSORS)
-    cursor.fetchall.return_value=[(0,comparisons.COMPARISON_SENSORS[first][0],0),
-                                 (2,comparisons.COMPARISON_SENSORS[second][0],4.5)]
+    cursor.fetchall.side_effect=[[(0,comparisons.COMPARISON_SENSORS[first][0],0),
+                                 (2,comparisons.COMPARISON_SENSORS[second][0],4.5)], []]
     monkeypatch.setattr(comparisons,'Store',lambda:store)
     result=comparisons.read_comparisons(fixture_snapshot())
     assert result['series'][first]['values']==[0,None,None]
@@ -32,7 +32,7 @@ def test_measured_means_are_time_aligned_and_gaps_are_not_forward_filled(monkeyp
     assert result['series'][first]['timestamps']==[f'2026-10-26T08:0{i}:00+00:00' for i in (1,2,3)]
     assert result['aggregation_seconds']==60
     store.connect.assert_called_once_with(database='sumo_web_database')
-    sql, params=cursor.execute.call_args.args
+    sql, params=cursor.execute.call_args_list[0].args
     assert "r.quality='good'" in sql and 'AVG(r.numeric_value)' in sql
     assert params[2:4]==[datetime(2026,10,26,8),datetime(2026,10,26,8,3)]
     store.close.assert_called_once()
@@ -112,3 +112,18 @@ def test_api_returns_specific_database_failure_without_credentials(monkeypatch):
         assert expected in response.json()['detail']
         assert 'sumo_web_database' in response.json()['detail']
         assert 'private diagnostic' not in response.json()['detail']
+
+
+def test_stored_output_is_scoped_to_run_and_model_progress():
+    cursor=MagicMock()
+    cursor.fetchall.return_value=[(datetime(2026,10,26,8,1),0),
+                                  (datetime(2026,10,26,8,2),None),
+                                  (datetime(2026,10,26,8,3),4.5)]
+    result=comparisons.read_stored_output(cursor,fixture_snapshot())
+    series=result[comparisons.STORED_OUTPUT]
+    assert series['values']==[0,None,4.5]
+    assert series['timestamps'][0]=='2026-10-26T08:01:00+00:00'
+    sql,params=cursor.execute.call_args.args
+    assert params==(comparisons.STORED_OUTPUT,'run-1',180000)
+    assert 's.run_id=%s AND s.simulated_ms<=%s' in sql
+    assert 's.acquired_at' not in sql

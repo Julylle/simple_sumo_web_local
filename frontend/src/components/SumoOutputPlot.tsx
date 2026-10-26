@@ -13,7 +13,7 @@ import { sumoOutputColors, type OutputOption, type ComparisonSeries } from './su
 
 export function SumoOutputPlot({ result, variables, rightAxis, overlay, options, timestamps, settingsKey }: {
   settingsKey: string;
-  result: { comparison_series?: ComparisonSeries; time_h: number[]; variables: Record<string, (number | null)[]> };
+  result: { simulation_series?: ComparisonSeries; comparison_series?: ComparisonSeries; time_h: number[]; variables: Record<string, (number | null)[]> };
   timestamps?: (string | null)[];
   options: OutputOption[]; variables: string[]; rightAxis: string[]; overlay: boolean; runId: string;
 }) {
@@ -55,10 +55,11 @@ export function SumoOutputPlot({ result, variables, rightAxis, overlay, options,
     const right = overlay && rightAxis.includes(key);
     const option = options.find(option => option.key === key);
     const measured = result.comparison_series?.[key];
+    const series = measured ?? result.simulation_series?.[key];
     const colorKey = option?.compareTo ?? key;
     return {
-      x: measured ? measured.timestamps.map(value => localPlotTimestamp(Date.parse(value))) : timestamps ?? result.time_h,
-      y: measured?.values ?? result.variables[key], type: 'scatter', mode: measured ? 'lines+markers' : 'lines',
+      x: series ? series.timestamps.map(value => localPlotTimestamp(Date.parse(value))) : timestamps ?? result.time_h,
+      y: series?.values ?? result.variables[key], type: 'scatter', mode: measured ? 'lines+markers' : 'lines',
       connectgaps: false, marker: {size: 5},
       name: legend.names[index],
       yaxis: right ? 'y2' : 'y',

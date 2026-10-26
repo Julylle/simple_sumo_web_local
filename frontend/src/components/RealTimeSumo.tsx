@@ -1,3 +1,4 @@
+import { mergeStoredSimulation } from '../utils/mergeStoredSimulation';
 import { useSensorComparisons } from '../hooks/useSensorComparisons';
 import { realtimePollutantOptions } from './sumoOutputs';
 import { LiveProgressDiagnostics, type LiveDiagnostics } from './LiveProgressDiagnostics';
@@ -275,7 +276,7 @@ export function RealTimeSumo(){
   const running=!statusReady||busy||liveActive||modelUploading||!!preparingModel;
   const sensorGroup=(key:string)=>defaultDoMapping[key]?'do':defaultControlMapping[key]?'control':'influent';
   const comparisons = useSensorComparisons(liveRun?.id, !!liveRun?.result?.time_h.length, liveRun?.interval_minutes);
-  const visualisationResult = liveRun?.result ? {...liveRun.result, comparison_series: comparisons?.series} : undefined;
+  const visualisationResult = liveRun?.result ? {...liveRun.result, comparison_series: comparisons?.series, simulation_series: mergeStoredSimulation(comparisons?.stored_series, liveRun.result)} : undefined;
   const historicalCharts=!!liveRun?.history||simulationMode==='history_then_live';
   const historicalChartResult=liveRun?.history?liveRun.result:undefined;
   const chartMapping=liveRun?.history?(liveRun.mapping??mapping):mapping;

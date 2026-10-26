@@ -1,5 +1,5 @@
 """Read measured nitrate independently of model inputs and simulation progress."""
-from datetime import timedelta
+from datetime import timedelta, timezone
 import math
 import os
 
@@ -20,6 +20,30 @@ COMPARISON_SENSORS = {
 def comparison_database():
     # Measurement source is independent of the model's checkpoint/history DB.
     return os.getenv('SUMO_COMPARISON_DATABASE', 'sumo_web_database')
+
+
+STORED_OUTPUT = 'Sumo__Plant__CSTR3_4__SNOx'
+
+
+def read_stored_output(cursor, snapshot):
+    """Restore only this run, never expose results beyond its current progress."""
+    hours = (snapshot.get('result') or {}).get('time_h') or []
+    if not hours or not snapshot.get('id'):
+        return {}
+    cursor.execute("""SELECT s.sensor_read_at, d.numeric_value
+        FROM sumo_samples s
+        JOIN sumo_runs r ON r.run_id=s.run_id
+        JOIN sumo_variables v ON v.model_sha=r.model_sha AND v.variable_name=%s
+        JOIN sumo_values d ON d.sample_id=s.id AND d.variable_id=v.id
+        WHERE s.run_id=%s AND s.simulated_ms<=%s
+          AND s.sensor_read_at IS NOT NULL
+        ORDER BY s.simulated_ms""", (STORED_OUTPUT, snapshot['id'], round(max(hours)*3600000)))
+    points = {}
+    for stamp, value in cursor.fetchall():
+        # MySQL DATETIME stores UTC; acquisition time is NOT simulation time.
+        stamp = stamp.replace(tzinfo=timezone.utc) if stamp.tzinfo is None else stamp
+        points[stamp.isoformat()] = float(value) if value is not None and math.isfinite(float(value)) else None
+    return {STORED_OUTPUT: {'timestamps': list(points), 'values': list(points.values())}}
 
 
 def read_comparisons(snapshot):
@@ -54,6 +78,7 @@ def read_comparisons(snapshot):
         with store.connection.cursor() as cursor:
             cursor.execute(sql, params)
             rows = cursor.fetchall()
+            stored = read_stored_output(cursor, snapshot)
     finally:
         store.close()
     timestamps = [min(begin + timedelta(seconds=(i + 1) * aggregation), end).isoformat()
@@ -63,4 +88,4 @@ def read_comparisons(snapshot):
     for bucket, name, value in rows:
         if name in names and 0 <= int(bucket) < count and value is not None and math.isfinite(float(value)):
             series[names[name]]['values'][int(bucket)] = float(value)
-    return {**result, 'series': series, 'aggregation_seconds': aggregation}
+    return {**result, 'series': series, 'stored_series': stored, 'aggregation_seconds': aggregation}
