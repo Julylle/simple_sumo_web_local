@@ -286,8 +286,8 @@ export function RealTimeSumo(){
     <section className="page-head"><div><h1>{t("SUMO Real-time Simulation")}</h1><p>{t("Cixi Eastern WWTP · KEPServer OPC UA · Manual simulation")}</p></div></section>
     <section className="config-card">
       <div className="section-title"><div><h2>{t("Simulation settings")}</h2></div></div>
-      <section className="sensor-setup" aria-labelledby="sensor-step-title">
-        <div className="sensor-heading"><div><h3 id="sensor-step-title">{t("Step1: Connect sensors through KEPServer")}</h3><p>{t("Review the prefilled influent, DO and additional control tags, then connect to read sensor data.")}</p></div><span className={'sensor-status '+(connected?'is-connected':'')} role="status">{t(connected?'Connected · every 5 s':'Disconnected')}</span></div>
+      <details className="sensor-setup sensor-step-collapsible" aria-labelledby="sensor-step-title">
+        <summary className="sensor-heading"><div><h3 id="sensor-step-title">{t("Step1: Connect sensors through KEPServer")}</h3><p>{t("Review the prefilled influent, DO and additional control tags, then connect to read sensor data.")}</p></div><span className={'sensor-status '+(connected?'is-connected':'')} role="status">{t(connected?'Connected · every 5 s':'Disconnected')}</span><span className="sensor-step-chevron" aria-hidden="true">⌄</span></summary>
         <div className="sensor-editor-grid sensor-input-grid">
           {[{title:'Influent variable',items:options,selected:selectedColumn,draft:nodeDraft,setSelected:setSelectedColumn,setDraft:setNodeDraft,kind:'influent'},
             {title:'DO sensors',items:doSensorOptions,selected:selectedDo,draft:doDraft,setSelected:setSelectedDo,setDraft:setDoDraft,kind:'do'},
@@ -312,7 +312,7 @@ export function RealTimeSumo(){
         </div>
         <div className="sensor-actions"><button className="primary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{t(busy?'Connecting...':'Connect')}</button><button className="secondary" disabled={!connected||busy} onClick={()=>setConnected(false)}>{t("Disconnect")}</button><span>{t("Check sensor connectivity and current readings. Plots update with simulation results.")}</span></div>
         {sensorError&&<div className="alert" role="alert">{t("Sensor update failed: ")}{t(sensorError)}</div>}
-      </section>
+      </details>
       <section className={`sensor-setup simulation-setup ${resumeMode ? "" : "history-setup"}`} aria-labelledby="simulation-step-title">
         <div className="sensor-heading"><div><h3 id="simulation-step-title">{t("Step2: Set up real time simulation")}</h3><p>{t("Choose a simulation mode, then configure a new run or resume the latest saved simulation.")}</p></div><span className={'sensor-status '+((resumeMode?checkpointReady:modelReady)?'is-connected':'')} role="status">{t(liveActive?'Simulation active':preparingModel?'Preparing state':resumeMode?(checkpointReady?'Checkpoint ready':'No usable checkpoint'):modelReady?'Model ready':'Setup required')}</span></div>
           <label className="sensor-field simulation-mode-field"><span>{t("Simulation mode")}</span><select value={simulationMode} disabled={running} onChange={e=>setSimulationMode(e.target.value)}>
