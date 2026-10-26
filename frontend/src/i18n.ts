@@ -28,6 +28,17 @@ export function t<T>(value: T): T {
   let translated = zh[text];
   if (!translated) {
     translated = text
+      .replace(/^Error: (.+)$/, (_, detail: string) => `错误：${t(detail)}`)
+      .replace(/^Sensor comparisons from (.+) unavailable\. (.+)$/, (_, database: string, detail: string) => `无法从 ${database} 读取传感器对比数据。${t(detail)}`)
+      .replace(/^Request failed \((\d+)\)$/, '请求失败（$1）')
+      .replace(/^Remove (Sumo__.+)$/, '移除 $1')
+      .replace(/^· (\d+) loaded intervals remaining$/, '· 剩余 $1 个已加载区间')
+      .replace(/^([\d.]+) min$/, '$1 分钟')
+      .replace(/^([\d.]+) s$/, '$1 秒')
+      .replace(/^(CSTR\d+_\d+) nitrate · sensor$/, '$1 硝酸盐 · 传感器')
+      .replace(/^SUMO rejected command: (.+)$/, 'SUMO 拒绝执行命令：$1')
+      .replace(/^OPC UA unavailable; live simulation stopped: (.+)$/, (_, detail: string) => `OPC UA 不可用，实时模拟已停止：${t(detail)}`)
+      .replace(/^History data missing at (.+): (.+)$/, '历史数据缺失，时间 $1：$2')
       .replace(/^Influent (.+)$/, '进水 $1')
       .replace(/^Comparison (\d+)$/, '对比图 $1')
       .replace(/^(\d+) influent parameters selected$/, '已选择 $1 个进水参数')

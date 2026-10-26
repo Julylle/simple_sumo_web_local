@@ -47,7 +47,7 @@ export function SimulationResults({
         {data && (
           <div className="result-meta">
             <span>{t("● Completed")}</span>
-            <b>{data.time_h.length} {t("displayed points")}</b>
+            <b>{t(data.time_h.length)} {t("displayed points")}</b>
           </div>
         )}
       </section>

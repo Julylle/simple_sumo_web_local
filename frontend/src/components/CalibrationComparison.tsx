@@ -30,8 +30,8 @@ export function CalibrationComparison({ measurements, result, current }: {
           {[1, 2, 3, 4, 5].map(value => <option key={value} value={value}>{t("Tank")} {t(value)}</option>)}
         </select></label>
         <label>{t("Component")} <select value={component} onChange={event => setComponent(event.target.value)}>
-          <option value="NH">NH4-N</option><option value="NO3">NO3-N</option>
-          <option value="NO2">NO2-N</option><option value="O">{t("Dissolved oxygen")}</option><option value="N2O">N2O-N</option>
+          <option value="NH">{t("NH4-N")}</option><option value="NO3">{t("NO3-N")}</option>
+          <option value="NO2">{t("NO2-N")}</option><option value="O">{t("Dissolved oxygen")}</option><option value="N2O">{t("N2O-N")}</option>
         </select></label>
       </div>
       {measurements ? <>
@@ -51,8 +51,8 @@ export function CalibrationComparison({ measurements, result, current }: {
           <p className="calibration-note">{t("Color identifies the model variable and matches Simulation. Points: measured · dashed: before calibration · solid: after calibration.")}</p>
           {series.map(({ variable, observed, color, metrics }) => metrics && <div className="calibration-metrics" key={variable}>
             <span>{t("Variable")} <b style={{ color }}>{t(variable)}</b></span>
-            <span>{t("RMSE before")} <b>{t(format(metrics.before))} mg/L</b></span>
-            <span>{t("RMSE after")} <b>{t(format(metrics.after))} mg/L</b></span>
+            <span>{t("RMSE before")} <b>{t(format(metrics.before))}{t(" mg/L")}</b></span>
+            <span>{t("RMSE after")} <b>{t(format(metrics.after))}{t(" mg/L")}</b></span>
             <span>{t("Measured points")} <b>{observed?.filter(value => value !== null).length}</b></span>
           </div>)}
           {!result && <p className="calibration-note">{t("Measured data loaded. Run auto-calibration to add the model curves.")}</p>}

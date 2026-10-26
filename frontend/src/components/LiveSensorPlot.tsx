@@ -45,12 +45,12 @@ export function LiveSensorPlot({ title, groupTitle, options, history, className 
   return <section className={`sumo-overlay-card ${className}`}>
     <div className="chart-head"><h3>{t(title)}</h3></div>
     <div className="sumo-group-dropdowns">
-      <VariableDropdown title={groupTitle} options={options} selected={selected.map(o => o.key)} onChange={setSelection} />
+      <VariableDropdown title={t(groupTitle)} options={options} selected={selected.map(o => o.key)} onChange={setSelection} />
       <label className="sumo-axis-toggle"><input type="checkbox" checked={secondary} onChange={e => setSecondary(e.target.checked)} />{t("Enable secondary Y axis")}</label>
-      {secondary && <VariableDropdown title="Right Y axis" options={selected} selected={right} onChange={setRight} />}
+      {secondary && <VariableDropdown title={t("Right Y axis")} options={selected} selected={right} onChange={setRight} />}
     </div>
     {!selected.length ? <div className="empty"><b>{t("Select variables to build this plot")}</b><span>{t("Choose one or more variables from the dropdowns above.")}</span></div>
-      : !available.length ? <div className="empty"><b>{source === 'simulation' ? 'No simulated inputs yet' : t("No sensor readings yet")}</b><span>{source === 'simulation' ? 'Inputs reported by SUMO appear after each completed simulation interval.' : t("Connect KEPServer to display live sensor trends.")}</span></div>
+      : !available.length ? <div className="empty"><b>{t(source === 'simulation' ? 'No simulated inputs yet' : t("No sensor readings yet"))}</b><span>{t(source === 'simulation' ? 'Inputs reported by SUMO appear after each completed simulation interval.' : t("Connect KEPServer to display live sensor trends."))}</span></div>
       : <SumoOutputPlot settingsKey={settingsKey} result={result} timestamps={timestamps} variables={available.map(o => o.key)}
           rightAxis={secondary ? right : []} overlay runId={runId} options={options} />}
   </section>;

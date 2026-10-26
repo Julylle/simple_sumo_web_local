@@ -108,12 +108,12 @@ export function ProcessFlowDiagram({ parameters, selected, onSelect }: {
     </g>
     <g {...interaction("mlr", t("Edit internal recycle ratio"))}>
       <rect className="plant-badge" x="624" y="307" width="272" height="36" rx="10" />
-      <text x="760" y="331" className="plant-name">← MLR · {t(parameters.mlr_ratio)} × Q</text>
+      <text x="760" y="331" className="plant-name">{t("← MLR · ")}{t(parameters.mlr_ratio)}{t(" × Q")}</text>
     </g>
     <g {...interaction("sst", t("Edit return and waste sludge time series"))}>
       <rect className="plant-badge sludge-badge" x="595" y="371" width="330" height="36" rx="10" />
-      <text x="760" y="395" className="plant-name">← Return activated sludge (RAS)</text>
+      <text x="760" y="395" className="plant-name">{t("← Return activated sludge (RAS)")}</text>
     </g>
-    <text x="1360" y="425" className="plant-name">WAS</text>
+    <text x="1360" y="425" className="plant-name">{t("WAS")}</text>
   </svg>;
 }

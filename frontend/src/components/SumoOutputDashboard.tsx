@@ -14,7 +14,7 @@ export function VariableDropdown({ title, options, selected, onChange }: {
       <button className="secondary" onClick={() => onChange(options.map(o => o.key))}>{t("Select all")}</button>
       <button className="secondary" onClick={() => onChange([])}>{t("Clear")}</button></div>
       {options.map(option => <label key={option.key}><input type="checkbox" checked={selected.includes(option.key)}
-        onChange={e => onChange(e.target.checked ? [...selected, option.key] : selected.filter(k => k !== option.key))} />{t(option.label)} <small>{option.unit}</small></label>)}
+        onChange={e => onChange(e.target.checked ? [...selected, option.key] : selected.filter(k => k !== option.key))} />{t(option.label)} <small>{t(option.unit)}</small></label>)}
       {!options.length && <p>{t("Select influent parameters in Step1.")}</p>}
     </div></details>;
 }
@@ -43,7 +43,7 @@ function OutputCard({title, groups, result, runId, remove, localTime = false, se
     {!selected.length ? <div className="empty"><b>{t("Select variables to build this plot")}</b><span>{t("Choose one or more variables from the dropdowns above.")}</span></div> : !result ?
       <div className="empty"><b>{t("No simulation results yet")}</b><span>{t("Run SUMO to populate this plot.")}</span></div> : <>
         {selected.some(k => !options.find(o => o.key === k)?.compareTo && !result.variables[k]) && <p role="status">{t("Some selected variables are not in this result. Run SUMO again with the current Step1 parameters.")}</p>}
-        {localTime && timestamps?.some(value => value === null) && <p role="status">Older samples have no recorded sensor timestamp and cannot be placed on the local-time axis. They remain available in the CSV.</p>}
+        {localTime && timestamps?.some(value => value === null) && <p role="status">{t("Older samples have no recorded sensor timestamp and cannot be placed on the local-time axis. They remain available in the CSV.")}</p>}
         {!!available.length && <SumoOutputPlot settingsKey={settingsKey} timestamps={timestamps} result={result} variables={available} rightAxis={secondary ? right : []} overlay runId={runId} options={options} />}
       </>}
   </article>;
@@ -54,7 +54,7 @@ export function SumoOutputDashboard({influent, result, runId, showInfluent = tru
   const [cards, setCards] = usePlotSetting<PlotCards>(scope + ':cards', {ids: [], nextId: 1}, validCards);
   const groups = [{title: 'Influent variables', options: influent}, {title: 'Effluent pollutants', options: pollutants}, {title: 'DO concentrations', options: doOptions}];
   return <div className="sumo-output-dashboard">
-    {groups.filter(group => (showInfluent || group.title !== 'Influent variables') && (showDo || group.title !== 'DO concentrations')).map(group => <OutputCard key={group.title} settingsKey={`${scope}:${group.title}`} title={group.title} groups={[group]} result={result} localTime={localTime} runId={runId} />)}
+    {groups.filter(group => (showInfluent || group.title !== 'Influent variables') && (showDo || group.title !== 'DO concentrations')).map(group => <OutputCard key={group.title} settingsKey={`${scope}:${group.title}`} title={t(group.title)} groups={[group]} result={result} localTime={localTime} runId={runId} />)}
     <div className="section-title"><div><h3>{t("Custom comparison plots")}</h3><p>{t("Add a blank plot and compare variables across all three groups.")}</p></div>
       <button className="secondary" onClick={() => {setCards(current => ({ids: [...current.ids, current.nextId], nextId: current.nextId + 1}));}}>{t("Add comparison plot")}</button></div>
     {cards.ids.map(id => <OutputCard key={id} settingsKey={`${scope}:comparison:${id}`} title={t(`Comparison ${id}`)} groups={groups} result={result} localTime={localTime} runId={runId} remove={() => setCards(current => ({...current, ids: current.ids.filter(k => k !== id)}))} />)}

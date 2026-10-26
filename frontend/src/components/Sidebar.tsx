@@ -17,8 +17,7 @@ export function Sidebar({ tab, onTabChange }: SidebarProps) {
         <ul className="model-menu">
           <li>
             <button className={"nav " + ((tab === "sumo" || tab === "realtime-sumo") ? "active" : "")} onClick={() => onTabChange("realtime-sumo")}>
-              <span className="nav-icon" aria-hidden="true">S</span>SUMO
-              {(tab === "sumo" || tab === "realtime-sumo") && <span className="active-dot" />}
+              <span className="nav-icon" aria-hidden="true">{t("S")}</span>{t("SUMO ")}{(tab === "sumo" || tab === "realtime-sumo") && <span className="active-dot" />}
             </button>
             <ul className="model-submenu" aria-label={t("SUMO pages")}>
               <li>
@@ -32,8 +31,7 @@ export function Sidebar({ tab, onTabChange }: SidebarProps) {
           </li>
           <li>
             <button className={"nav " + (pythonActive ? "active" : "")} onClick={() => onTabChange("simulation")}>
-              <span className="nav-icon" aria-hidden="true">&#8767;</span>Python ASM
-              {pythonActive && <span className="active-dot" />}
+              <span className="nav-icon" aria-hidden="true">&#8767;</span>{t("Python ASM ")}{pythonActive && <span className="active-dot" />}
             </button>
             <ul className="model-submenu" aria-label={t("Python ASM pages")}>
               <li>

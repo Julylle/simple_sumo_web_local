@@ -56,7 +56,7 @@ export function SimulationCharts({ data, calibrationPanel, measurements }: {
         <p className="calibration-note">{t("Use the validation sheet: t (min), starting at 0, plus model variable columns such as S5NH or S5NO3 (mg/L). Blank measurements are skipped; dyinput is optional. This upload adds comparison points to the chart.")}</p>
         {measurements.busy && <p role="status">{t("Uploading measurements…")}</p>}
         {measurements.error && <div className="alert" role="alert">{t(measurements.error)}</div>}
-        {measurements.data && <p role="status" className="measurement-ready">{t("Loaded:")} {measurements.data.filename} · {measurements.data.time_h.length} {t("timestamps. Lines: simulated; points: measured. Time is aligned by elapsed hours.")}</p>}
+        {measurements.data && <p role="status" className="measurement-ready">{t("Loaded:")} {t(measurements.data.filename)} · {t(measurements.data.time_h.length)} {t("timestamps. Lines: simulated; points: measured. Time is aligned by elapsed hours.")}</p>}
         {(data || measurements.data) && (
           <div className="series-filters">
             <label> {t("Tank")} <select value={tank} onChange={(event) => setTank(event.target.value)}>
@@ -71,7 +71,7 @@ export function SimulationCharts({ data, calibrationPanel, measurements }: {
                 {components.map((value) => <option key={value} value={value}>{t(value)}</option>)}
               </select>
             </label>
-            <span>{visibleVariables.length} {t("series · Click a legend entry to hide a curve")}</span>
+            <span>{t(visibleVariables.length)} {t("series · Click a legend entry to hide a curve")}</span>
           </div>
         )}
         {data || measurements.data ? (

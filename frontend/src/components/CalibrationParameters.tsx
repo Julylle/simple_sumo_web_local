@@ -31,7 +31,7 @@ export function CalibrationParameters({ parameters, loaded, error, busy, onChang
             <thead><tr><th scope="col">{t("Parameter")}</th><th scope="col">{t("Value")}</th><th scope="col">{t("Range")}</th></tr></thead>
             <tbody>{Object.entries(parameters).map(([name, value]) => (
               <tr key={name}><th scope="row">{t(name)}</th><td><input type="number" step="any" min={name.startsWith("K") ? undefined : 0}
-                aria-label={`Calibration parameter ${name}`} value={value} disabled={busy}
+                aria-label={t(`Calibration parameter ${name}`)} value={value} disabled={busy}
                 onChange={(event) => onChange(name, event.target.value)} /></td>
                 <td className="calibration-range">{t(calibrationRanges[name] ?? t("Not provided"))}</td></tr>
             ))}</tbody>

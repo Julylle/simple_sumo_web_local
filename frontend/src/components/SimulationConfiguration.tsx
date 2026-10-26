@@ -29,11 +29,11 @@ export function SimulationConfiguration({ parameters, onChange, busy, dirty, onR
               </div>
       </div>
       <label className="field duration-field">
-        <span className="field-label">{t("Simulation duration")}<small>h</small></span>
+        <span className="field-label">{t("Simulation duration")}<small>{t("h")}</small></span>
         <div className="input-wrap">
           <input type="number" value={parameters.duration_h} min={1} step={1}
             onChange={(event) => onChange("duration_h", Number(event.target.value))} />
-          <span>h</span>
+          <span>{t("h")}</span>
         </div>
         <small className="hint">{t("Minimum 1 h; no upper limit")}</small>
       </label>

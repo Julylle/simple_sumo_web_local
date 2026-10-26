@@ -23,7 +23,7 @@ export function PlantLocation() {
       <div className="plant-location-content">
         <iframe
           key={selectedId}
-          title={`Google Maps satellite view: ${label}`}
+          title={t(`Google Maps satellite view: ${label}`)}
           src={mapUrl}
           loading="lazy"
           allowFullScreen

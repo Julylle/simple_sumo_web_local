@@ -179,7 +179,7 @@ export function SumoSimulation() {
             {inputOptions.map(option => <label key={option.name}>
               <input type="checkbox" checked={inputColumns.includes(option.name)}
                 onChange={event => selectInput(option.name, event.target.checked)} />
-              <span><code>{t(option.name)}</code><small>{option.unit}</small></span>
+              <span><code>{t(option.name)}</code><small>{t(option.unit)}</small></span>
             </label>)}
           </fieldset>}
         </div>
@@ -201,7 +201,7 @@ export function SumoSimulation() {
         {!inputColumns.length && <p role="status">{t("Select at least one influent parameter.")}</p>}
       </section>
       {uploading ? <p role="status">{t("Uploading and validating CSV...")}</p> : uploaded
-        ? <p className="measurement-ready" role="status">{t("Selected:")} {uploaded.filename} | {t(uploaded.count)} {t("rows | Last input:")} {t(uploaded.end_h.toFixed(2))} h</p>
+        ? <p className="measurement-ready" role="status">{t("Selected:")} {t(uploaded.filename)} | {t(uploaded.count)} {t("rows | Last input:")} {t(uploaded.end_h.toFixed(2))}{t(" h")}</p>
         : null}
       {uploadError && <div className="alert" role="alert">{t(uploadError)}</div>}
         <h3 id="sumo-duration-title" className="sumo-step-title">{t("Step3: Set up simulation duration")}</h3>

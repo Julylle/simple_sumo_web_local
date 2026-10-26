@@ -45,7 +45,7 @@ export function ProcessConfiguration({ parameters, onChange, inputSeries, busy }
         </div>
         <div className="process-editor">
           <div><h3>{t(title)}</h3><p>{t(selected === "sst" ? t("RAS and WAS use single-lane Excel flow series in m3/d.") : selected === "inlet" ? t("Import single-lane inflow in m3/d, bCOD and NH4-N in mg/L. Uploaded values are used directly, without COD scaling or division by 11.") : selected === "mlr" ? t("Mixed liquor returns from Aerobic 3 to Anoxic 1.") : t("Volume applies to each lane. Airflow in m3/h drives oxygen transfer and the calculated DO."))}</p></div>
-          <div className="process-fields">{fields.map((field) => <label key={field.key}>{t(field.label)}<div><input type="number" value={parameters[field.key]} min={field.min} max={field.max} step={field.step} onChange={(event) => onChange(field.key, Number(event.target.value))} /><span>{field.unit}</span></div></label>)}</div>
+          <div className="process-fields">{fields.map((field) => <label key={field.key}>{t(field.label)}<div><input type="number" value={parameters[field.key]} min={field.min} max={field.max} step={field.step} onChange={(event) => onChange(field.key, Number(event.target.value))} /><span>{t(field.unit)}</span></div></label>)}</div>
           <div className="process-series">
             {inputSeries.loadError && <p role="alert">{t(inputSeries.loadError)} <button onClick={inputSeries.retry}>{t("Retry")}</button></p>}
             {selected === "inlet" && <>
@@ -65,7 +65,7 @@ export function ProcessConfiguration({ parameters, onChange, inputSeries, busy }
                   <span className="field-label">{t("DO setpoint (mg/L)")}</span>
                   <div className="input-wrap"><input type="number" min={0} max={8} step={0.1} disabled={busy}
                     value={parameters[`tank${tank}_do_mg_l` as keyof Params]}
-                    onChange={(event) => onChange(`tank${tank}_do_mg_l` as keyof Params, Number(event.target.value))} /><span>mg/L</span></div>
+                    onChange={(event) => onChange(`tank${tank}_do_mg_l` as keyof Params, Number(event.target.value))} /><span>{t("mg/L")}</span></div>
                 </label>
                 <p>{t(parameters.use_do_setpoint ? t("Active: DO is held at this value.") : t("Enable Use DO setpoints in Simulation settings to apply this value."))}</p>
               </div>

@@ -1,3 +1,4 @@
+import { t, useLanguage } from '../i18n';
 import { mergeStoredSimulation } from '../utils/mergeStoredSimulation';
 import { useSensorComparisons } from '../hooks/useSensorComparisons';
 import { realtimePollutantOptions } from './sumoOutputs';
@@ -55,6 +56,7 @@ async function json(url:string,init?:RequestInit) {
   return body;
 }
 export function RealTimeSumo(){
+  useLanguage();
   const [mapping,setMapping]=useLiveSetting<Record<string,string>>('mapping',{...defaultMapping,...defaultDoMapping,...defaultControlMapping});
   const [selectedColumn,setSelectedColumn]=useLiveSetting('selectedColumn',defaultColumn);
   const [nodeDraft,setNodeDraft]=useLiveSetting('nodeDraft',defaultNode);
@@ -228,7 +230,7 @@ export function RealTimeSumo(){
   async function start(){
     if(!statusReady||!modelReady)return;
     if(simulationMode==='history_then_live'&&!historyValid){setError('Select a historical start time in the past.');return;}
-    if((liveRun?.samples||0)>0 && !window.confirm('Start a new simulation? This replaces the displayed run and, after its first interval, the latest checkpoint. Download the current results first if you need to keep them.'))return;
+    if((liveRun?.samples||0)>0 && !window.confirm(t('Start a new simulation? This replaces the displayed run and, after its first interval, the latest checkpoint. Download the current results first if you need to keep them.')))return;
     setBusy(true);setError('');
     try{
       const selected=Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()));
@@ -250,7 +252,7 @@ export function RealTimeSumo(){
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
   async function stop(){
-    if(!window.confirm('Stop the shared live simulation for all viewers?'))return;
+    if(!window.confirm(t('Stop the shared live simulation for all viewers?')))return;
     setBusy(true);setError('');
     try{setLiveRun(await json('/api/sumo/live/stop',{method:'POST'}));}
     catch(e){setError(String(e));}finally{setBusy(false);}
@@ -281,139 +283,139 @@ export function RealTimeSumo(){
   const doChartMapping=liveRun?.mapping??mapping;
   const doPlotOptions=doSensorOptions.filter(o=>/^Sumo__Plant__CSTR[34]_/.test(o.name)&&doChartMapping[o.name]).map(o=>({key:o.name,label:o.label,unit:o.unit}));
   return <>
-    <section className="page-head"><div><h1>SUMO Real-time Simulation</h1><p>Cixi Eastern WWTP · KEPServer OPC UA · Manual simulation</p></div></section>
+    <section className="page-head"><div><h1>{t("SUMO Real-time Simulation")}</h1><p>{t("Cixi Eastern WWTP · KEPServer OPC UA · Manual simulation")}</p></div></section>
     <section className="config-card">
-      <div className="section-title"><div><h2>Simulation settings</h2></div></div>
+      <div className="section-title"><div><h2>{t("Simulation settings")}</h2></div></div>
       <section className="sensor-setup" aria-labelledby="sensor-step-title">
-        <div className="sensor-heading"><div><h3 id="sensor-step-title">Step1: Connect sensors through KEPServer</h3><p>Review the prefilled influent, DO and additional control tags, then connect to read sensor data.</p></div><span className={'sensor-status '+(connected?'is-connected':'')} role="status">{connected?'Connected · every 5 s':'Disconnected'}</span></div>
+        <div className="sensor-heading"><div><h3 id="sensor-step-title">{t("Step1: Connect sensors through KEPServer")}</h3><p>{t("Review the prefilled influent, DO and additional control tags, then connect to read sensor data.")}</p></div><span className={'sensor-status '+(connected?'is-connected':'')} role="status">{t(connected?'Connected · every 5 s':'Disconnected')}</span></div>
         <div className="sensor-editor-grid sensor-input-grid">
           {[{title:'Influent variable',items:options,selected:selectedColumn,draft:nodeDraft,setSelected:setSelectedColumn,setDraft:setNodeDraft,kind:'influent'},
             {title:'DO sensors',items:doSensorOptions,selected:selectedDo,draft:doDraft,setSelected:setSelectedDo,setDraft:setDoDraft,kind:'do'},
             {title:'Additional control',items:controlSensorOptions,selected:selectedControl,draft:controlDraft,setSelected:setSelectedControl,setDraft:setControlDraft,kind:'control'}].map(group=><article className="sensor-editor" key={group.title}>
-            <div className="sensor-editor-title"><h4>{group.title}</h4><span>{Object.keys(mapping).filter(key=>sensorGroup(key)===group.kind).length} mapped</span></div>
-            <label className="sensor-field"><span>{group.title}</span><select value={group.selected} onChange={e=>{group.setSelected(e.target.value);group.setDraft(mapping[e.target.value]||'');}}>
-              {group.items.map(option=><option key={option.name} value={option.name}>{option.label} ({option.unit})</option>)}
+            <div className="sensor-editor-title"><h4>{t(group.title)}</h4><span>{Object.keys(mapping).filter(key=>sensorGroup(key)===group.kind).length}{t(" mapped")}</span></div>
+            <label className="sensor-field"><span>{t(group.title)}</span><select value={group.selected} onChange={e=>{group.setSelected(e.target.value);group.setDraft(mapping[e.target.value]||'');}}>
+              {group.items.map(option=><option key={option.name} value={option.name}>{t(option.label)} ({t(option.unit)})</option>)}
             </select></label>
-            <label className="sensor-field"><span>KEPServer OPC UA Node ID</span><input type="text" value={group.draft} disabled={running} placeholder="ns=2;s=..." onChange={e=>group.setDraft(e.target.value)}/></label>
-            <button className="secondary" disabled={running||!group.selected||!group.draft.trim()} onClick={()=>changeMapping(group.selected,group.draft.trim())}>Add / Update mapping</button>
-            <details className="sensor-mapping-list" onMouseLeave={event => { event.currentTarget.open = false; }}><summary>Review mappings</summary>
+            <label className="sensor-field"><span>{t("KEPServer OPC UA Node ID")}</span><input type="text" value={group.draft} disabled={running} placeholder={t("ns=2;s=...")} onChange={e=>group.setDraft(e.target.value)}/></label>
+            <button className="secondary" disabled={running||!group.selected||!group.draft.trim()} onClick={()=>changeMapping(group.selected,group.draft.trim())}>{t("Add / Update mapping")}</button>
+            <details className="sensor-mapping-list" onMouseLeave={event => { event.currentTarget.open = false; }}><summary>{t("Review mappings")}</summary>
               {Object.entries(mapping).filter(([key])=>sensorGroup(key)===group.kind).map(([column,node])=><div className="sensor-mapping-row" key={column}>
-                <div><strong>{[...options,...doSensorOptions,...controlSensorOptions].find(o=>o.name===column)?.label||column.split('__').pop()}</strong><code>{node}</code></div>
-                <button className="secondary" aria-label={'Remove '+column} disabled={running} onClick={()=>{
+                <div><strong>{t([...options,...doSensorOptions,...controlSensorOptions].find(o=>o.name===column)?.label||column.split('__').pop())}</strong><code>{node}</code></div>
+                <button className="secondary" aria-label={t('Remove '+column)} disabled={running} onClick={()=>{
                   setConnected(false);setHistory([]);setReadings([]);setSensorError('');
                   setMapping(old=>{const next={...old};delete next[column];return next;});
                   if(group.selected===column)group.setDraft('');
-                }}>Remove</button>
+                }}>{t("Remove")}</button>
               </div>)}
             </details>
           </article>)}
         </div>
-        <div className="sensor-actions"><button className="primary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{busy?'Connecting...':'Connect'}</button><button className="secondary" disabled={!connected||busy} onClick={()=>setConnected(false)}>Disconnect</button><span>Check sensor connectivity and current readings. Plots update with simulation results.</span></div>
-        {sensorError&&<div className="alert" role="alert">Sensor update failed: {sensorError}</div>}
+        <div className="sensor-actions"><button className="primary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{t(busy?'Connecting...':'Connect')}</button><button className="secondary" disabled={!connected||busy} onClick={()=>setConnected(false)}>{t("Disconnect")}</button><span>{t("Check sensor connectivity and current readings. Plots update with simulation results.")}</span></div>
+        {sensorError&&<div className="alert" role="alert">{t("Sensor update failed: ")}{t(sensorError)}</div>}
       </section>
       <section className="sensor-setup simulation-setup" aria-labelledby="simulation-step-title">
-        <div className="sensor-heading"><div><h3 id="simulation-step-title">Step2: Set up real time simulation</h3><p>Choose a simulation mode, then configure a new run or resume the latest saved simulation.</p></div><span className={'sensor-status '+((resumeMode?checkpointReady:modelReady)?'is-connected':'')} role="status">{liveActive?'Simulation active':preparingModel?'Preparing state':resumeMode?(checkpointReady?'Checkpoint ready':'No usable checkpoint'):modelReady?'Model ready':'Setup required'}</span></div>
-          <label className="sensor-field"><span>Simulation mode</span><select value={simulationMode} disabled={running} onChange={e=>setSimulationMode(e.target.value)}>
-            <option value="resume">Resume a saved simulation</option>
-            <option value="history_then_live">Historical data → Live</option>
+        <div className="sensor-heading"><div><h3 id="simulation-step-title">{t("Step2: Set up real time simulation")}</h3><p>{t("Choose a simulation mode, then configure a new run or resume the latest saved simulation.")}</p></div><span className={'sensor-status '+((resumeMode?checkpointReady:modelReady)?'is-connected':'')} role="status">{t(liveActive?'Simulation active':preparingModel?'Preparing state':resumeMode?(checkpointReady?'Checkpoint ready':'No usable checkpoint'):modelReady?'Model ready':'Setup required')}</span></div>
+          <label className="sensor-field"><span>{t("Simulation mode")}</span><select value={simulationMode} disabled={running} onChange={e=>setSimulationMode(e.target.value)}>
+            <option value="resume">{t("Resume a saved simulation")}</option>
+            <option value="history_then_live">{t("Historical data → Live")}</option>
           </select></label>
         <div className="sensor-editor-grid sensor-input-grid" style={resumeMode?{gridTemplateColumns:'1fr'}:undefined}>
         {!resumeMode&&<>
-        <article className="sensor-editor" aria-label="SUMO model selection">
-          <div className="sensor-editor-title"><h4>SUMO model</h4><span>01 · Model</span></div>
-        <label className="sensor-field"><span>SUMO model</span>
+        <article className="sensor-editor" aria-label={t("SUMO model selection")}>
+          <div className="sensor-editor-title"><h4>{t("SUMO model")}</h4><span>{t("01 · Model")}</span></div>
+        <label className="sensor-field"><span>{t("SUMO model")}</span>
           <select value={modelSource} disabled={running} onChange={e=>{setModelSource(e.target.value);setUploadedModel(null);setModelError('');}}>
-            <option value="builtin">Built-in · Cixi Eastern WWTP_20260920</option>
-            <option value="upload">Upload a SUMO model</option>
+            <option value="builtin">{t("Built-in · Cixi Eastern WWTP_20260920")}</option>
+            <option value="upload">{t("Upload a SUMO model")}</option>
           </select>
         </label>
-        {modelSource==='upload'&&<label className="sensor-field"><span>SUMO project (.sumo, max 50 MB)</span><input type="file" accept=".sumo" disabled={running} onChange={e=>{setModelFile(e.target.files?.[0]||null);setUploadedModel(null);setModelError('');}}/></label>}
-          <p className="calibration-note">Use the built-in plant model or upload a compiled SUMO project that supports your sensor variables.</p>
-          <p className="calibration-note simulation-card-footnote">Prepared models are available until the backend restarts.</p>
+        {modelSource==='upload'&&<label className="sensor-field"><span>{t("SUMO project (.sumo, max 50 MB)")}</span><input type="file" accept=".sumo" disabled={running} onChange={e=>{setModelFile(e.target.files?.[0]||null);setUploadedModel(null);setModelError('');}}/></label>}
+          <p className="calibration-note">{t("Use the built-in plant model or upload a compiled SUMO project that supports your sensor variables.")}</p>
+          <p className="calibration-note simulation-card-footnote">{t("Prepared models are available until the backend restarts.")}</p>
         </article>
         <article className="sensor-editor">
-          <div className="sensor-editor-title"><h4>Initial state</h4><span>02 · Preparation</span></div>
-        <label className="sensor-field"><span>Steady state</span>
+          <div className="sensor-editor-title"><h4>{t("Initial state")}</h4><span>{t("02 · Preparation")}</span></div>
+        <label className="sensor-field"><span>{t("Steady state")}</span>
           <select value={stateMode} disabled={running} onChange={e=>{setStateMode(e.target.value);setUploadedModel(null);setModelError('');}}>
-            <option value="upload">Upload steady-state file</option>
-            <option value="calculate">Calculate from latest sensor data</option>
+            <option value="upload">{t("Upload steady-state file")}</option>
+            <option value="calculate">{t("Calculate from latest sensor data")}</option>
           </select>
         </label>
         {stateMode==='upload'?<>
-          <label className="sensor-field"><span>Steady-state file (.xml, max 20 MB)</span><input type="file" accept=".xml" disabled={running} onChange={e=>{setStateFile(e.target.files?.[0]||null);setStateFilename(e.target.files?.[0]?.name||'');setUploadedModel(null);setModelError('');}}/></label>
-          {stateFilename&&!stateFile&&!uploadedModel&&<p role="status">Reselect {stateFilename} to prepare this state, or clear the selection to use the built-in state. <button className="secondary" disabled={running} onClick={()=>setStateFilename('')}>Clear file selection</button></p>}
-          <p className="calibration-note">{modelSource==='builtin'&&!stateFile&&!stateFilename?'Using the built-in sumo_steady_state.xml. Select a file to replace it.':'Choose a steady-state XML matching the selected model.'}</p>
+          <label className="sensor-field"><span>{t("Steady-state file (.xml, max 20 MB)")}</span><input type="file" accept=".xml" disabled={running} onChange={e=>{setStateFile(e.target.files?.[0]||null);setStateFilename(e.target.files?.[0]?.name||'');setUploadedModel(null);setModelError('');}}/></label>
+          {stateFilename&&!stateFile&&!uploadedModel&&<p role="status">{t("Reselect ")}{t(stateFilename)}{t(" to prepare this state, or clear the selection to use the built-in state. ")}<button className="secondary" disabled={running} onClick={()=>setStateFilename('')}>{t("Clear file selection")}</button></p>}
+          <p className="calibration-note">{t(modelSource==='builtin'&&!stateFile&&!stateFilename?'Using the built-in sumo_steady_state.xml. Select a file to replace it.':'Choose a steady-state XML matching the selected model.')}</p>
         </>:<>
-          <p className="calibration-note">Reads a fresh sensor snapshot when calculation starts, applies scaling, and holds those inputs constant until convergence. Connect sensor data first.</p>
-          <label className="sensor-field"><span>Convergence tolerance (MaxAbsDer)</span><input type="number" min="0" step="any" value={steadyTolerance} disabled={running} onChange={e=>{setSteadyTolerance(e.target.value);setUploadedModel(null);}}/></label>
-          <p className="calibration-note">Requires MaxAbsDer at or below the tolerance for three consecutive samples, or at the solver's natural finish. A 3.5-hour timeout reports failure without accepting an unconverged state.</p>
+          <p className="calibration-note">{t("Reads a fresh sensor snapshot when calculation starts, applies scaling, and holds those inputs constant until convergence. Connect sensor data first.")}</p>
+          <label className="sensor-field"><span>{t("Convergence tolerance (MaxAbsDer)")}</span><input type="number" min="0" step="any" value={steadyTolerance} disabled={running} onChange={e=>{setSteadyTolerance(e.target.value);setUploadedModel(null);}}/></label>
+          <p className="calibration-note">{t("Requires MaxAbsDer at or below the tolerance for three consecutive samples, or at the solver's natural finish. A 3.5-hour timeout reports failure without accepting an unconverged state.")}</p>
         </>}
         <div className="sensor-actions simulation-prepare-action"><button className="secondary"
           disabled={running||(modelSource==='upload'&&!modelFile)||(stateMode==='upload'?!stateFile:(!connected||!Number.isFinite(Number(steadyTolerance))||Number(steadyTolerance)<=0))}
-          onClick={()=>void uploadModel()}>{modelUploading?'Preparing model...':stateMode==='upload'?'Use uploaded steady state':'Calculate steady state'}</button></div>
-        {preparingModel&&<p role="status">Calculating steady state for {preparingModel.name}. Run SUMO will be available after convergence and saving.</p>}
-        {uploadedModel&&<p role="status" className="measurement-ready">Ready: {uploadedModel.name} · {uploadedModel.state_name}</p>}
+          onClick={()=>void uploadModel()}>{t(modelUploading?'Preparing model...':stateMode==='upload'?'Use uploaded steady state':'Calculate steady state')}</button></div>
+        {preparingModel&&<p role="status">{t("Calculating steady state for ")}{t(preparingModel.name)}{t(". Run SUMO will be available after convergence and saving.")}</p>}
+        {uploadedModel&&<p role="status" className="measurement-ready">{t("Ready: ")}{t(uploadedModel.name)} · {t(uploadedModel.state_name)}</p>}
 
-        {modelError&&<div className="alert" role="alert">{modelError}</div>}
+        {modelError&&<div className="alert" role="alert">{t(modelError)}</div>}
         </article>
         </>}
         <article className="sensor-editor">
-          <div className="sensor-editor-title"><h4>{resumeMode?'Saved simulation':'Simulation timing'}</h4><span>{resumeMode?'Latest checkpoint':'03 · Timing'}</span></div>
+          <div className="sensor-editor-title"><h4>{t(resumeMode?'Saved simulation':'Simulation timing')}</h4><span>{t(resumeMode?'Latest checkpoint':'03 · Timing')}</span></div>
           {resumeMode?<>
-            {!checkpoint?<p role="status">No saved simulation is available yet. Run a simulation to create a checkpoint.</p>
-              :checkpoint.error?<p className="alert" role="alert">{checkpoint.error}</p>:<>
+            {!checkpoint?<p role="status">{t("No saved simulation is available yet. Run a simulation to create a checkpoint.")}</p>
+              :checkpoint.error?<p className="alert" role="alert">{t(checkpoint.error)}</p>:<>
                 <div className="resume-layout">
                   <div className="resume-summary">
-                    <span className="resume-eyebrow">Saved model</span>
-                    <h4 className="resume-model-name">{checkpoint.model_name}</h4>
+                    <span className="resume-eyebrow">{t("Saved model")}</span>
+                    <h4 className="resume-model-name">{t(checkpoint.model_name)}</h4>
                     <dl className="resume-metadata">
-                      <div><dt>Simulation time</dt><dd>{checkpoint.simulated_h?.toFixed(3)??'—'} <small>h</small></dd></div>
-                      <div><dt>LimitTime</dt><dd>{checkpoint.interval_minutes??'—'} <small>min</small></dd></div>
-                      <div><dt>Last saved · local time</dt><dd>{checkpoint.saved_at?new Date(checkpoint.saved_at).toLocaleString():'—'}</dd></div>
-                      <div><dt>Resume database from · local time</dt><dd>{checkpoint.sensor_boundary_at?new Date(checkpoint.sensor_boundary_at).toLocaleString():'—'}</dd></div>
+                      <div><dt>{t("Simulation time")}</dt><dd>{t(checkpoint.simulated_h?.toFixed(3)??'—')} <small>{t("h")}</small></dd></div>
+                      <div><dt>{t("LimitTime")}</dt><dd>{t(checkpoint.interval_minutes??'—')} <small>{t("min")}</small></dd></div>
+                      <div><dt>{t("Last saved · local time")}</dt><dd>{t(checkpoint.saved_at?new Date(checkpoint.saved_at).toLocaleString():'—')}</dd></div>
+                      <div><dt>{t("Resume database from · local time")}</dt><dd>{t(checkpoint.sensor_boundary_at?new Date(checkpoint.sensor_boundary_at).toLocaleString():'—')}</dd></div>
                     </dl>
                   </div>
-                  <aside className="resume-details" aria-label="Resume behavior">
-                    <h4>Continue from your checkpoint</h4>
-                    <p>Restores the saved model, state, sensor mappings and interval. No model upload or initial-state preparation is needed.</p>
-                    <ul><li><strong>Database:</strong> Replays collected sensor data from the saved boundary using the saved mappings and LimitTime.</li><li><strong>Mode:</strong> Preserves saved results, catches up, then follows new collection automatically. Missing inputs keep their previous values.</li></ul>
+                  <aside className="resume-details" aria-label={t("Resume behavior")}>
+                    <h4>{t("Continue from your checkpoint")}</h4>
+                    <p>{t("Restores the saved model, state, sensor mappings and interval. No model upload or initial-state preparation is needed.")}</p>
+                    <ul><li><strong>{t("Database:")}</strong>{t(" Replays collected sensor data from the saved boundary using the saved mappings and LimitTime.")}</li><li><strong>{t("Mode:")}</strong>{t(" Preserves saved results, catches up, then follows new collection automatically. Missing inputs keep their previous values.")}</li></ul>
                   </aside>
                 </div>
-                {checkpoint.boundary_source==='legacy_save_time_estimate'&&<p className="calibration-note resume-notice">This older checkpoint has no sensor timestamp; its save time is used as the approximate database start.</p>}
+                {checkpoint.boundary_source==='legacy_save_time_estimate'&&<p className="calibration-note resume-notice">{t("This older checkpoint has no sensor timestamp; its save time is used as the approximate database start.")}</p>}
               </>}
           </>:<>
           {simulationMode==='history_then_live'&&<>
-            <label className="sensor-field"><span>History start (local time)</span><input type="datetime-local" value={historyStart} disabled={running} onChange={e=>setHistoryStart(e.target.value)}/></label>
+            <label className="sensor-field"><span>{t("History start (local time)")}</span><input type="datetime-local" value={historyStart} disabled={running} onChange={e=>setHistoryStart(e.target.value)}/></label>
             <ul className="calibration-note">
-              <li><strong>Database:</strong> sumo_web_database for historical inputs and simulation results.</li>
-              <li><strong>Mode:</strong> Runs history in LimitTime intervals as fast as possible, then checks for new data at the same interval (default: 1 minute). Missing inputs keep their previous values.</li>
+              <li><strong>{t("Database:")}</strong>{t(" sumo_web_database for historical inputs and simulation results.")}</li>
+              <li><strong>{t("Mode:")}</strong>{t(" Runs history in LimitTime intervals as fast as possible, then checks for new data at the same interval (default: 1 minute). Missing inputs keep their previous values.")}</li>
             </ul>
-            {!historyValid&&<p role="status">Select a historical start time in the past.</p>}
+            {!historyValid&&<p role="status">{t("Select a historical start time in the past.")}</p>}
           </>}
-          <label className="sensor-field"><span>Input update interval / Limit time (minutes, default 1)</span><input type="number" min="1" max="60" step="1" placeholder="1" value={limitMinutes} disabled={running} onChange={e=>setLimitMinutes(e.target.value)}/></label>
-          <label className="sensor-field"><span>Operation</span><input value="Continuous · until Stop SUMO" readOnly aria-label="Simulation operation"/></label>
-          <p className="calibration-note">Sensor inputs refresh at each interval. The model continues from the previous interval's state until you stop it.</p>
+          <label className="sensor-field"><span>{t("Input update interval / Limit time (minutes, default 1)")}</span><input type="number" min="1" max="60" step="1" placeholder={t("1")} value={limitMinutes} disabled={running} onChange={e=>setLimitMinutes(e.target.value)}/></label>
+          <label className="sensor-field"><span>{t("Operation")}</span><input value={t("Continuous · until Stop SUMO")} readOnly aria-label={t("Simulation operation")}/></label>
+          <p className="calibration-note">{t("Sensor inputs refresh at each interval. The model continues from the previous interval's state until you stop it.")}</p>
           </>}
         </article>
         </div>
-        {liveActive&&liveRun?.model_name&&<p className="simulation-model-status" role="status">Running model: {liveRun.model_name}</p>}
-      <p className="calibration-note">Refreshing or closing this page does not stop the server simulation. Saved output history is restored after a backend restart; choose Resume a saved simulation to continue. Sensor preview history and draft settings are retained in this browser. File selections must be reselected if not yet uploaded.</p>
-      {!statusReady&&<p role="status">Reconnecting to the live simulation…</p>}
-      <div className="sensor-actions simulation-run-actions"><button className="primary" disabled={running||(resumeMode?!checkpointReady:(!modelReady||!historyValid||!(Number.isInteger(limitInterval)&&limitInterval>=1&&limitInterval<=60)))} onClick={()=>void (resumeMode?resume():start())}>{resumeMode?'Resume SUMO':'Run SUMO'}</button> <button className="secondary" disabled={busy||!['starting','running'].includes(liveRun?.status||'')} onClick={()=>void stop()}>Stop SUMO</button><span>Each completed interval saves the latest checkpoint. Stop finishes and saves the current interval.</span></div>
-      {liveRun&&<div className="sumo-progress"><p role="status">{liveRun.status} · {liveRun.mode==='history'?'Historical replay':liveRun.mode==='live'?'Live operation':''} · {liveRun.phase||''} · {(liveRun.simulated_h||0).toFixed(2)} simulated hours · {liveRun.samples||0} output samples</p>{liveRun.history&&(liveRun.history.follow?<p role="status">{liveRun.history.caught_up?'Caught up · following sensor collection':'Catching up with collected data'} · {liveRun.history.completed} completed intervals{liveRun.history.total>liveRun.history.completed?` · ${liveRun.history.total-liveRun.history.completed} loaded intervals remaining`:''}</p>:<><progress aria-label="History replay progress" max={liveRun.history.total} value={liveRun.history.completed}/><p>Historical intervals: {liveRun.history.completed} / {liveRun.history.total}</p></>)}<LiveProgressDiagnostics value={liveRun.diagnostics}/>{liveRun.last_sumo_message&&<p>SUMO: {liveRun.last_sumo_message}</p>}{liveRun.error&&<div className="alert">{liveRun.error}</div>}{liveRun.error&&!!liveRun.sumo_commands?.length&&<details><summary>SUMO command diagnostics</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{liveRun.sumo_commands.join("\n")}</pre></details>}</div>}
-      {run&&<div className="sumo-progress"><p role="status">{run.phase||run.status} · {Math.floor(run.progress_pct||0)}%</p><progress max="100" value={run.progress_pct||0}/></div>}
-      {(error||run?.error)&&<div className="alert" role="alert">{error||run?.error}</div>}
+        {liveActive&&liveRun?.model_name&&<p className="simulation-model-status" role="status">{t("Running model: ")}{t(liveRun.model_name)}</p>}
+      <p className="calibration-note">{t("Refreshing or closing this page does not stop the server simulation. Saved output history is restored after a backend restart; choose Resume a saved simulation to continue. Sensor preview history and draft settings are retained in this browser. File selections must be reselected if not yet uploaded.")}</p>
+      {!statusReady&&<p role="status">{t("Reconnecting to the live simulation…")}</p>}
+      <div className="sensor-actions simulation-run-actions"><button className="primary" disabled={running||(resumeMode?!checkpointReady:(!modelReady||!historyValid||!(Number.isInteger(limitInterval)&&limitInterval>=1&&limitInterval<=60)))} onClick={()=>void (resumeMode?resume():start())}>{t(resumeMode?'Resume SUMO':'Run SUMO')}</button> <button className="secondary" disabled={busy||!['starting','running'].includes(liveRun?.status||'')} onClick={()=>void stop()}>{t("Stop SUMO")}</button><span>{t("Each completed interval saves the latest checkpoint. Stop finishes and saves the current interval.")}</span></div>
+      {liveRun&&<div className="sumo-progress"><p role="status">{t(liveRun.status)} · {t(liveRun.mode==='history'?'Historical replay':liveRun.mode==='live'?'Live operation':'')} · {t(liveRun.phase||'')} · {t((liveRun.simulated_h||0).toFixed(2))}{t(" simulated hours · ")}{t(liveRun.samples||0)}{t(" output samples")}</p>{liveRun.history&&(liveRun.history.follow?<p role="status">{t(liveRun.history.caught_up?'Caught up · following sensor collection':'Catching up with collected data')} · {t(liveRun.history.completed)}{t(" completed intervals")}{t(liveRun.history.total>liveRun.history.completed?` · ${liveRun.history.total-liveRun.history.completed} loaded intervals remaining`:'')}</p>:<><progress aria-label={t("History replay progress")} max={liveRun.history.total} value={liveRun.history.completed}/><p>{t("Historical intervals: ")}{t(liveRun.history.completed)} / {t(liveRun.history.total)}</p></>)}<LiveProgressDiagnostics value={liveRun.diagnostics}/>{liveRun.last_sumo_message&&<p>{t("SUMO: ")}{t(liveRun.last_sumo_message)}</p>}{liveRun.error&&<div className="alert">{t(liveRun.error)}</div>}{liveRun.error&&!!liveRun.sumo_commands?.length&&<details><summary>{t("SUMO command diagnostics")}</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{liveRun.sumo_commands.join("\n")}</pre></details>}</div>}
+      {run&&<div className="sumo-progress"><p role="status">{t(run.phase||run.status)} · {t(Math.floor(run.progress_pct||0))}%</p><progress max="100" value={run.progress_pct||0}/></div>}
+      {(error||run?.error)&&<div className="alert" role="alert">{t(error||run?.error)}</div>}
       </section>
     </section>
-    <section className="config-card"><div className="section-title"><div><h2>Output variables visualisation</h2></div><button className="secondary" disabled={!liveRun?.result?.time_h?.length||downloading} onClick={async()=>{setDownloading(true);try{const response=await fetch('/api/sumo/live/download');if(!response.ok)throw Error('Download failed');const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download='sumo_live_results.csv';link.click();URL.revokeObjectURL(url);}catch(e){setError(String(e));}finally{setDownloading(false);}}}>Download results CSV</button></div>
-      <LiveSensorPlot title="Influent variables · simulation inputs" groupTitle="Influent variables"
+    <section className="config-card"><div className="section-title"><div><h2>{t("Output variables visualisation")}</h2></div><button className="secondary" disabled={!liveRun?.result?.time_h?.length||downloading} onClick={async()=>{setDownloading(true);try{const response=await fetch('/api/sumo/live/download');if(!response.ok)throw Error('Download failed');const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download='sumo_live_results.csv';link.click();URL.revokeObjectURL(url);}catch(e){setError(String(e));}finally{setDownloading(false);}}}>{t("Download results CSV")}</button></div>
+      <LiveSensorPlot title={t("Influent variables · simulation inputs")} groupTitle="Influent variables"
         options={influentPlotOptions} history={history} source="simulation"
         simulationResult={liveRun?.result} runId={liveRun?.id||'simulation-inputs'} />
-      <LiveSensorPlot title="DO concentrations · simulation inputs" groupTitle="DO concentrations"
+      <LiveSensorPlot title={t("DO concentrations · simulation inputs")} groupTitle="DO concentrations"
         options={doPlotOptions} history={history} className="live-do-card" source="simulation"
         simulationResult={liveRun?.result} runId={liveRun?.id||'simulation-inputs'} />
-      {comparisons?.error&&<p role="status">{comparisons.error}</p>}
-      {comparisons?.aggregation_seconds&&<p className="calibration-note">Dotted sensor curves from {comparisons.database || 'sumo_web_database'}: recorded nitrate means over {comparisons.aggregation_seconds} seconds, compared with simulated SNOx. Missing measurements remain gaps.</p>}
+      {comparisons?.error&&<p role="status">{t(comparisons.error)}</p>}
+      {comparisons?.aggregation_seconds&&<p className="calibration-note">{t("Dotted sensor curves from ")}{t(comparisons.database || 'sumo_web_database')}{t(": recorded nitrate means over ")}{t(comparisons.aggregation_seconds)}{t(" seconds, compared with simulated SNOx. Missing measurements remain gaps.")}</p>}
       <SumoOutputDashboard localTime pollutants={realtimePollutantOptions} showInfluent={false} showDo={false} influent={influentPlotOptions} result={visualisationResult} runId={liveRun?.id||''}/>
     </section>
   </>;

@@ -101,7 +101,7 @@ export default function App() {
                 <p className="calibration-note">{t("Hold each tank at the specified DO. KLa parameters remain unchanged because oxygen transfer is not used in this mode.")}</p>
                 <div className="fields">
                   {doSetpoints.map((value, index) => <label className="field" key={index}>
-                    <span className="field-label">{t("Tank")} {t(index + 1)} DO (mg/L)</span>
+                    <span className="field-label">{t("Tank")} {t(index + 1)}{t(" DO (mg/L)")}</span>
                     <div className="input-wrap"><input type="number" min="0" max="8" step="any" value={value} disabled={busy}
                       onChange={event => updateDoSetpoint(index, event.target.value)} /></div>
                   </label>)}
@@ -112,7 +112,7 @@ export default function App() {
             </section>
             <section className="config-card measurement-upload">
               <div className="chart-head"><div><h3>{t("Measured data")}</h3><p>{t("Upload an Excel workbook to run dynamic auto-calibration.")}</p></div></div>
-              <p className="calibration-note">{t("Use the format of")} <code>TwoDays_Subiaco_DynamicCali_20260401.xlsx</code>: <b>validation</b> {t("for tank measurements and")} <b>dyinput</b> {t("for influent, flows and aeration. Both sheets use")} <b>t (min)</b>{t(", starting at 0.")}</p>
+              <p className="calibration-note">{t("Use the format of")} <code>{t("TwoDays_Subiaco_DynamicCali_20260401.xlsx")}</code>: <b>{t("validation")}</b> {t("for tank measurements and")} <b>{t("dyinput")}</b> {t("for influent, flows and aeration. Both sheets use")} <b>{t("t (min)")}</b>{t(", starting at 0.")}</p>
               <div className="measurement-actions">
                 <label htmlFor="calibration-workbook">{t("Upload measured data (.xlsx, max 5 MB)")} <input id="calibration-workbook" type="file" accept=".xlsx" disabled={busy || measurementBusy}
                     onChange={event => { const file = event.target.files?.[0]; if (file) void uploadMeasurements(file); event.target.value = ""; }} />
@@ -122,7 +122,7 @@ export default function App() {
               <p className="calibration-note">{t("Concentrations: mg/L. dyinput flows: plant-wide L/s; airflow: m³/h. Include O2, NH4-N, NO2-N and NO3-N for tanks 1–5; N2O-N is optional. Blank measurements are allowed.")}</p>
               {measurementBusy && <p role="status">{t("Uploading and validating workbook…")}</p>}
               {measurementError && <div className="alert" role="alert">{t(measurementError)}</div>}
-              {measurements && <p className="measurement-ready" role="status">{t("Loaded:")} <b>{measurements.filename}</b> · {measurements.time_h.length} {t("timestamps ·")} {t(measurements.time_h[measurements.time_h.length - 1].toFixed(2))} h · {Object.keys(measurements.variables).length} {t("measurement series")}</p>}
+              {measurements && <p className="measurement-ready" role="status">{t("Loaded:")} <b>{t(measurements.filename)}</b> · {t(measurements.time_h.length)} {t("timestamps ·")} {t(measurements.time_h[measurements.time_h.length - 1].toFixed(2))}{t(" h · ")}{t(Object.keys(measurements.variables).length)} {t("measurement series")}</p>}
             </section>
             {autoCalibrationError && <div className="alert" role="alert"><b>{t("Auto-calibration failed")}</b><span>{t(autoCalibrationError)}</span></div>}
             {autoCalibrationBusy && <p role="status">{t("Optimization is running. This may take several minutes.")}</p>}
