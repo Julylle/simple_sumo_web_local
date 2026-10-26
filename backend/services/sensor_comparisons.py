@@ -7,13 +7,20 @@ from database.store import Store, dbtime
 from services.historical_inputs import parse_time
 
 LIVE_EXTRA_OUTPUTS = tuple(f'Sumo__Plant__CSTR{lane}_4__{name}'
-                          for lane in (3, 4) for name in ('SNOx', 'SNHx'))
+                          for lane in (3, 4) for name in ('SNOx', 'SNHx')) + tuple(
+    f'Sumo__Plant__CSTR{lane}_10__{name}'
+    for lane in (3, 4) for name in ('XTSS', 'XVSS'))
 # Only mappings confirmed in the existing collector CSV; no shared NHx assumed.
 COMPARISON_SENSORS = {
     'sensor:Sumo__Plant__CSTR3_4__SNOx': (
         'Sumo__Plant__CSTR3_4__param__Nitrate_sensor', 'SiemensEth.PLC200.II_anoxic_nitrate'),
     'sensor:Sumo__Plant__CSTR3_10__SNOx': (
         'Sumo__Plant__CSTR3_10__param__Nitrate_sensor', 'SiemensEth.PLC200.II_aerobic_nitrate'),
+    'lab:Sumo__Plant__CSTR3_10__XTSS': ('Sumo__Plant__CSTR3_10__param__MLSS_lab', 'MySQL.SWC3.parm_mlss.parm_mlss__1_'),
+    'lab:Sumo__Plant__CSTR3_10__XVSS': ('Sumo__Plant__CSTR3_10__param__MLVSS_lab', 'MySQL.SWC3.parm_mlvss.parm_mlvss__1_'),
+    'lab:Sumo__Plant__CSTR4_10__XTSS': ('Sumo__Plant__CSTR4_10__param__MLSS_lab', 'MySQL.SWC4.parm_mlss.parm_mlss__1_'),
+    'lab:Sumo__Plant__CSTR4_10__XVSS': ('Sumo__Plant__CSTR4_10__param__MLVSS_lab', 'MySQL.SWC4.parm_mlvss.parm_mlvss__1_'),
+
 }
 
 

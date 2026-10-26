@@ -1,4 +1,5 @@
 import { localPlotTimestamp } from '../utils/liveSensorDisplay';
+import { realtimeSolidsOptions } from './sumoOutputs';
 import { t, useLanguage } from '../i18n';
 import { usePlotSetting } from '../hooks/usePlotSetting';
 import { validChoices, validCards, type PlotChoices, type PlotCards } from '../utils/plotSettings';
@@ -53,10 +54,11 @@ export function SumoOutputDashboard({influent, result, runId, showInfluent = tru
   const scope = localTime ? 'live:outputs' : 'offline:outputs';
   const [cards, setCards] = usePlotSetting<PlotCards>(scope + ':cards', {ids: [], nextId: 1}, validCards);
   const groups = [{title: 'Influent variables', options: influent}, {title: 'Effluent pollutants', options: pollutants}, {title: 'DO concentrations', options: doOptions}];
+  const solidsGroup={title:'MLSS / MLVSS',options:realtimeSolidsOptions};
   return <div className="sumo-output-dashboard">
-    {groups.filter(group => (showInfluent || group.title !== 'Influent variables') && (showDo || group.title !== 'DO concentrations')).map(group => <OutputCard key={group.title} settingsKey={`${scope}:${group.title}`} title={t(group.title)} groups={[group]} result={result} localTime={localTime} runId={runId} />)}
+    {groups.filter(group => (showInfluent || group.title !== 'Influent variables') && (showDo || group.title !== 'DO concentrations')).map(group => <OutputCard key={group.title} settingsKey={`${scope}:${group.title}`} title={t(localTime && group.title==='Effluent pollutants'?'Simulation results':group.title)} groups={localTime && group.title==='Effluent pollutants'?[group,solidsGroup]:[group]} result={result} localTime={localTime} runId={runId} />)}
     <div className="section-title"><div><h3>{t("Custom comparison plots")}</h3><p>{t("Add a blank plot and compare variables across all three groups.")}</p></div>
       <button className="secondary" onClick={() => {setCards(current => ({ids: [...current.ids, current.nextId], nextId: current.nextId + 1}));}}>{t("Add comparison plot")}</button></div>
-    {cards.ids.map(id => <OutputCard key={id} settingsKey={`${scope}:comparison:${id}`} title={t(`Comparison ${id}`)} groups={groups} result={result} localTime={localTime} runId={runId} remove={() => setCards(current => ({...current, ids: current.ids.filter(k => k !== id)}))} />)}
+    {cards.ids.map(id => <OutputCard key={id} settingsKey={`${scope}:comparison:${id}`} title={t(`Comparison ${id}`)} groups={localTime?[...groups,solidsGroup]:groups} result={result} localTime={localTime} runId={runId} remove={() => setCards(current => ({...current, ids: current.ids.filter(k => k !== id)}))} />)}
   </div>;
 }

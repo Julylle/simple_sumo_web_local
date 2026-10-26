@@ -418,7 +418,7 @@ export function RealTimeSumo(){
       {(error||run?.error)&&<div className="alert" role="alert">{t(error||run?.error)}</div>}
       </section>
     </section>
-    <section className="config-card"><div className="section-title"><div><h2>{t("Output variables visualisation")}</h2></div><button className="secondary" disabled={!liveRun?.result?.time_h?.length||downloading} onClick={async()=>{setDownloading(true);try{const response=await fetch('/api/sumo/live/download');if(!response.ok)throw Error('Download failed');const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download='sumo_live_results.csv';link.click();URL.revokeObjectURL(url);}catch(e){setError(String(e));}finally{setDownloading(false);}}}>{t("Download results CSV")}</button></div>
+    <section className="config-card"><div className="section-title"><div><h2>{t("Simulation results")}</h2></div><button className="secondary" disabled={!liveRun?.result?.time_h?.length||downloading} onClick={async()=>{setDownloading(true);try{const response=await fetch('/api/sumo/live/download');if(!response.ok)throw Error('Download failed');const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download='sumo_live_results.csv';link.click();URL.revokeObjectURL(url);}catch(e){setError(String(e));}finally{setDownloading(false);}}}>{t("Download results CSV")}</button></div>
       <LiveSensorPlot title={t("Influent variables · simulation inputs")} groupTitle="Influent variables"
         options={influentPlotOptions} history={history} source="simulation"
         simulationResult={liveRun?.result} runId={liveRun?.id||'simulation-inputs'} />
@@ -426,7 +426,7 @@ export function RealTimeSumo(){
         options={doPlotOptions} history={history} className="live-do-card" source="simulation"
         simulationResult={liveRun?.result} runId={liveRun?.id||'simulation-inputs'} />
       {comparisons?.error&&<p role="status">{t(comparisons.error)}</p>}
-      {comparisons?.aggregation_seconds&&<p className="calibration-note">{t("Dotted sensor curves from ")}{t(comparisons.database || 'sumo_web_database')}{t(": recorded nitrate means over ")}{t(comparisons.aggregation_seconds)}{t(" seconds, compared with simulated SNOx. Missing measurements remain gaps.")}</p>}
+      {comparisons?.aggregation_seconds&&<p className="calibration-note">{t("Dotted sensor curves from ")}{t(comparisons.database || 'sumo_web_database')}{t(": recorded nitrate and MLSS/MLVSS means over ")}{t(comparisons.aggregation_seconds)}{t(" seconds, compared with corresponding simulation results. Missing measurements remain gaps.")}</p>}
       <SumoOutputDashboard localTime pollutants={realtimePollutantOptions} showInfluent={false} showDo={false} influent={influentPlotOptions} result={visualisationResult} runId={liveRun?.id||''}/>
     </section>
   </>;
