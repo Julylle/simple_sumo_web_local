@@ -248,3 +248,31 @@ terminates the process (not a graceful completion of the current sample), waits
 up to five seconds for exit, and does not delete logs, spool files or database
 records. Windows releases the collector lock on exit. A configured Task Scheduler
 restart policy may start the collector again; disable that task first if needed.
+
+### Missing historical inputs and lag diagnostics
+
+Historical → Live now carries forward the previous simulated interval's input
+for each variable with no good numeric reading in a completed interval. Other
+variables use their new interval means. Empty intervals still advance the model
+by LimitTime; model time is never skipped. A subsequent valid reading replaces
+the held value. Raw sensor records are never filled or rewritten.
+
+The previous inputs are stored in model units in each completed checkpoint.
+Older checkpoints recover them from their saved input series, without rescaling
+flow a second time. If the first interval has a missing input and no previous
+value is available, startup reports an error rather than choosing zero or using
+a future observation. Invalid negative/non-finite numeric inputs still error.
+
+The collection frontier now uses the newest recorded acquisition among mapped
+inputs (including quality-error records), so one missing sensor does not block
+an initialized model. It does not advance beyond the last complete collected
+interval: if all collection stops, the model waits. These queries retain the
+existing LimitTime polling cadence.
+
+The live status displays model lag, available-interval backlog, the collection
+frontier and its last query time, plus the variables held in the last completed
+interval. It also reports the last interval's model/transfer, database-wait and
+checkpoint durations, and the latest history-query duration. Timings measure
+wall time; database-wait time measures only the flush wait because writes also
+run concurrently. The first model timing includes native initialization. These
+metrics do not change solver steps or sampling frequency.

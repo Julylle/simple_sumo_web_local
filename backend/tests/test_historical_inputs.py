@@ -53,8 +53,7 @@ def test_bulk_read_timezone_partial_tail_and_scaling_once(monkeypatch):
     assert params[-4:] == [Q, 'flow', NH, 'nitrogen']
 
 
-@pytest.mark.parametrize('rows', [[], [(0, Q, 41.7)], [(0,Q,41.7),(0,NH,20)],
-    [(0,Q,41.7),(0,NH,20),(1,Q,83.4)], [(0,Q,-1),(0,NH,20),(1,Q,41.7),(1,NH,20)]])
+@pytest.mark.parametrize('rows', [[], [(0, Q, 41.7)], [(0,Q,-1),(0,NH,20),(1,Q,41.7),(1,NH,20)]])
 def test_empty_missing_partial_and_invalid_input_fail_closed(monkeypatch, rows):
     store, _ = fake_store(monkeypatch, rows)
     with pytest.raises(ValueError):
@@ -104,7 +103,7 @@ def test_open_ended_request_requires_only_start():
         history.history_request('2999-01-01T00:00Z', None, 1)
 
 
-def test_follow_uses_slowest_input_and_only_complete_intervals(monkeypatch):
+def test_follow_uses_collection_frontier_and_holds_missing_inputs(monkeypatch):
     plan = history.history_request('2026-01-01T00:00Z', None, 1)
     store, cursor = fake_store(monkeypatch, [])
     cursor.fetchall.side_effect = [
@@ -112,13 +111,15 @@ def test_follow_uses_slowest_input_and_only_complete_intervals(monkeypatch):
         [(0,Q,41.7),(0,NH,20)],
     ]
     windows = history.load_available_history(MAPPING,60,plan)
-    assert len(windows)==1 and windows[0].duration_ms==60000
+    assert len(windows)==2 and windows[0].duration_ms==60000
+    assert windows[1].values == windows[0].values
+    assert windows[1].held_inputs == tuple(sorted(MAPPING))
     assert windows[0].timestamp=='2026-01-01T00:01:00+00:00'
     assert cursor.execute.call_count==2
-    assert cursor.execute.call_args.args[1][3]==datetime(2026,1,1,0,1)
+    assert cursor.execute.call_args.args[1][3]==datetime(2026,1,1,0,2)
 
 
-@pytest.mark.parametrize('rows', [[],[(Q,datetime(2026,1,1,0,2))],
+@pytest.mark.parametrize('rows', [[],
     [(Q,datetime(2026,1,1,0,0,59)),(NH,datetime(2026,1,1,0,0,59))]])
 def test_follow_waits_for_missing_or_incomplete_newest_data(monkeypatch, rows):
     plan=history.history_request('2026-01-01T00:00Z',None,1)
@@ -156,3 +157,42 @@ def test_time_errors_identify_start_and_end_without_guessing_timezone():
     with pytest.raises(ValueError,match='History end has an invalid format'):
         history.history_request('2026-01-01T08:00+08:00','invalid',1)
     assert history.parse_time(datetime(2026,1,1,tzinfo=timezone.utc))==datetime(2026,1,1,tzinfo=timezone.utc)
+
+
+def test_internal_empty_and_partial_intervals_hold_model_units_then_recover(monkeypatch):
+    plan = history.history_request('2026-01-01T00:00Z', '2026-01-01T00:04Z', 1)
+    fake_store(monkeypatch, [(0,Q,41.7),(0,NH,20),(2,NH,30),(3,Q,83.4),(3,NH,40)])
+    windows = history.load_history(MAPPING, 60, plan)
+    assert [w.values[Q] for w in windows] == pytest.approx([1000,1000,1000,2000])
+    assert [w.values[NH] for w in windows] == [20,20,30,40]
+    assert [w.held_inputs for w in windows] == [(),tuple(sorted(MAPPING)),(Q,),()]
+    assert [w.timestamp for w in windows] == [f'2026-01-01T00:0{i}:00+00:00' for i in range(1,5)]
+    assert 'last_inputs' not in plan  # prefetch must not advance the completed cursor
+
+
+def test_checkpoint_inputs_seed_next_query_without_scaling_again(monkeypatch):
+    plan = request()
+    plan.update(completed=1, last_inputs={Q:1000,NH:20})
+    fake_store(monkeypatch, [])
+    window, = history.load_history(MAPPING,60,plan)
+    assert window.values == {Q:1000,NH:20}
+    assert window.held_inputs == tuple(sorted(MAPPING))
+
+
+def test_missing_initial_values_cannot_be_filled_from_future(monkeypatch):
+    fake_store(monkeypatch, [(1,Q,41.7),(1,NH,20)])
+    with pytest.raises(ValueError, match='no previous input'):
+        history.load_history(MAPPING,60,request())
+
+
+def test_follow_missing_sensor_does_not_block_initialized_model(monkeypatch):
+    plan = history.history_request('2026-01-01T00:00Z',None,1)
+    plan.update(completed=1, last_inputs={Q:1000,NH:20})
+    _, cursor = fake_store(monkeypatch, [])
+    cursor.fetchall.side_effect = [[(Q,datetime(2026,1,1,0,2,10))], [(0,Q,83.4)]]
+    window, = history.load_available_history(MAPPING,60,plan)
+    assert window.values[Q] == pytest.approx(2000)
+    assert window.values[NH] == 20
+    assert window.held_inputs == (NH,)
+    assert plan['input_frontier']['missing_inputs'] == [NH]
+    assert "r.quality='good'" not in cursor.execute.call_args_list[0].args[0]

@@ -157,6 +157,7 @@ def test_follow_waits_for_collector_then_advances_same_job_and_can_stop(session,
     read.assert_not_called();engine.schedule.assert_called_once()
     assert loader.call_count==4
     assert cp.checkpoint_info()['history']['completed']==3
+    assert cp.checkpoint_info()['history']['last_inputs']=={Q:3000}
     store.connect.assert_called_once_with(database='sumo_web_database')
     assert store.register_run.call_args.args[0]==session['id']
     assert store.register_run.call_args.args[4]=='history_then_live'
@@ -268,3 +269,19 @@ def test_missing_native_boundary_does_not_wait_forever(session, tmp_path, monkey
         assert {'timeout': 'did not reach LimitTime', 'rejected': 'rejected the job', 'unknown_command': 'SUMO rejected command'}[outcome] in session['error']
     engine.cleanup.assert_called_once()
     assert not any(call.args[1].startswith('save ') for call in engine.sendCommand.call_args_list)
+
+
+def test_legacy_checkpoint_recovers_last_model_inputs(session, monkeypatch):
+    session['history'] = history_request('2026-01-01T00:00Z',None,1)
+    session['history']['completed'] = 1
+    session['times'] = [1/60]
+    session['variables'] = {Q:[1000]}
+    session['sensor_timestamps'] = ['2026-01-01T00:01:00Z']
+    cp.save_checkpoint(session,session['model']['state'],60000)
+    monkeypatch.setattr(live,'_session',None)
+    with patch.object(live.threading,'Thread'):
+        restored = live.resume()
+    try:
+        assert restored['history']['last_inputs'] == {Q:1000}
+    finally:
+        live._session['resume_folder'].cleanup()

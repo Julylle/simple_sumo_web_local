@@ -21,6 +21,7 @@ from services.kepserver import read_snapshot
 from services.model_inputs import scale_model_inputs
 from services.sensor_inputs import SENSOR_COLUMNS
 from services.sumo_startup import write_startup_script
+from services.live_progress import live_progress
 from services.live_models import resolve_model
 from services.live_checkpoint import save_checkpoint, checkpoint_info, restore_checkpoint, saved_snapshot
 
@@ -44,6 +45,7 @@ def snapshot():
                 "history": dict(s["history"]) if s.get("history") else None,
                 "last_sumo_message": s.get("last_sumo_message"),
                 "sumo_commands": list(s.get("sumo_commands", [])),
+                "diagnostics": live_progress(s),
                 "phase": s["phase"], "simulated_h": s["sim_ms"] / 3600000,
                 "samples": len(s["times"]), "result": {
                     "sensor_timestamps": list(s.get("sensor_timestamps", [None] * len(s["times"]))),
@@ -63,6 +65,14 @@ def start(mapping, interval_minutes=1, model_id="builtin", mode="live", history_
 
 def _launch(mapping, interval_minutes, model_id, selected_model, resume_ms=0, resume_folder=None, result=None, run_id=None, history=None):
     global _session
+    if history is not None:
+        history = dict(history)
+        # Old checkpoints predate last_inputs; recover actual model-unit inputs
+        # from their saved series, without applying flow scaling a second time.
+        if resume_ms and not history.get('last_inputs'):
+            history['last_inputs'] = {key: values[-1] for key, values in (result or {}).get('variables', {}).items()
+                                     if key in mapping and values and isinstance(values[-1], (int, float))
+                                     and math.isfinite(values[-1]) and values[-1] >= 0}
     with _lock:
         if _session is not None and _session["status"] in ("starting", "running", "stopping"):
             raise RuntimeError("A live SUMO session is already active.")
@@ -137,7 +147,10 @@ def _wait_for_collected_windows(s, done=None):
                 s['stop'].wait(min(1, delay))
                 continue
         read_started = time.monotonic()
+        query_started = time.perf_counter()
         windows = load_available_history(s['mapping'], s['interval'], s['history'])
+        with _lock:
+            s.setdefault('timings', {})['history_read_seconds'] = time.perf_counter() - query_started
         s['_history_next_read_at'] = read_started + max(60, s['interval'])
         if s['stop'].is_set():
             return []
@@ -317,6 +330,7 @@ def _worker(s):
             s["phase"] = "scheduling_job"
         # Avoid expanding thousands of follow commands into one native IPC message.
         # Keep all database variables; load their subscriptions from disk instead.
+        interval_started = time.perf_counter()
         job = ds.sumo.schedule(dll, commands=schedule_commands,
             variables=["Sumo__Time"],
             jobData={getattr(ds.sumo, "persistent", "persistent"): True})
@@ -373,12 +387,30 @@ def _worker(s):
                 continue
             if current_ms > target_ms:
                 raise RuntimeError("SUMO advanced beyond its input boundary.")
+            reached_at = time.perf_counter()
+            with _lock:
+                s['phase'] = 'writing_simulation_results'
             if recorder:
                 recorder.flush()
+            flushed_at = time.perf_counter()
             if replaying:
                 with _lock:
                     history['completed'] += 1
+                    window = windows[history_index]
+                    history['last_inputs'] = dict(window.values)
+                    history['held_inputs'] = list(window.held_inputs)
+                    history['held_at'] = window.timestamp
+                    history['held_intervals'] = history.get('held_intervals', 0) + bool(window.held_inputs)
             checkpoint(current_ms)
+            saved_at = time.perf_counter()
+            with _lock:
+                s.setdefault('timings', {}).update(
+                    model_seconds=reached_at - interval_started,
+                    database_wait_seconds=flushed_at - reached_at,
+                    checkpoint_seconds=saved_at - flushed_at,
+                    interval_work_seconds=saved_at - interval_started,
+                    interval_simulated_seconds=step_ms / 1000)
+            logging.info('Live SUMO %s interval %s ms timings: %s', s['id'], current_ms, s['timings'])
             # Replay runs without wall-clock pacing. Live mode waits once per interval.
             if not replaying:
                 with _lock:
@@ -412,6 +444,7 @@ def _worker(s):
                     s["input_read_at"] = datetime.now(timezone.utc).isoformat()
                 except Exception as exc:
                     raise RuntimeError("OPC UA unavailable; live simulation stopped: " + str(exc)) from exc
+            interval_started = time.perf_counter()
             for key, value in new_values.items():
                 send_command(job, f"set {key} {value};")
             target_ms = current_ms + step_ms

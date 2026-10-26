@@ -56,13 +56,15 @@ class HistoryWindow:
     duration_ms: int
     timestamp: str
     values: dict[str, float]
+    held_inputs: tuple[str, ...] = ()
 
 
 def load_history(mapping, interval_seconds, history):
     """Aggregate in MySQL, not per sensor/per interval network round trips.
 
     Use acquisition UTC time and [start,end), average only good numeric values.
-    All selected inputs must have data in every interval, including the tail.
+    Missing inputs retain their previous interval value in model units.
+    The first interval needs valid inputs or checkpoint-provided previous values.
     Resume queries only the unprocessed part of the original selected range.
     """
     start, end = parse_time(history['start'], 'Saved history start'), parse_time(history['end'], 'Saved history end')
@@ -91,18 +93,23 @@ def load_history(mapping, interval_seconds, history):
     for index, name, value in rows:
         grouped.setdefault(int(index), {})[name] = float(value)
     windows = []
+    previous = {key: float(value) for key, value in history.get('last_inputs', {}).items()
+                if key in mapping and isinstance(value, (int, float)) and math.isfinite(value) and value >= 0}
     count = math.ceil((end - begin).total_seconds() / interval_seconds)
     for index in range(count):
         left = begin + timedelta(seconds=index * interval_seconds)
         right = min(left + timedelta(seconds=interval_seconds), end)
         values = grouped.get(index, {})
         missing = set(mapping) - values.keys()
-        if missing:
-            raise ValueError(f'History data missing at {left.isoformat()}: ' + ', '.join(sorted(missing)))
+        unseeded = missing - previous.keys()
+        if unseeded:
+            raise ValueError(f'History data missing at {left.isoformat()} with no previous input to reuse: ' + ', '.join(sorted(unseeded)))
         if any(not math.isfinite(value) or value < 0 for value in values.values()):
             raise ValueError(f'Invalid historical input at {left.isoformat()}')
         converted = scale_model_inputs([{'column': name, 'value': value} for name, value in values.items()])
-        windows.append(HistoryWindow(round((right-left).total_seconds()*1000), right.isoformat(), converted))
+        converted.update({key: previous[key] for key in missing})
+        windows.append(HistoryWindow(round((right-left).total_seconds()*1000), right.isoformat(), converted, tuple(sorted(missing))))
+        previous = converted
     return windows
 
 
@@ -118,7 +125,7 @@ def mapping_filters(mapping):
 
 
 def load_available_history(mapping, interval_seconds, history):
-    """Find the latest complete interval shared by all inputs, then read a chunk.
+    """Find the latest collected interval, then read a chunk with held inputs.
 
     Indexed latest-row lookups avoid repeatedly scanning the complete raw archive.
     A partial newest interval is held back until acquisition crosses its boundary.
@@ -126,8 +133,7 @@ def load_available_history(mapping, interval_seconds, history):
     filters, params = mapping_filters(mapping)
     sql = """SELECT v.sumo_name, MAX((
         SELECT r.acquired_at FROM raw_data r
-        WHERE r.variable_id=v.id AND r.quality='good' AND r.numeric_value IS NOT NULL
-          AND r.acquired_at <= UTC_TIMESTAMP(6)
+        WHERE r.variable_id=v.id AND r.acquired_at <= UTC_TIMESTAMP(6)
         ORDER BY r.acquired_at DESC LIMIT 1))
         FROM raw_variables v WHERE """ + ' OR '.join(filters) + ' GROUP BY v.sumo_name'
     store = Store()
@@ -138,10 +144,21 @@ def load_available_history(mapping, interval_seconds, history):
             latest = {name: value.replace(tzinfo=timezone.utc) for name, value in cursor.fetchall() if value is not None}
     finally:
         store.close()
-    if set(mapping) - latest.keys():
-        return []
+    missing = sorted(set(mapping) - latest.keys())
+    newest = max(latest.values()) if latest else None
     start = parse_time(history['start'])
-    available = math.floor((min(latest.values()) - start).total_seconds() / interval_seconds)
+    available = (math.floor((newest - start).total_seconds() / interval_seconds)
+                 if newest is not None else 0)
+    # Reuse this query: no additional database polling for UI diagnostics.
+    history['input_frontier'] = {
+        'checked_at': datetime.now(timezone.utc).isoformat(),
+        'latest_collection_at': newest.isoformat() if newest is not None else None,
+        'complete_until': (start + timedelta(seconds=available * interval_seconds)).isoformat()
+                          if available > 0 else None,
+        'missing_inputs': missing,
+    }
+    if not latest:
+        return []
     if available <= history['completed']:
         return []
     # Bound memory and query size while repeatedly catching up to a moving frontier.
