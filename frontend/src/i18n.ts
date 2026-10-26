@@ -30,6 +30,8 @@ export function t<T>(value: T): T {
     translated = text
       .replace(/^Error: (.+)$/, (_, detail: string) => `错误：${t(detail)}`)
       .replace(/^Sensor comparisons from (.+) unavailable\. (.+)$/, (_, database: string, detail: string) => `无法从 ${database} 读取传感器对比数据。${t(detail)}`)
+      .replace(/^SUMO MySQL write failed \((.+)\)\. (.+) Simulation stopped to avoid silent history loss\.$/, (_, operation: string, detail: string) => `SUMO 数据库写入失败（${t(operation)}）。${t(detail)} 为避免历史数据丢失，模拟已停止。`)
+      .replace(/^MySQL (\d+): (.+)$/, (_, code: string, detail: string) => `MySQL ${code}：${t(detail)}`)
       .replace(/^Request failed \((\d+)\)$/, '请求失败（$1）')
       .replace(/^Remove (Sumo__.+)$/, '移除 $1')
       .replace(/^· (\d+) loaded intervals remaining$/, '· 剩余 $1 个已加载区间')

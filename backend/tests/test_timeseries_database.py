@@ -216,8 +216,31 @@ def test_replacement_deletion_is_transactional_and_never_touches_raw_data(failur
         store.connection.commit.assert_called_once()
         store.connection.rollback.assert_not_called()
     deletes = [call.args for call in cursor.execute.call_args_list if call.args[0].startswith('DELETE')]
-    assert deletes == [('DELETE FROM sumo_samples WHERE run_id <> %s', ('new-run',)),
+    assert len(deletes) == 3
+    assert deletes[0][0].startswith('DELETE v FROM sumo_values v')
+    assert 's.run_id <> %s' in deletes[0][0]
+    assert deletes[0][1] == ('new-run',)
+    assert deletes[1:] == [('DELETE FROM sumo_samples WHERE run_id <> %s', ('new-run',)),
                        ('DELETE FROM sumo_runs WHERE run_id <> %s', ('new-run',))]
     assert all('raw_' not in call.args[0] for call in cursor.execute.call_args_list)
     methods = [call[0] for call in cursor.method_calls]
     assert methods.index('executemany') < len(methods) - 2  # insert values before cleanup
+
+
+@pytest.mark.parametrize('code,phrase', [(1142,'permission'),(1451,'Foreign key'),(1205,'lock wait'),(2013,'timed out')])
+def test_write_errors_show_code_and_reason_without_private_server_message(code, phrase):
+    from database.simulation import write_error_detail
+    error = RuntimeError(code, 'private SQL or connection details')
+    detail = write_error_detail(error)
+    assert str(code) in detail and phrase in detail
+    assert 'private' not in detail
+
+
+def test_recorder_check_identifies_failed_replacement_and_preserves_cause():
+    recorder = SimulationRecorder.__new__(SimulationRecorder)
+    recorder.error = RuntimeError(1451, 'private constraint message')
+    recorder.replace_pending = True
+    with pytest.raises(RuntimeError, match='first sample and replacement') as result:
+        recorder.check()
+    assert 'MySQL 1451' in str(result.value)
+    assert result.value.__cause__ is recorder.error

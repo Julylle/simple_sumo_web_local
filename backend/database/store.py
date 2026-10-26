@@ -160,9 +160,11 @@ class Store:
                     c.executemany('''INSERT INTO sumo_values VALUES (%s,%s,%s,%s,%s)
                         ON DUPLICATE KEY UPDATE value_json=VALUES(value_json),numeric_value=VALUES(numeric_value),quality=VALUES(quality)''', values[start:start+500])
                 if replace_previous:
-                    # sumo_values cascades from sumo_samples. Delete child rows
-                    # before run metadata, within the first result transaction.
+                    # Explicit child-first cleanup also supports older databases
+                    # whose existing foreign key does not use ON DELETE CASCADE.
                     # Raw sensor tables and shared model catalogs are untouched.
+                    c.execute('''DELETE v FROM sumo_values v
+                        JOIN sumo_samples s ON s.id=v.sample_id WHERE s.run_id <> %s''', (run_id,))
                     c.execute('DELETE FROM sumo_samples WHERE run_id <> %s', (run_id,))
                     c.execute('DELETE FROM sumo_runs WHERE run_id <> %s', (run_id,))
             self.connection.commit()

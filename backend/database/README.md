@@ -339,8 +339,8 @@ A new Historical data → Live run replaces **all previous SUMO simulation resul
 in its history database (normally `sumo_web_database`), including timestamps outside
 the new replay range. It does not append another run to the `sumo simulation` view.
 Replacement happens once, in the same InnoDB transaction as the first successfully
-written sample: old `sumo_samples` and their cascading `sumo_values`, followed by old
-`sumo_runs`, are deleted. Startup without a successful sample leaves old results
+written sample: old `sumo_values`, then `sumo_samples`, followed by old `sumo_runs`, are
+deleted explicitly in child-first order, including on older schemas without cascading deletion. Startup without a successful sample leaves old results
 intact; a failed replacement transaction rolls back both the new sample and deletes.
 Raw sensor data/mappings and model/variable catalogs are retained. The view definition
 and local-time display settings are unchanged. Download any old results you want to

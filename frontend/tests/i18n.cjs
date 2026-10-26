@@ -47,6 +47,7 @@ test('dynamic messages translate without changing database names, numeric values
   assert.equal(app.t(' · 12 loaded intervals remaining'),' · 剩余 12 个已加载区间');
   assert.equal(app.t('CSTR3_4 nitrate · sensor'),'CSTR3_4 硝酸盐 · 传感器');
   assert.equal(app.t('5.0 min'),'5.0 分钟');
+  assert.match(app.t('Error: SUMO MySQL write failed (first sample and replacement). MySQL 1451: Foreign key constraints prevent deletion of old simulation results. Simulation stopped to avoid silent history loss.'), /首次结果写入及旧结果替换.*MySQL 1451.*外键约束/);
   for(const value of ['Sumo__Plant__CSTR3_4__SNOx','sumo_web_database','ns=2;s=GEeth.PLC147.II_tank3_DO1','mg/L',12.5,null])assert.equal(app.t(value),value);
   const node={value:1};assert.equal(app.t(node),node);
 });
