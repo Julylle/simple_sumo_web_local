@@ -256,3 +256,18 @@ in-memory retention limit; they are not the downsampled plot data.
 ## MySQL: raw data and SUMO simulation
 
 See [database setup and operation](backend/database/README.md) for the complete 73-row KEPServer mapping, independent raw collector, model-derived SUMO state recording, MySQL Docker volume, UTC time fields and query examples. Configuration is opt-in: set `SUMO_MYSQL_ENABLED=1` after initializing MySQL.
+
+
+### Realtime SUMO project parameters
+
+Realtime startup (including history and checkpoint resume) restores the base
+constant inputs from the selected `.sumo` project's `parameters.txt` before
+loading the saved state and running `maptoic`. Current sensor/database inputs
+are applied afterwards, so they retain priority. Embedded dynamic TSV schedules
+are not enabled in these modes because the web runner controls each interval.
+The saved state alone does not restore project calibration, tank volumes or
+recycle settings; DLL defaults may differ substantially from the project.
+After correcting this startup behavior, prior results are not recalculated.
+To reassess a run made with DLL defaults, start from a known appropriate initial
+state and replay its historical inputs. Resuming retains the old computed state
+and applies the corrected project parameters for subsequent intervals.

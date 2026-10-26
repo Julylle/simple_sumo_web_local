@@ -33,6 +33,7 @@ def session(tmp_path, monkeypatch):
     state = tmp_path / 'state.xml'
     state.write_text('<systemstate><state/></systemstate>')
     with zipfile.ZipFile(project, 'w') as archive:
+        archive.writestr('parameters.txt', '[CONSTANT INPUT]\nFull Symbol\tValue\nSumo__Plant__Influent__param__Q\t90000\n')
         archive.writestr('variables.var', f'0\t{Q}\tREAL\tm3/d\tParameter')
     return {'id':'test-run', 'status':'starting', 'phase':'initializing', 'error':None,
             'sim_ms':0, 'resume_ms':0, 'times':[], 'variables':{},
@@ -109,6 +110,7 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
     monkeypatch.setattr(live, 'ROOT', tmp_path)
     extra_output = 'Sumo__Plant__CSTR3_4__SNOx'
     with zipfile.ZipFile(session['model']['project'], 'w') as archive:
+        archive.writestr('parameters.txt', '[CONSTANT INPUT]\nFull Symbol\tValue\nSumo__Plant__Influent__param__Q\t90000\n')
         archive.writestr('variables.var', f'0\t{Q}\tREAL\tm3/d\tParameter\n1\t{extra_output}\t0\tREALARRAY\tStateVariable')
     package = ModuleType('dynamita')
     tool = ModuleType('dynamita.tool')
@@ -139,6 +141,10 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
             session['stop'].set()
     def schedule(model, commands, **kwargs):
         commands, followed = read_startup(commands, kwargs['variables'])
+        assert commands[0] == f'set {Q} 90000;'
+        assert commands[1].startswith('load ')
+        assert commands[2] == 'maptoic;'
+        assert commands.index(f'set {Q} 1000;') > 2
         assert f'set Sumo__Time {resume_ms};' in commands
         assert f'set Sumo__LimitTime {resume_ms+60000};' in commands
         assert len([c for c in commands if c.startswith('load ')]) == 1

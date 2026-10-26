@@ -271,7 +271,8 @@ def test_missing_native_boundary_does_not_wait_forever(session, tmp_path, monkey
     diagnostic = '230013 Unknown command fol' if outcome == 'unknown_command' else 'Native startup diagnostic'
     assert session['last_sumo_message'] == diagnostic
     assert session['sumo_commands'][0].startswith('execute ')
-    assert session['sumo_commands'][1].startswith('load ')
+    assert session['sumo_commands'][1] == f'set {Q} 90000;'
+    assert session['sumo_commands'][2].startswith('load ')
     assert session['sumo_commands'][-1] == 'start;'
     if outcome == 'stop':
         assert session['status'] == 'stopped'

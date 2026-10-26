@@ -20,7 +20,7 @@ from services.historical_inputs import history_request, load_history, load_avail
 from services.kepserver import read_snapshot
 from services.model_inputs import scale_model_inputs
 from services.sensor_inputs import SENSOR_COLUMNS
-from services.sumo_startup import write_startup_script
+from services.sumo_startup import write_startup_script, project_parameter_commands
 from services.live_progress import live_progress
 from services.resume_history import resume_history
 from services.sensor_comparisons import LIVE_EXTRA_OUTPUTS
@@ -304,7 +304,8 @@ def _worker(s):
                 done.set()
         ds.sumo.message_callback = message
         ds.sumo.datacomm_callback = sample
-        commands = [f'load "{initial.as_posix()}";', "maptoic;", f"set Sumo__Time {resume_ms};",
+        commands = [*project_parameter_commands(project),
+                    f'load "{initial.as_posix()}";', "maptoic;", f"set Sumo__Time {resume_ms};",
                     f"set Sumo__StopTime {max_ms};", f"set Sumo__DataComm {step_ms};",
                     "mode dynamic;", *(f"set {k} {v};" for k,v in values.items()),
                     f"set Sumo__LimitTime {target_ms};", "start;"]
