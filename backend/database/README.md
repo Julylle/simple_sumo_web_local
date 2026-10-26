@@ -276,3 +276,30 @@ checkpoint durations, and the latest history-query duration. Timings measure
 wall time; database-wait time measures only the flush wait because writes also
 run concurrently. The first model timing includes native initialization. These
 metrics do not change solver steps or sampling frequency.
+
+
+### Resume with database catch-up
+
+All `Resume a saved simulation` requests now restore the checkpoint's model,
+state, mapping, LimitTime, run ID and result arrays, then replay database sensor
+intervals after the saved model boundary. This includes checkpoints originally
+created in direct Live mode. Resuming does not alter the saved bundle; the next
+successfully completed interval atomically replaces it as before.
+
+Each resume starts a new replay cursor at zero while native SUMO time continues
+from `simulated_ms`. The saved `model_time_offset_ms` links the two clocks, so
+multiple resumes and legacy partial final intervals do not duplicate, skip or
+shift model timestamps. New bundles store `sensor_boundary_at`. For older
+direct-live bundles, the last sensor-read timestamp plus LimitTime identifies
+the end of the already-computed interval. If no sensor timestamp exists, the
+save time is used as an explicitly labelled approximate boundary.
+
+Replay runs without wall-clock pacing until collected data is exhausted. The
+same SUMO job then waits for new complete collected intervals using the existing
+LimitTime polling cadence. Missing inputs retain their previous model values.
+No fresh OPC snapshot bypasses database replay. The history database from a
+saved history run is retained; direct-live conversions use
+`SUMO_HISTORY_DATABASE` (default `sumo_web_database`). A collector and database
+access are therefore required for resume, even for formerly direct-live runs.
+The displayed history interval count restarts at each resume; saved results and
+native accumulated simulation time are retained.

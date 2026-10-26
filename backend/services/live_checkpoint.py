@@ -8,6 +8,7 @@ import zipfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
+from services.resume_history import checkpoint_boundary
 
 _lock = threading.RLock()
 
@@ -28,6 +29,10 @@ def save_checkpoint(session, state_file, simulated_ms):
                 'model_name': session['model']['name'], 'mapping': session['mapping'],
                 'interval_minutes': session['interval'] // 60,
                 'history': session.get('history')}
+    boundary, source = checkpoint_boundary({**metadata,
+        'input_read_at': session.get('input_read_at'),
+        'result': {'sensor_timestamps': session.get('sensor_timestamps', [])}})
+    metadata.update(sensor_boundary_at=boundary.isoformat(), boundary_source=source)
     with _lock:
         target = checkpoint_path()
         pending = target.with_suffix('.pending')

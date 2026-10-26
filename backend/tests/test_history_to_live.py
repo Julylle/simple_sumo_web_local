@@ -94,13 +94,22 @@ def test_resume_carries_history_cursor(session, monkeypatch):
         result=live.resume()
     try:
         assert result['mode']=='history'
-        assert result['history']['completed']==1
+        assert result['history']['completed']==0
+        assert result['history']['start']=='2026-01-01T00:01:00+00:00'
+        assert result['history']['model_time_offset_ms']==60000
         assert live._session['resume_ms']==60000
     finally:live._session['resume_folder'].cleanup()
 
 
-def test_follow_waits_for_collector_then_advances_same_job_and_can_stop(session,tmp_path,monkeypatch):
+@pytest.mark.parametrize('resume_ms', [0, 120000])
+def test_follow_waits_for_collector_then_advances_same_job_and_can_stop(session,tmp_path,monkeypatch,resume_ms):
     plan=history_request('2026-01-01T00:00Z',None,1)
+    plan['model_time_offset_ms'] = resume_ms
+    session['resume_ms'] = resume_ms
+    if resume_ms:
+        session['times'] = [resume_ms / 3600000]
+        session['variables'] = {Q: [500]}
+        session['sensor_timestamps'] = ['2026-01-01T00:00:00+00:00']
     session['history']=plan
     monkeypatch.setattr(live,'ROOT',tmp_path)
     # Use the real asynchronous writer against a fake store. No enable flag:
@@ -142,7 +151,7 @@ def test_follow_waits_for_collector_then_advances_same_job_and_can_stop(session,
     def schedule(model,commands,**kwargs):
         commands, followed = read_startup(commands, kwargs['variables'])
         assert Q in followed
-        engine.message_callback(1,'530041 Loaded');emit(60000);return 1
+        engine.message_callback(1,'530041 Loaded');emit(resume_ms+60000);return 1
     def send(job,command):
         if command.startswith('save '):
             Path(command.split('"')[1]).write_text('<systemstate><value/></systemstate>')
@@ -150,10 +159,11 @@ def test_follow_waits_for_collector_then_advances_same_job_and_can_stop(session,
         elif command.startswith('set Sumo__LimitTime '):emit(int(command.split()[-1].rstrip(';')))
     engine.schedule.side_effect=schedule;engine.sendCommand.side_effect=send
     live._worker(session)
-    assert emissions==[(60000,0),(120000,0),(180000,60)]
+    assert emissions==[(resume_ms+60000,0),(resume_ms+120000,0),(resume_ms+180000,60)]
     assert session['status']=='stopped' and session['mode']=='live'
     assert session['history']['completed']==3 and session['history']['caught_up']
-    assert session['sensor_timestamps']==[f'2026-01-01T00:0{i}:00+00:00' for i in (1,2,3)]
+    assert session['sensor_timestamps']==(['2026-01-01T00:00:00+00:00'] if resume_ms else [])+[f'2026-01-01T00:0{i}:00+00:00' for i in (1,2,3)]
+    if resume_ms: assert session['variables'][Q][0] == 500
     read.assert_not_called();engine.schedule.assert_called_once()
     assert loader.call_count==4
     assert cp.checkpoint_info()['history']['completed']==3
@@ -164,16 +174,19 @@ def test_follow_waits_for_collector_then_advances_same_job_and_can_stop(session,
     assert store.register_run.call_args.args[5]['recording_database']=='sumo_web_database'
     writes=[call.args for call in store.write_simulation.call_args_list]
     assert [w[0] for w in writes]==[session['id']]*3
-    assert [w[2] for w in writes]==[60000,120000,180000]
+    assert [w[2] for w in writes]==[resume_ms+60000,resume_ms+120000,resume_ms+180000]
     assert [w[3] for w in writes]==[{Q:1000}]*3
-    assert [w[4] for w in writes]==session['sensor_timestamps']
+    assert [w[4] for w in writes]==session['sensor_timestamps'][-3:]
     store.close.assert_called_once()
     monkeypatch.setattr(live,'_session',None)
     with patch.object(live.threading,'Thread'):
         restored=live.resume()
     try:
-        assert restored['mode']=='live' and restored['history']['follow']
-        assert restored['history']['completed']==3
+        assert restored['mode']=='history' and restored['history']['follow']
+        assert not restored['history']['caught_up']
+        assert restored['history']['completed']==0
+        assert restored['history']['start']=='2026-01-01T00:03:00+00:00'
+        assert restored['history']['model_time_offset_ms']==resume_ms+180000
     finally:live._session['resume_folder'].cleanup()
 
 

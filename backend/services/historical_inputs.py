@@ -23,6 +23,11 @@ def parse_time(value, field='History timestamp'):
     return parsed.astimezone(timezone.utc)
 
 
+def history_time(history, simulated_ms):
+    return parse_time(history['start']) + timedelta(
+        milliseconds=float(simulated_ms) - history.get('model_time_offset_ms', 0))
+
+
 def history_request(start, end, interval_minutes):
     begin = parse_time(start, 'History start')
     # Older clients may submit the removed end-time input as an empty string.

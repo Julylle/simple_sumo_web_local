@@ -16,12 +16,13 @@ from pathlib import Path
 from uuid import uuid4
 
 from database.simulation import open_recorder
-from services.historical_inputs import history_request, load_history, load_available_history, parse_time
+from services.historical_inputs import history_request, load_history, load_available_history, parse_time, history_time
 from services.kepserver import read_snapshot
 from services.model_inputs import scale_model_inputs
 from services.sensor_inputs import SENSOR_COLUMNS
 from services.sumo_startup import write_startup_script
 from services.live_progress import live_progress
+from services.resume_history import resume_history
 from services.live_models import resolve_model
 from services.live_checkpoint import save_checkpoint, checkpoint_info, restore_checkpoint, saved_snapshot
 
@@ -97,7 +98,7 @@ def resume():
         metadata, model, folder = restore_checkpoint()
         try:
             return _launch(metadata['mapping'], metadata['interval_minutes'], 'checkpoint', model,
-                           metadata['simulated_ms'], folder, metadata.get('result'), metadata['run_id'], metadata.get('history'))
+                           metadata['simulated_ms'], folder, metadata.get('result'), metadata['run_id'], resume_history(metadata))
         except Exception:
             folder.cleanup()
             raise
@@ -285,7 +286,7 @@ def _worker(s):
                     if s["times"] and float(ms)/3600000 <= s["times"][-1]:
                         return
                     s["sim_ms"] = int(ms)
-                    sample_time = ((parse_time(history['start']) + timedelta(milliseconds=float(ms))).isoformat()
+                    sample_time = (history_time(history, ms).isoformat()
                                    if replaying else s["input_read_at"])
                     s.setdefault("sensor_timestamps", [None] * len(s["times"])).append(sample_time)
                     s["times"].append(float(ms)/3600000)

@@ -11,7 +11,7 @@ type Option = {name:string;label:string;unit:string};
 type Reading = {column:string;node_id:string;value:number;timestamp:string};
 type Sample = Reading & { receivedAt: number };
 type UploadedModel = {id:string;name:string;state_name:string};
-type Checkpoint = {error?:string;model_name?:string;saved_at?:string;simulated_h?:number;interval_minutes?:number;mapping?:Record<string,string>};
+type Checkpoint = {sensor_boundary_at?:string;boundary_source?:string;error?:string;model_name?:string;saved_at?:string;simulated_h?:number;interval_minutes?:number;mapping?:Record<string,string>};
 type HistoryProgress = {start:string;end:string|null;completed:number;total:number;database:string;follow?:boolean;caught_up?:boolean};
 type LiveRun = {diagnostics?:LiveDiagnostics;sumo_commands?:string[];last_sumo_message?:string;mode?:'history'|'live';history?:HistoryProgress|null;mapping?:Record<string,string>;interval_minutes?:number;checkpoint?:Checkpoint|null;id?:string;model_id?:string;model_name?:string;status:string;phase?:string;error?:string;simulated_h?:number;samples?:number;result?:{sensor_timestamps?:(string|null)[];time_h:number[];variables:Record<string,number[]>}};
 type Run = {id:string;status:'running'|'completed'|'failed';error?:string;progress_pct?:number;phase?:string;result?:{sensor_timestamps?:(string|null)[];time_h:number[];variables:Record<string,number[]>}};
@@ -367,7 +367,9 @@ export function RealTimeSumo(){
                 <p>Simulation time: {checkpoint.simulated_h?.toFixed(3)} h · LimitTime: {checkpoint.interval_minutes} min</p>
                 <p>Saved: {checkpoint.saved_at?new Date(checkpoint.saved_at).toLocaleString():''}</p>
                 <p className="calibration-note">Restores the saved model, state, sensor mappings and interval automatically. No model upload or initial-state preparation is needed.</p>
-                <p className="calibration-note">Database-following runs continue from the last completed interval, catch up with collected data and wait for new collection. Direct live runs read fresh sensors without replaying downtime. Only the latest checkpoint is retained.</p>
+                {checkpoint.sensor_boundary_at&&<p>Resume database from: {new Date(checkpoint.sensor_boundary_at).toLocaleString()}</p>}
+                {checkpoint.boundary_source==='legacy_save_time_estimate'&&<p className="calibration-note">This older checkpoint has no sensor timestamp; its save time is used as the approximate database start.</p>}
+                <ul className="calibration-note"><li><strong>Database:</strong> Replays collected sensor data from the saved boundary using the saved mappings and LimitTime.</li><li><strong>Mode:</strong> Preserves saved state and results, catches up as fast as possible, then follows new collection automatically. Missing inputs keep their previous values.</li></ul>
               </>}
           </>:<>
           {simulationMode==='history_then_live'&&<>
