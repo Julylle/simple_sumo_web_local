@@ -332,3 +332,21 @@ Set `SUMO_COMPARISON_DATABASE` only to explicitly override this measurement
 source. It is independent of `SUMO_HISTORY_DATABASE`, `MYSQL_DATABASE`, and
 the database stored in a model checkpoint. Previously saved plot selections are respected;
 select the new variables in the Effluent pollutants dropdown if needed.
+
+### Replacing results when starting a new historical run
+
+A new Historical data → Live run replaces **all previous SUMO simulation results**
+in its history database (normally `sumo_web_database`), including timestamps outside
+the new replay range. It does not append another run to the `sumo simulation` view.
+Replacement happens once, in the same InnoDB transaction as the first successfully
+written sample: old `sumo_samples` and their cascading `sumo_values`, followed by old
+`sumo_runs`, are deleted. Startup without a successful sample leaves old results
+intact; a failed replacement transaction rolls back both the new sample and deletes.
+Raw sensor data/mappings and model/variable catalogs are retained. The view definition
+and local-time display settings are unchanged. Download any old results you want to
+keep before starting a new historical run.
+
+Resume a saved simulation retains its run ID and appends/upserts results; it never
+requests this cleanup, even for a checkpoint at simulation time zero. Replacement
+is not inferred from timestamps. Existing running processes pick up this behavior
+only after the backend code is restarted and a new historical run is started.

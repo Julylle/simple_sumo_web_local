@@ -193,7 +193,7 @@ export const zh: Record<string, string> = {
   "Convergence tolerance must be positive.": "收敛容差必须大于零。",
   "Initial-state generation failed.": "初始状态生成失败。",
   "Select a historical start time in the past.": "请选择早于当前时间的历史起始时间。",
-  "Start a new simulation? This replaces the displayed run and, after its first interval, the latest checkpoint. Download the current results first if you need to keep them.": "是否开始新模拟？这将替换当前显示的模拟，并在完成首个区间后替换最新检查点。如需保留当前结果，请先下载。",
+  "Start a new historical simulation? After the first successful result write, all previous SUMO simulation results in the history database will be replaced. Raw sensor data is kept. The latest checkpoint is replaced after the first completed interval. Download old results first if needed.": "是否开始新的历史模拟？首个结果成功写入后，将替换历史数据库中所有旧 SUMO 模拟结果，保留传感器原始数据。完成首个区间后替换最新检查点。如需保留旧结果，请先下载。",
   "Stop the shared live simulation for all viewers?": "是否停止所有用户正在查看的共享实时模拟？",
   "SUMO Real-time Simulation": "SUMO 实时模拟",
   "Cixi Eastern WWTP · KEPServer OPC UA · Manual simulation": "慈溪市东部污水处理厂 · KEPServer OPC UA · 手动模拟",

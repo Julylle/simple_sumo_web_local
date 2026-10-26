@@ -230,7 +230,7 @@ export function RealTimeSumo(){
   async function start(){
     if(!statusReady||!modelReady)return;
     if(simulationMode==='history_then_live'&&!historyValid){setError('Select a historical start time in the past.');return;}
-    if((liveRun?.samples||0)>0 && !window.confirm(t('Start a new simulation? This replaces the displayed run and, after its first interval, the latest checkpoint. Download the current results first if you need to keep them.')))return;
+    if(!window.confirm(t('Start a new historical simulation? After the first successful result write, all previous SUMO simulation results in the history database will be replaced. Raw sensor data is kept. The latest checkpoint is replaced after the first completed interval. Download old results first if needed.')))return;
     setBusy(true);setError('');
     try{
       const selected=Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()));

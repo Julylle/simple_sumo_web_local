@@ -62,3 +62,37 @@ def test_local_views_match_shanghai_plot_and_keep_canonical_utc():
             c.execute('SELECT sensor_read_at FROM sumo_samples WHERE run_id=%s',(run,))
             assert c.fetchone()[0]==utc
     finally:store.close()
+
+
+def test_new_history_replaces_results_and_keeps_raw_records_atomically():
+    store = Store().connect()
+    try:
+        store.initialize()
+        with store.connection.cursor() as c:
+            c.execute('SELECT COUNT(*) FROM raw_data')
+            raw_count = c.fetchone()[0]
+        old, new = str(uuid4()), str(uuid4())
+        variables = [{'name':'replace_test','type':'REAL','category':'StateVariable','unit':'mg/L'}]
+        old_ids = store.register_run(old, 'd'*64, 'replace-test', variables, 'history_then_live', {})
+        store.write_simulation(old, old_ids, 60000, {'replace_test': 1})
+        ids = store.register_run(new, 'd'*64, 'replace-test', variables, 'history_then_live', {})
+        # A broken first sample must not destroy the old result.
+        with pytest.raises(Exception):
+            store.write_simulation(new, {'replace_test': 18446744073709551615}, 60000,
+                                   {'replace_test': 2}, replace_previous=True)
+        with store.connection.cursor() as c:
+            c.execute('SELECT COUNT(*) FROM sumo_samples WHERE run_id=%s', (old,))
+            assert c.fetchone()[0] == 1
+        store.write_simulation(new, ids, 60000, {'replace_test': 2}, replace_previous=True)
+        store.write_simulation(new, ids, 120000, {'replace_test': 3})
+        with store.connection.cursor() as c:
+            c.execute('SELECT DISTINCT run_id FROM sumo_samples')
+            assert c.fetchall() == ((new,),)
+            c.execute('SELECT COUNT(*) FROM sumo_values')
+            assert c.fetchone()[0] == 2
+            c.execute('SELECT COUNT(*) FROM sumo_runs WHERE run_id=%s', (old,))
+            assert c.fetchone()[0] == 0
+            c.execute('SELECT COUNT(*) FROM raw_data')
+            assert c.fetchone()[0] == raw_count
+    finally:
+        store.close()

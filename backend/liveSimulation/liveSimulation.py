@@ -79,6 +79,7 @@ def _launch(mapping, interval_minutes, model_id, selected_model, resume_ms=0, re
         if _session is not None and _session["status"] in ("starting", "running", "stopping"):
             raise RuntimeError("A live SUMO session is already active.")
         s = {"id": run_id or str(uuid4()), "status": "starting", "phase": "initializing",
+             "replace_existing_results": history is not None and run_id is None,
              "error": None, "sim_ms": resume_ms, "resume_ms": resume_ms,
              "resume_folder": resume_folder, "times": list((result or {}).get("time_h", [])),
              "variables": {k: list(v) for k, v in (result or {}).get("variables", {}).items()},
@@ -241,7 +242,8 @@ def _worker(s):
             max_ms += sum(window.duration_ms for window in windows)
         target_ms = resume_ms + step_ms
         recorder = open_recorder(project, s['id'], 'history_then_live' if history else 'live',
-                                 {'mapping': s['mapping'], 'interval_seconds': s['interval'], 'history': history}, output_variables)
+                                 {'mapping': s['mapping'], 'interval_seconds': s['interval'], 'history': history,
+                                  'replace_existing_results': s.get('replace_existing_results', False)}, output_variables)
         database_variables = recorder.names if recorder else []
         # First read must succeed before creating a SUMO job.
         values = windows[0].values if replaying else _read_model_inputs(s["mapping"])

@@ -24,6 +24,9 @@ class SimulationRecorder:
             raise
         self.names = list(self.ids)
         self.run_id = run_id
+        # Only an explicitly new historical run replaces prior results.
+        # Resume must never infer replacement from a zero simulation time.
+        self.replace_pending = mode == 'history_then_live' and configuration.get('replace_existing_results') is True
         self.error = None
         self.queue = Queue(maxsize=8)
         self.thread = Thread(target=self._write, daemon=True, name='sumo-mysql')
@@ -40,7 +43,12 @@ class SimulationRecorder:
                         item.set()
                     elif self.error is None:
                         ms, data, sensor_time = item
-                        self.store.write_simulation(self.run_id, self.ids, ms, data, sensor_time)
+                        if self.replace_pending:
+                            self.store.write_simulation(self.run_id, self.ids, ms, data, sensor_time,
+                                                        replace_previous=True)
+                            self.replace_pending = False
+                        else:
+                            self.store.write_simulation(self.run_id, self.ids, ms, data, sensor_time)
                 except Exception as exc:
                     self.error = exc
                 finally:

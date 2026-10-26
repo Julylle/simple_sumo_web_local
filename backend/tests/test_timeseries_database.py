@@ -162,3 +162,62 @@ def test_history_default_destination_and_write_connection_failure(project, monke
             open_recorder(project, 'run', 'history_then_live', {})
         store.connect.assert_called_once_with(database='sumo_web_database')
         store.close.assert_called_once()
+
+
+@pytest.mark.parametrize('mode,replace', [('history_then_live', True), ('history_then_live', False), ('live', True)])
+def test_only_first_successful_sample_of_new_history_replaces_results(project, mode, replace):
+    from unittest.mock import MagicMock
+    store = MagicMock()
+    store.register_run.return_value = {'state': 1}
+    with patch('database.simulation.Store', return_value=store):
+        recorder = SimulationRecorder(project, 'new-run', mode, {'replace_existing_results': replace})
+    store.write_simulation.assert_not_called()  # startup/validation does not delete anything
+    recorder.submit(60000, {'state': 1})
+    recorder.submit(120000, {'state': 2})
+    recorder.close()
+    first, second = store.write_simulation.call_args_list
+    assert first.kwargs == ({'replace_previous': True} if mode == 'history_then_live' and replace else {})
+    assert second.kwargs == {}
+
+
+def test_replacement_write_failure_stops_writer_without_clearing_flag(project):
+    from unittest.mock import MagicMock
+    store = MagicMock()
+    store.register_run.return_value = {'state': 1}
+    store.write_simulation.side_effect = RuntimeError('write failed')
+    with patch('database.simulation.Store', return_value=store):
+        recorder = SimulationRecorder(project, 'new-run', 'history_then_live', {'replace_existing_results': True})
+    recorder.submit(60000, {'state': 1})
+    with pytest.raises(RuntimeError, match='MySQL write failed'):
+        recorder.close()
+    assert recorder.replace_pending
+    store.close.assert_called_once()
+
+
+@pytest.mark.parametrize('failure', [False, True])
+def test_replacement_deletion_is_transactional_and_never_touches_raw_data(failure):
+    from unittest.mock import MagicMock
+    from database.store import Store
+    store = Store()
+    store.connection = MagicMock()
+    cursor = store.connection.cursor.return_value.__enter__.return_value
+    cursor.lastrowid = 123
+    def execute(sql, params):
+        if failure and sql.startswith('DELETE FROM sumo_runs'):
+            raise RuntimeError('delete failed')
+    cursor.execute.side_effect = execute
+    if failure:
+        with pytest.raises(RuntimeError, match='delete failed'):
+            store.write_simulation('new-run', {'state': 1}, 60000, {'state': 2}, replace_previous=True)
+        store.connection.rollback.assert_called_once()
+        store.connection.commit.assert_not_called()
+    else:
+        store.write_simulation('new-run', {'state': 1}, 60000, {'state': 2}, replace_previous=True)
+        store.connection.commit.assert_called_once()
+        store.connection.rollback.assert_not_called()
+    deletes = [call.args for call in cursor.execute.call_args_list if call.args[0].startswith('DELETE')]
+    assert deletes == [('DELETE FROM sumo_samples WHERE run_id <> %s', ('new-run',)),
+                       ('DELETE FROM sumo_runs WHERE run_id <> %s', ('new-run',))]
+    assert all('raw_' not in call.args[0] for call in cursor.execute.call_args_list)
+    methods = [call[0] for call in cursor.method_calls]
+    assert methods.index('executemany') < len(methods) - 2  # insert values before cleanup

@@ -141,7 +141,7 @@ class Store:
             self.connection.rollback()
             raise
 
-    def write_simulation(self, run_id, ids, simulated_ms, data, sensor_time=None):
+    def write_simulation(self, run_id, ids, simulated_ms, data, sensor_time=None, *, replace_previous=False):
         try:
             with self.connection.cursor() as c:
                 c.execute('''INSERT INTO sumo_samples (run_id,simulated_ms,acquired_at,sensor_read_at)
@@ -159,6 +159,12 @@ class Store:
                 for start in range(0, len(values), 500):
                     c.executemany('''INSERT INTO sumo_values VALUES (%s,%s,%s,%s,%s)
                         ON DUPLICATE KEY UPDATE value_json=VALUES(value_json),numeric_value=VALUES(numeric_value),quality=VALUES(quality)''', values[start:start+500])
+                if replace_previous:
+                    # sumo_values cascades from sumo_samples. Delete child rows
+                    # before run metadata, within the first result transaction.
+                    # Raw sensor tables and shared model catalogs are untouched.
+                    c.execute('DELETE FROM sumo_samples WHERE run_id <> %s', (run_id,))
+                    c.execute('DELETE FROM sumo_runs WHERE run_id <> %s', (run_id,))
             self.connection.commit()
         except Exception:
             self.connection.rollback()

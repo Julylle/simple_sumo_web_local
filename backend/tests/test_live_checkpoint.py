@@ -281,3 +281,14 @@ def test_sensor_timestamps_survive_checkpoint_resume_and_csv(session, monkeypatc
         assert resumed['result']['sensor_timestamps'] == session['sensor_timestamps']
     finally:
         live._session['resume_folder'].cleanup()
+
+
+@pytest.mark.parametrize('resume_id,expected', [(None,True),('saved-run',False)])
+def test_only_new_history_launch_requests_database_replacement(session, monkeypatch, resume_id, expected):
+    from services.historical_inputs import history_request
+    monkeypatch.setattr(live, '_session', None)
+    plan = history_request('2026-01-01T00:00:00Z', None, 1)
+    with patch.object(live.threading, 'Thread'):
+        live._launch(session['mapping'], 1, 'checkpoint' if resume_id else 'builtin', session['model'],
+                     run_id=resume_id, resume_ms=0, history=plan)
+    assert live._session['replace_existing_results'] is expected
