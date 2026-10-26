@@ -9,9 +9,9 @@ import csv
 import tempfile
 import xml.etree.ElementTree as ET
 from datetime import datetime
+from pathlib import Path
+import sys
 
-import dynamita.tool as dtool
-import dynamita.scheduler as ds
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,11 +20,9 @@ logging.basicConfig(
     filemode="a",
 )
 
-CURRENT_WORKING_DIR = os.getcwd()
-print(CURRENT_WORKING_DIR)
-
-SUMO_PROJECT = os.path.join(CURRENT_WORKING_DIR, "Cixi Eastern WWTP_20260920.sumo")
-SUMO_STATE = os.path.join(CURRENT_WORKING_DIR, "sumo_steady_state.xml")
+MODEL_DIR = Path(__file__).resolve().parent
+SUMO_PROJECT = str(MODEL_DIR / "Cixi Eastern WWTP_20260920.sumo")
+SUMO_STATE = str(MODEL_DIR / "sumo_steady_state.xml")
 OUTPUT_VARIABLES = [
     "Sumo__Plant__Effluent1__SNHx",
     "Sumo__Plant__Effluent1__SNOx",
@@ -32,10 +30,16 @@ OUTPUT_VARIABLES = [
     "Sumo__Plant__Influent__Q",
     "Sumo__Plant__Effluent1__TCOD",
     "Sumo__Plant__CSTR3_10__XVSS",
+    "Sumo__Plant__CSTR3_10__TCOD",
     "Sumo__MaxAbsDer",
 ]
 
-def prepare_steady_state(sumo_project_path, out_state_path, wall_run_seconds=3.5*60*60, inputs=None, tolerance=1e-6):
+def prepare_steady_state(sumo_project_path, out_state_path, wall_run_seconds=3.5*60*60, inputs=None, tolerance=1e-6, work_dir=None):
+    import dynamita.tool as dtool
+    import dynamita.scheduler as ds
+    runtime_dir = str(Path(work_dir or os.getcwd()).resolve())
+    if not math.isfinite(wall_run_seconds) or wall_run_seconds <= 0:
+        raise ValueError("Solver time limit must be positive and finite.")
     if not math.isfinite(tolerance) or tolerance <= 0:
         raise ValueError('Convergence tolerance must be positive and finite.')
     inputs = dict(inputs or {})
@@ -52,7 +56,7 @@ def prepare_steady_state(sumo_project_path, out_state_path, wall_run_seconds=3.5
     def norm(p):
         return os.path.abspath(p).replace("\\", "/")
 
-    model = norm(os.path.join(CURRENT_WORKING_DIR, "steady_headless.dll"))
+    model = norm(os.path.join(runtime_dir, "steady_headless.dll"))
     dtool.extract_dll_from_project(sumo_project_path, model)
 
     ds.sumo.setParallelJobs(1)
@@ -71,7 +75,7 @@ def prepare_steady_state(sumo_project_path, out_state_path, wall_run_seconds=3.5
     phase = "running"
     result_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
-        f"steady_results_{datetime.now():%Y%m%d_%H%M}.csv",
+        f"steady_results_{datetime.now():%Y%m%d_%H%M%S_%f}.csv",
     )
 
     def msg_callback(job, msg):
@@ -127,7 +131,7 @@ def prepare_steady_state(sumo_project_path, out_state_path, wall_run_seconds=3.5
     job = None
     parameter_files = None
     try:
-        parameter_files = tempfile.TemporaryDirectory(prefix="steady_parameters_", dir=CURRENT_WORKING_DIR)
+        parameter_files = tempfile.TemporaryDirectory(prefix="steady_parameters_", dir=runtime_dir)
         parameter_dir = norm(parameter_files.name)
         parameter_script = norm(os.path.join(parameter_dir, "project_parameters.scs"))
         dtool.extract_parameters_from_project(sumo_project_path, parameter_dir, parameter_script)
@@ -202,6 +206,92 @@ def prepare_steady_state(sumo_project_path, out_state_path, wall_run_seconds=3.5
     return True
 
 
-if __name__ == "__main__":
-    prepare_steady_state(SUMO_PROJECT, SUMO_STATE, wall_run_seconds=3.5*60*60)
+def main(argv=None):
+    """Read the same fresh sensor inputs as the web steady-state workflow."""
+    import argparse
+    import asyncio
+    import json
+    from urllib.request import urlopen
+    from uuid import uuid4
 
+    # Allows `python backend/real_sim_1202/steady_run.py` from any directory.
+    backend = MODEL_DIR.parent
+    if str(backend) not in sys.path:
+        sys.path.insert(0, str(backend))
+    parser = argparse.ArgumentParser(description='Compute SUMO steady state from a fresh KEPServer snapshot.')
+    parser.add_argument('--project', type=Path, default=Path(SUMO_PROJECT))
+    parser.add_argument('--output', type=Path, default=Path(SUMO_STATE))
+    parser.add_argument('--endpoint', help='Override KEPSERVER_OPC_URL for this run.')
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument('--mapping', type=Path, help='JSON object mapping SUMO parameter names to full OPC UA node IDs.')
+    source.add_argument('--live-url', help='Backend base URL to obtain the current live/checkpoint mapping; sensor values are freshly read.')
+    parser.add_argument('--tolerance', type=float, default=1e-6)
+    parser.add_argument('--timeout-hours', type=float, default=3.5)
+    args = parser.parse_args(argv)
+    if not math.isfinite(args.tolerance) or args.tolerance <= 0:
+        parser.error('--tolerance must be positive and finite.')
+    if not math.isfinite(args.timeout_hours) or args.timeout_hours <= 0:
+        parser.error('--timeout-hours must be positive and finite.')
+    from services.kepserver import read_snapshot
+    from services.model_inputs import scale_model_inputs
+    from services.sensor_inputs import SENSOR_COLUMNS
+    from database.catalog import load_mapping
+    if args.endpoint:
+        os.environ['KEPSERVER_OPC_URL'] = args.endpoint
+    if args.mapping:
+        mapping = json.loads(args.mapping.read_text(encoding='utf-8-sig'))
+    elif args.live_url:
+        with urlopen(args.live_url.rstrip('/') + '/api/sumo/live/status', timeout=10) as response:
+            status = json.load(response)
+        mapping = status.get('mapping') or (status.get('checkpoint') or {}).get('mapping')
+        if not mapping:
+            raise ValueError('The backend has no live/checkpoint mapping. Use --mapping or the default presets.')
+    else:
+        _, _, rows = load_mapping()
+        mapping = {row['SumoName']: 'ns=2;s=' + row['OpcTag'] for row in rows if row['SumoName'] in SENSOR_COLUMNS}
+        if set(mapping) != set(SENSOR_COLUMNS):
+            raise ValueError('Default CSV does not cover every web sensor mapping.')
+    if (not isinstance(mapping, dict) or not 1 <= len(mapping) <= 40 or
+        any(k not in SENSOR_COLUMNS or not isinstance(v, str) or not v.strip() for k, v in mapping.items())):
+        raise ValueError('Provide 1–40 valid web sensor mappings.')
+    project = args.project.resolve()
+    output = args.output.resolve()
+    if project == output:
+        raise ValueError('Output state must not overwrite the SUMO project.')
+    with zipfile.ZipFile(project) as archive:
+        fields = [line.split('\t') for line in archive.read('variables.var').decode('utf-8-sig').splitlines()]
+    writable = {row[1] for row in fields if len(row) > 4 and row[4] in ('Parameter', 'SystemParameter', 'Dimension')}
+    if set(mapping) - writable:
+        raise ValueError('SUMO inputs not writable: ' + ', '.join(sorted(set(mapping) - writable)))
+    async def fresh_snapshot():
+        return await asyncio.wait_for(read_snapshot(mapping), timeout=30)
+    readings = asyncio.run(fresh_snapshot())
+    values = scale_model_inputs(readings)
+    if set(values) != set(mapping):
+        raise ValueError('Incomplete sensor snapshot; steady-state calculation was not started.')
+    output.parent.mkdir(parents=True, exist_ok=True)
+    snapshot = output.parent / f'steady_sensor_inputs_{datetime.now():%Y%m%d_%H%M%S_%f}.json'
+    snapshot.write_text(json.dumps({'project': str(project), 'mapping': mapping,
+        'sensor_read_at': max(r['timestamp'] for r in readings), 'readings': readings,
+        'values': values, 'tolerance': args.tolerance}, indent=2, ensure_ascii=False, allow_nan=False), encoding='utf-8')
+    print(f'Read {len(values)} fresh inputs. Snapshot: {snapshot}', flush=True)
+    for name, value in values.items():
+        print(f'  {name} = {value:.15g}', flush=True)
+    pending = output.with_name(f'.{output.stem}-{uuid4().hex}.pending.xml')
+    try:
+        # Keep native DLLs isolated; cleanup may be delayed by Windows DLL handles.
+        with tempfile.TemporaryDirectory(prefix='sumo_steady_', ignore_cleanup_errors=True) as runtime:
+            prepare_steady_state(str(project), str(pending),
+                wall_run_seconds=args.timeout_hours * 3600, inputs=values,
+                tolerance=args.tolerance, work_dir=runtime)
+        root = ET.parse(pending).getroot()
+        if root.tag != 'systemstate' or not len(root):
+            raise ValueError('Solver did not produce a non-empty SUMO systemstate.')
+        os.replace(pending, output)
+    finally:
+        pending.unlink(missing_ok=True)
+    print(f'Converged steady state saved: {output}', flush=True)
+
+
+if __name__ == '__main__':
+    main()

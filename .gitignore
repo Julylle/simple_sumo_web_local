@@ -23,3 +23,7 @@ backend/live_states/
 
 # Durable raw acquisition spool
 backend/raw_spool/
+
+# Standalone steady-state acquisition snapshots and solver observations
+backend/real_sim_1202/steady_sensor_inputs_*.json
+backend/real_sim_1202/steady_results_*.csv
