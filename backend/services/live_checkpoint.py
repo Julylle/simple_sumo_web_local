@@ -111,8 +111,9 @@ def _read_results(archive):
         raise ValueError('Invalid checkpoint results.')
     if any(not isinstance(v, list) or len(v) != len(times) for v in variables.values()):
         raise ValueError('Misaligned checkpoint results.')
-    if any(not isinstance(v, (int, float)) or not math.isfinite(v)
-           for values in [times, *variables.values()] for v in values):
+    if (any(not isinstance(v, (int, float)) or not math.isfinite(v) for v in times) or
+        any(v is not None and (not isinstance(v, (int, float)) or not math.isfinite(v))
+            for values in variables.values() for v in values)):
         raise ValueError('Non-finite checkpoint results.')
     timestamps = result.get('sensor_timestamps')
     if timestamps is not None:

@@ -1,3 +1,4 @@
+import { localPlotTimestamp } from '../utils/liveSensorDisplay';
 import { usePlotSetting } from '../hooks/usePlotSetting';
 import { validViewport, stringList } from '../utils/plotSettings';
 import { updateViewport, axisViewport, type Viewport } from '../utils/plotViewport';
@@ -8,11 +9,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Plot from 'react-plotly.js';
 import type { Data, Layout } from 'plotly.js';
 
-import { sumoOutputColors, type OutputOption } from './sumoOutputs';
+import { sumoOutputColors, type OutputOption, type ComparisonSeries } from './sumoOutputs';
 
 export function SumoOutputPlot({ result, variables, rightAxis, overlay, options, timestamps, settingsKey }: {
   settingsKey: string;
-  result: { time_h: number[]; variables: Record<string, (number | null)[]> };
+  result: { comparison_series?: ComparisonSeries; time_h: number[]; variables: Record<string, (number | null)[]> };
   timestamps?: (string | null)[];
   options: OutputOption[]; variables: string[]; rightAxis: string[]; overlay: boolean; runId: string;
 }) {
@@ -52,12 +53,17 @@ export function SumoOutputPlot({ result, variables, rightAxis, overlay, options,
   const hasRight = !!axisKey;
   const data = useMemo<Data[]>(() => variables.map((key, index) => {
     const right = overlay && rightAxis.includes(key);
+    const option = options.find(option => option.key === key);
+    const measured = result.comparison_series?.[key];
+    const colorKey = option?.compareTo ?? key;
     return {
-      x: timestamps ?? result.time_h, y: result.variables[key], type: 'scatter', mode: 'lines',
+      x: measured ? measured.timestamps.map(value => localPlotTimestamp(Date.parse(value))) : timestamps ?? result.time_h,
+      y: measured?.values ?? result.variables[key], type: 'scatter', mode: measured ? 'lines+markers' : 'lines',
+      connectgaps: false, marker: {size: 5},
       name: legend.names[index],
       yaxis: right ? 'y2' : 'y',
       visible: hidden.includes(key) ? 'legendonly' : true,
-      line: { color: sumoOutputColors[Math.max(0, options.findIndex(o => o.key === key)) % sumoOutputColors.length], width: 2.5, dash: right ? 'dash' : 'solid' },
+      line: { color: sumoOutputColors[Math.max(0, options.findIndex(o => o.key === colorKey)) % sumoOutputColors.length], width: 2.5, dash: measured ? 'dot' : right ? 'dash' : 'solid' },
       hovertemplate: `${timestamps ? '%{x|%Y-%m-%d %H:%M:%S.%L}' : '%{x:.2f} h'}<br>%{y:.3f} ${options.find(o => o.key === key)?.unit ?? ''}<extra>%{fullData.name}</extra>`,
     };
   }), [result, timestamps, variables, rightAxis, overlay, options, language, width, hidden]);

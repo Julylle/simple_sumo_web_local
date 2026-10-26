@@ -107,6 +107,9 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
         session['times'] = [resume_ms / 3600000]
         session['variables'] = {Q: [500]}
     monkeypatch.setattr(live, 'ROOT', tmp_path)
+    extra_output = 'Sumo__Plant__CSTR3_4__SNOx'
+    with zipfile.ZipFile(session['model']['project'], 'w') as archive:
+        archive.writestr('variables.var', f'0\t{Q}\tREAL\tm3/d\tParameter\n1\t{extra_output}\t0\tREALARRAY\tStateVariable')
     package = ModuleType('dynamita')
     tool = ModuleType('dynamita.tool')
     scheduler = ModuleType('dynamita.scheduler')
@@ -131,7 +134,7 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
     def emit(ms):
         nonlocal current
         current = ms
-        engine.datacomm_callback(1, {'Sumo__Time':ms, Q:1000})
+        engine.datacomm_callback(1, {'Sumo__Time':ms, Q:1000, extra_output:5})
         if stop_at_boundary and ms == resume_ms+120000:
             session['stop'].set()
     def schedule(model, commands, **kwargs):
@@ -194,6 +197,8 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
         assert 'Sensor disconnected' in session['error']
     assert cp.checkpoint_info()['simulated_ms'] == resume_ms+120000
     assert len(session['times']) == (3 if resume_ms else 2)
+    assert session['variables'][extra_output] == ([None,5,5] if resume_ms else [5,5])
+    assert cp.saved_snapshot()['result']['variables'][extra_output] == session['variables'][extra_output]
     if resume_ms:
         assert session['variables'][Q][0] == 500
     assert session['sensor_timestamps'][-2:] == ['2026-10-25T01:00:00+00:00', '2026-10-25T01:01:00+00:00']

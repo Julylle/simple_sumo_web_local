@@ -1,3 +1,5 @@
+import { useSensorComparisons } from '../hooks/useSensorComparisons';
+import { realtimePollutantOptions } from './sumoOutputs';
 import { LiveProgressDiagnostics, type LiveDiagnostics } from './LiveProgressDiagnostics';
 import { useLiveSetting } from '../hooks/useLiveSetting';
 import { sensorDisplayValue } from '../utils/liveSensorDisplay';
@@ -272,6 +274,8 @@ export function RealTimeSumo(){
   const checkpointReady=!!checkpoint&&!checkpoint.error;
   const running=!statusReady||busy||liveActive||modelUploading||!!preparingModel;
   const sensorGroup=(key:string)=>defaultDoMapping[key]?'do':defaultControlMapping[key]?'control':'influent';
+  const comparisons = useSensorComparisons(liveRun?.id, !!liveRun?.result?.time_h.length, liveRun?.interval_minutes);
+  const visualisationResult = liveRun?.result ? {...liveRun.result, comparison_series: comparisons?.series} : undefined;
   const historicalCharts=!!liveRun?.history||simulationMode==='history_then_live';
   const historicalChartResult=liveRun?.history?liveRun.result:undefined;
   const chartMapping=liveRun?.history?(liveRun.mapping??mapping):mapping;
@@ -402,7 +406,9 @@ export function RealTimeSumo(){
       <LiveSensorPlot title={historicalCharts?'DO concentrations · simulation inputs':'DO concentrations · live sensor trends'} groupTitle="DO concentrations"
         options={doPlotOptions} history={history} className="live-do-card" source={historicalCharts?'simulation':'sensor'}
         simulationResult={historicalChartResult} runId={historicalCharts?liveRun?.id||'history-inputs':'live-sensors'} />
-      <SumoOutputDashboard localTime showInfluent={false} showDo={false} influent={influentPlotOptions} result={liveRun?.result} runId={liveRun?.id||''}/>
+      {comparisons?.error&&<p role="status">{comparisons.error}</p>}
+      {comparisons?.aggregation_seconds&&<p className="calibration-note">Dotted sensor curves: recorded nitrate means over {comparisons.aggregation_seconds} seconds, compared with simulated SNOx. Missing measurements remain gaps.</p>}
+      <SumoOutputDashboard localTime pollutants={realtimePollutantOptions} showInfluent={false} showDo={false} influent={influentPlotOptions} result={visualisationResult} runId={liveRun?.id||''}/>
     </section>
   </>;
 }

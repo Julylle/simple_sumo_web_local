@@ -88,3 +88,17 @@ def resume():
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/sumo/live/comparisons")
+def comparisons(run_id: str):
+    from services.sensor_comparisons import read_comparisons
+    snapshot = live_sumo.snapshot()
+    if snapshot.get('id') != run_id:
+        raise HTTPException(status_code=409, detail='Simulation changed; refresh sensor comparisons.')
+    try:
+        return read_comparisons(snapshot)
+    except Exception as exc:
+        import logging
+        logging.exception('Sensor comparison read failed')
+        raise HTTPException(status_code=503, detail='Sensor comparisons unavailable. Check collector/database access.') from exc

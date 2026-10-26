@@ -23,6 +23,7 @@ from services.sensor_inputs import SENSOR_COLUMNS
 from services.sumo_startup import write_startup_script
 from services.live_progress import live_progress
 from services.resume_history import resume_history
+from services.sensor_comparisons import LIVE_EXTRA_OUTPUTS
 from services.live_models import resolve_model
 from services.live_checkpoint import save_checkpoint, checkpoint_info, restore_checkpoint, saved_snapshot
 
@@ -221,7 +222,7 @@ def _worker(s):
             if meta is None or meta[4] not in ("Parameter","SystemParameter","Dimension"):
                 raise ValueError("SUMO input not writable: "+column)
         available_names = {row[1] for row in fields if len(row) > 1}
-        output_variables = [name for name in OUTPUT_VARIABLES if name in available_names]
+        output_variables = list(dict.fromkeys(name for name in [*OUTPUT_VARIABLES, *LIVE_EXTRA_OUTPUTS] if name in available_names))
         history = s.get('history')
         with _lock:
             s['phase'] = 'loading_history' if history else 'reading_initial_sensors'
@@ -291,7 +292,7 @@ def _worker(s):
                     s.setdefault("sensor_timestamps", [None] * len(s["times"])).append(sample_time)
                     s["times"].append(float(ms)/3600000)
                     for name in dict.fromkeys([*s["mapping"], *output_variables]):
-                        s["variables"].setdefault(name, []).append(float(data.get(name, float("nan"))))
+                        s["variables"].setdefault(name, [None] * (len(s["times"]) - 1)).append(float(data.get(name, float("nan"))))
                     # Keep arrays aligned and finite for the plot.
                     if any(not math.isfinite(s["variables"][k][-1]) for k in s["variables"]):
                         raise ValueError("Non-finite SUMO output.")

@@ -303,3 +303,30 @@ saved history run is retained; direct-live conversions use
 access are therefore required for resume, even for formerly direct-live runs.
 The displayed history interval count restarts at each resume; saved results and
 native accumulated simulation time are retained.
+
+### Realtime effluent/reactor comparisons
+
+Realtime plots retain Effluent1 COD/TP/NHx/NOx and reactor CSTR3_10/CSTR4_10
+NHx/NOx, hide reactor COD/TP, and add CSTR3_4/CSTR4_4 SNHx/SNOx. Offline output
+choices are unchanged. Newly subscribed outputs are blank for old saved samples;
+resuming appends new samples without fabricating earlier model values.
+
+Two measured nitrate curves use the existing collector CSV mappings:
+
+- CSTR3_4: `SiemensEth.PLC200.II_anoxic_nitrate`.
+- CSTR3_10: `SiemensEth.PLC200.II_aerobic_nitrate`.
+
+No CSTR4 or NHx sensor is inferred from another tank. These read-only comparisons
+query good numeric `raw_data` measurements from the historical database and do
+not assign sensor values to SUMO. Nitrate measurements are labelled separately
+from simulated SNOx. Dotted lines/markers use the corresponding model-line color
+and the same browser-local time axis. Missing observations remain null gaps.
+
+The separate comparison endpoint excludes data beyond the latest displayed model
+time. Queries refresh no faster than once per selected LimitTime (minimum one
+minute), independently of two-second result polling. Interval means are labelled;
+long runs use a larger multiple of LimitTime to bound each series to 5,000 points.
+Database comparison failures report a chart message without stopping simulation.
+The collector must be writing these mapped tags into the selected history database
+(default `sumo_web_database`). Previously saved plot selections are respected;
+select the new variables in the Effluent pollutants dropdown if needed.
