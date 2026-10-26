@@ -20,6 +20,7 @@ from services.historical_inputs import history_request, load_history, load_avail
 from services.kepserver import read_snapshot
 from services.model_inputs import scale_model_inputs
 from services.sensor_inputs import SENSOR_COLUMNS
+from services.sumo_startup import write_startup_script
 from services.live_models import resolve_model
 from services.live_checkpoint import save_checkpoint, checkpoint_info, restore_checkpoint, saved_snapshot
 
@@ -306,11 +307,18 @@ def _worker(s):
             if errors:
                 raise RuntimeError(errors[0])
 
-        record_commands(commands)
+        subscriptions = list(dict.fromkeys(["Sumo__Time", *s["mapping"], *output_variables, *database_variables]))
+        startup_script = write_startup_script(folder, commands, subscriptions)
+        logging.info("Live SUMO %s: %s subscriptions in %s (%s bytes)",
+                     s["id"], len(subscriptions), startup_script, startup_script.stat().st_size)
+        schedule_commands = [f'execute "{startup_script.as_posix()}"']
+        record_commands([*schedule_commands, *commands])
         with _lock:
             s["phase"] = "scheduling_job"
-        job = ds.sumo.schedule(dll, commands=commands,
-            variables=list(dict.fromkeys(["Sumo__Time", *s["mapping"], *output_variables, *database_variables])),
+        # Avoid expanding thousands of follow commands into one native IPC message.
+        # Keep all database variables; load their subscriptions from disk instead.
+        job = ds.sumo.schedule(dll, commands=schedule_commands,
+            variables=["Sumo__Time"],
             jobData={getattr(ds.sumo, "persistent", "persistent"): True})
         if not isinstance(job, int) or job < 0:
             rejected_job, job = job, None

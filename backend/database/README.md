@@ -188,3 +188,17 @@ so it is intentionally different from the simulated historical date. For large
 queries, use UTC bounds on the indexed base tables. Live preview sensors are
 sampled independently from the database collector; timestamps share a time
 basis but samples need not represent the exact same acquisition cycle.
+
+### Large model subscriptions
+
+Live and Historical → Live sessions write initialization commands and one
+`follow` command per recorded variable to a job-local `startup.scs`. Scheduler
+receives only a short `execute` command and the `Sumo__Time` subscription; the
+script adds the full input/output/state catalog before `start`. This avoids
+sending the complete state catalog as a single large Scheduler subscription
+argument. No state variables are removed from database recording. The script
+remains available until the native job is cleaned up.
+
+This addresses a suspected command-transport truncation path behind
+`230013 Unknown command "fol"`; native SUMO validation is still required on the
+Windows installation. Error diagnostics include the executed script path.

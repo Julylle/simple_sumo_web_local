@@ -13,6 +13,17 @@ from liveSimulation import liveSimulation as live
 Q = 'Sumo__Plant__Influent__param__Q'
 
 
+def read_startup(commands, variables):
+    # Emulate Core execute: the wire stays short even when recording all states.
+    assert variables == ['Sumo__Time']
+    assert len(commands) == 1 and commands[0].startswith('execute "')
+    assert len(commands[0].encode()) < 1024
+    script = Path(commands[0].split('"')[1]).read_text(encoding='utf-8')
+    statements = [line.strip() for line in script.splitlines() if line.strip()]
+    followed = [line[len('follow '):-1] for line in statements if line.startswith('follow ')]
+    return [line for line in statements if not line.startswith('follow ')], followed
+
+
 @pytest.fixture
 def session(tmp_path, monkeypatch):
     monkeypatch.setenv('SUMO_LIVE_STATE_DIR', str(tmp_path / 'checkpoints'))
@@ -124,10 +135,11 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
         if stop_at_boundary and ms == resume_ms+120000:
             session['stop'].set()
     def schedule(model, commands, **kwargs):
+        commands, followed = read_startup(commands, kwargs['variables'])
         assert f'set Sumo__Time {resume_ms};' in commands
         assert f'set Sumo__LimitTime {resume_ms+60000};' in commands
         assert len([c for c in commands if c.startswith('load ')]) == 1
-        assert ('all_state_test' in kwargs['variables']) == database_enabled
+        assert ('all_state_test' in followed) == database_enabled
         engine.message_callback(1, '530041 Loaded')
         if resume_ms:
             emit(resume_ms)

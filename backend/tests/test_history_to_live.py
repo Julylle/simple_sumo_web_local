@@ -5,7 +5,7 @@ from types import ModuleType
 from unittest.mock import Mock, patch
 
 import pytest
-from test_live_checkpoint import session, Q
+from test_live_checkpoint import session, Q, read_startup
 from liveSimulation import liveSimulation as live
 from services import live_checkpoint as cp
 from services.historical_inputs import HistoryWindow, history_request
@@ -48,6 +48,8 @@ def test_history_runs_without_wait_then_same_job_switches_to_live(session, tmp_p
         engine.datacomm_callback(1,{'Sumo__Time':ms,Q:1000})
         if stop_in_history:session['stop'].set()
     def schedule(model,commands,**kwargs):
+        commands, followed = read_startup(commands, kwargs['variables'])
+        assert Q in followed
         engine.message_callback(1,'530041 Loaded')
         emit(int(next(c for c in commands if c.startswith('set Sumo__LimitTime ')).split()[-1].rstrip(';')))
         return 1
@@ -138,6 +140,8 @@ def test_follow_waits_for_collector_then_advances_same_job_and_can_stop(session,
         emissions.append((ms,clock[0]))
         engine.datacomm_callback(1,{'Sumo__Time':ms,Q:1000})
     def schedule(model,commands,**kwargs):
+        commands, followed = read_startup(commands, kwargs['variables'])
+        assert Q in followed
         engine.message_callback(1,'530041 Loaded');emit(60000);return 1
     def send(job,command):
         if command.startswith('save '):
@@ -252,7 +256,8 @@ def test_missing_native_boundary_does_not_wait_forever(session, tmp_path, monkey
     assert session['history']['completed'] == 0
     diagnostic = '230013 Unknown command fol' if outcome == 'unknown_command' else 'Native startup diagnostic'
     assert session['last_sumo_message'] == diagnostic
-    assert session['sumo_commands'][0].startswith('load ')
+    assert session['sumo_commands'][0].startswith('execute ')
+    assert session['sumo_commands'][1].startswith('load ')
     assert session['sumo_commands'][-1] == 'start;'
     if outcome == 'stop':
         assert session['status'] == 'stopped'
