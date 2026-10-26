@@ -3,10 +3,13 @@
 # Windows Server 2022
 # ==========================================
 
-$PROJECT_DIR = "D:\ShutingWork\model_platform_demo"
+$PROJECT_DIR = $PSScriptRoot
 
 $BACKEND_DIR = Join-Path $PROJECT_DIR "backend"
 $FRONTEND_DIR = Join-Path $PROJECT_DIR "frontend"
+
+# Load database settings before launching processes so the backend inherits them.
+. (Join-Path $BACKEND_DIR "scripts\load-database-env.ps1")
 
 # Conda environment
 $CONDA_ENV = "sumo_web"
