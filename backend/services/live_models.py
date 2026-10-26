@@ -48,7 +48,7 @@ def register_model(project_bytes, project_name, *, state_bytes=None, mapping=Non
         raise ValueError('Convergence tolerance must be positive and finite.')
     if state_mode == 'upload':
         validate_state(state_bytes)
-    elif (not isinstance(mapping, dict) or not 1 <= len(mapping) <= 40 or
+    elif (not isinstance(mapping, dict) or not 1 <= len(mapping) <= len(SENSOR_COLUMNS) or
           any(k not in SENSOR_COLUMNS or not isinstance(v, str) or not v.strip()
               for k, v in mapping.items())):
         raise ValueError('Configure sensor mappings before calculating the steady state.')
