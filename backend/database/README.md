@@ -202,3 +202,28 @@ remains available until the native job is cleaned up.
 This addresses a suspected command-transport truncation path behind
 `230013 Unknown command "fol"`; native SUMO validation is still required on the
 Windows installation. Error diagnostics include the executed script path.
+
+### Temporary Windows background collector (no administrator password)
+
+From the project root in an ordinary PowerShell window:
+
+```powershell
+conda activate sumo_web
+.\startCollectorBackground.ps1
+```
+
+The launcher loads `backend/database/.env`, checks the existing spool lock,
+then starts a hidden Python process and prints its PID and unique log paths.
+If the lock is occupied or cannot be checked, it starts nothing and leaves the
+existing collector untouched. It does not hide or detach an already running
+foreground collector. Keep that terminal open until you can stop it with Ctrl+C,
+then rerun the launcher. Logs from previous launches are not overwritten.
+
+Watch the printed `.error.log` path with `Get-Content -LiteralPath "..." -Tail 20
+-Wait`; Python's normal `raw data: stored ...` messages also use that log. A live
+PID alone does not confirm successful database writes. Closing the launcher
+terminal does not stop the new process. Logout, reboot or a process crash will
+not automatically restart it. Keep `runCollector.ps1` for Task Scheduler use.
+
+For a different Conda installation, activate `sumo_web` there, or explicitly pass
+`-PythonPath 'C:\path\to\envs\sumo_web\python.exe'`.
