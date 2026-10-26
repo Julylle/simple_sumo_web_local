@@ -1,25 +1,20 @@
-import { plotLocale } from '../plotLocale';
+import { plotInteractionConfig, plotInteractionLayout } from '../plotInteraction';
 import { t, useLanguage } from '../i18n';
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Plot from "react-plotly.js";
-import type { Config, Data } from "plotly.js";
+import type { Data } from "plotly.js";
 import type { SimulationRun } from "../hooks/useSimulation";
 import { Empty } from "./EmptyState";
 import type { ReactNode } from "react";
 import { variableColor } from "../config/chartColors";
 import type { useSimulationMeasurements } from "../hooks/useSimulationMeasurements";
 
-const plotConfig: Partial<Config> = {
-  displaylogo: false,
-  responsive: true,
-  modeBarButtonsToRemove: ["lasso2d", "select2d"],
-};
-
 export function SimulationCharts({ data, calibrationPanel, measurements }: {
   data: SimulationRun | null; calibrationPanel: ReactNode;
   measurements: ReturnType<typeof useSimulationMeasurements>;
 }) {
   const language = useLanguage();
+  const plotConfig = useMemo(() => plotInteractionConfig(language), [language]);
   const [tank, setTank] = useState("all");
   const [component, setComponent] = useState("all");
   const variables = [...new Set([...Object.keys(data?.variables ?? {}), ...Object.keys(measurements.data?.variables ?? {})])];
@@ -83,6 +78,7 @@ export function SimulationCharts({ data, calibrationPanel, measurements }: {
           <Plot
             data={traces}
             layout={{
+              ...plotInteractionLayout,
               autosize: true,
               height: 480,
               hovermode: "closest",
@@ -94,11 +90,11 @@ export function SimulationCharts({ data, calibrationPanel, measurements }: {
                 title: { text: t("Concentration (mg/L)") },
                 gridcolor: "#edf0f4",
               },
-              margin: { l: 65, r: 110, t: 20, b: 60 },
+              margin: { l: 65, r: 110, t: 48, b: 60 },
             }}
             useResizeHandler
             style={{ width: "100%" }}
-            config={{ ...plotConfig, ...plotLocale(language) }}
+            config={plotConfig}
           />
         ) : (
           <Empty
