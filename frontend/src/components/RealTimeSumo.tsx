@@ -31,17 +31,22 @@ const defaultMapping: Record<string,string> = {
   "Sumo__Plant__Influent__param__Ammonia_analyzer": "ns=2;s=GEeth.PLC128.JS_NH3N",
   "Sumo__Plant__Influent__param__TCOD": "ns=2;s=MySQL.Dev4.COD_nh3_sen_ratio",
   "Sumo__Plant__Influent__param__TKN": "ns=2;s=MySQL.Dev4.TN_nh3_sen_ratio",
-  "Sumo__Plant__Influent__param__TP": "ns=2;s=MySQL.Dev1.inlet_tp.inlet_tp__1_"
+  "Sumo__Plant__Influent__param__TP": "ns=2;s=MySQL.Dev1.inlet_tp.inlet_tp__1_",
+  "Sumo__Plant__Influent__param__COD_analyzer": "ns=2;s=GEeth.PLC128.JS_COD",
+  "Sumo__Plant__Primary1__param__TSS_sensor": "ns=2;s=GEeth.PLC132.PE_TSS_sensor",
+  "Sumo__Plant__Influent__param__frVSS_TSS": "ns=2;s=MySQL.Dev6.Influent_VSS_TSS_Ratio",
+  "Sumo__Plant__Primary1__param__TSS_lab": "ns=2;s=MySQL.Dev2.primary_eff_tss.primary_eff_tss__1_"
 };
-// These 12 configured inputs must remain selectable even if the SUMO API is offline.
+// These configured inputs must remain selectable even if the SUMO API is offline.
 const influentUnits: Record<string,string> = {
+  COD_analyzer: 'mg COD/L', TSS_lab: 'mg TSS/L', frVSS_TSS: '-',
   Q: 'm3/d', pH: 'pH', T: 'deg C', Ammonia_sensor_Horiba: 'mg/L',
   COD_lab: 'mg/L', TKN_lab: 'mg/L', Ammonia_lab: 'mg/L', TSS_sensor: 'mg/L',
   Ammonia_analyzer: 'mg/L', TCOD: 'mg COD/L', TKN: 'mg N/L', TP: 'mg P/L',
 };
 const options: Option[] = Object.keys(defaultMapping).map(name => {
   const label = name.split('__').pop()!;
-  return {name, label, unit: influentUnits[label]};
+  return {name, label: name.includes('__Primary1__') ? 'Primary1 · ' + label : label, unit: influentUnits[label]};
 });
 const defaultColumn = 'Sumo__Plant__Influent__param__Ammonia_sensor_Horiba';
 const defaultNode = defaultMapping[defaultColumn];
@@ -58,6 +63,7 @@ async function json(url:string,init?:RequestInit) {
 export function RealTimeSumo(){
   useLanguage();
   const [mapping,setMapping]=useLiveSetting<Record<string,string>>('mapping',{...defaultMapping,...defaultDoMapping,...defaultControlMapping});
+  const [inputMappingVersion,setInputMappingVersion]=useLiveSetting('inputMappingVersion',1);
   const [selectedColumn,setSelectedColumn]=useLiveSetting('selectedColumn',defaultColumn);
   const [nodeDraft,setNodeDraft]=useLiveSetting('nodeDraft',defaultNode);
   const [selectedDo,setSelectedDo]=useLiveSetting('selectedDo',doSensorOptions[0].name);
@@ -273,6 +279,11 @@ export function RealTimeSumo(){
   const checkpointReady=!!checkpoint&&!checkpoint.error;
   const running=!statusReady||busy||liveActive||modelUploading||!!preparingModel;
   const sensorGroup=(key:string)=>defaultDoMapping[key]?'do':defaultControlMapping[key]?'control':'influent';
+  useEffect(()=>{
+    if(!statusReady||liveActive||preparingModel||inputMappingVersion>=2)return;
+    setMapping(old=>({...{"Sumo__Plant__WAS_1__param__Qpumped_target": "ns=2;s=SiemensEth.PLC200.I_Q_WAS", "Sumo__Plant__WAS_2__param__Qpumped_target": "ns=2;s=GEeth.PLC147.II_Q_WAS", "Sumo__Plant__Clarifier1__param__Qsludge_target": "ns=2;s=Omron_PLC.PLC4.RAS_flow_Q_I", "Sumo__Plant__Clarifier2__param__Qsludge_target": "ns=2;s=GEeth.PLC147.RAS_flow_Q_II", "Sumo__Plant__MLR1_1__param__Qpumped_target": "ns=2;s=SiemensEth.PLC200.MLR _Flow_I_1", "Sumo__Plant__MLR1_2__param__Qpumped_target": "ns=2;s=SiemensEth.PLC200.MLR _Flow_I_2", "Sumo__Plant__Switchcontroller2__param__CVtreshold": "ns=2;s=MySQL.SWC1.parm_mlvss.parm_mlvss__1_", "Sumo__Plant__Switchcontroller3__param__CVtreshold": "ns=2;s=MySQL.SWC3.parm_mlvss.parm_mlvss__1_", "Sumo__Plant__Sideflowdivider9__param__Qpumped_target": "ns=2;s=GEeth.PLC128.Influent_flow_Q1", "Sumo__Plant__Influent__param__COD_analyzer": "ns=2;s=GEeth.PLC128.JS_COD", "Sumo__Plant__Primary1__param__TSS_sensor": "ns=2;s=GEeth.PLC132.PE_TSS_sensor", "Sumo__Plant__Influent__param__frVSS_TSS": "ns=2;s=MySQL.Dev6.Influent_VSS_TSS_Ratio", "Sumo__Plant__Primary1__param__TSS_lab": "ns=2;s=MySQL.Dev2.primary_eff_tss.primary_eff_tss__1_"},...old}));
+    setInputMappingVersion(2);
+  },[statusReady,liveActive,preparingModel,inputMappingVersion]);
   const comparisons = useSensorComparisons(liveRun?.id, !!liveRun?.result?.time_h.length, liveRun?.interval_minutes);
   const visualisationResult = liveRun?.result ? {...liveRun.result, comparison_series: comparisons?.series, simulation_series: mergeStoredSimulation(comparisons?.stored_series, liveRun.result)} : undefined;
   const chartMapping=liveRun?.mapping??mapping;
