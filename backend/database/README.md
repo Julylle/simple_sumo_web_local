@@ -227,3 +227,24 @@ not automatically restart it. Keep `runCollector.ps1` for Task Scheduler use.
 
 For a different Conda installation, activate `sumo_web` there, or explicitly pass
 `-PythonPath 'C:\path\to\envs\sumo_web\python.exe'`.
+
+To stop the collector from the project root:
+
+```powershell
+.\stopCollector.ps1
+```
+
+This targets only `python.exe`/`pythonw.exe` command lines running
+`-m database.collector`. It leaves SUMO and web-server processes alone. If several
+collectors are found, it lists them and stops none until you select a PID:
+
+```powershell
+.\stopCollector.ps1 -CollectorProcessId 12345
+```
+
+Use `-WhatIf` to preview the target. Run under the account that launched the
+collector; an inaccessible command line cannot be identified safely. The script
+terminates the process (not a graceful completion of the current sample), waits
+up to five seconds for exit, and does not delete logs, spool files or database
+records. Windows releases the collector lock on exit. A configured Task Scheduler
+restart policy may start the collector again; disable that task first if needed.
