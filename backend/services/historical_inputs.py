@@ -9,18 +9,25 @@ from database.store import Store, dbtime
 from services.model_inputs import scale_model_inputs
 
 
-def parse_time(value):
+def parse_time(value, field='History timestamp'):
+    if value is None or (isinstance(value, str) and not value.strip()):
+        raise ValueError(f'{field} is missing. Select a history start time and retry.')
     try:
-        parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
-    except (ValueError, AttributeError) as exc:
-        raise ValueError('History timestamps must be ISO dates with a timezone.') from exc
-    if parsed.tzinfo is None:
-        raise ValueError('History timestamps must include a timezone.')
+        parsed = value if isinstance(value, datetime) else datetime.fromisoformat(value.strip().replace('Z', '+00:00'))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise ValueError(f'{field} has an invalid format. Expected an ISO timestamp such as '
+                         '2026-10-26T08:00:00+08:00 or 2026-10-26T00:00:00Z.') from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f'{field} is missing its timezone. Reload the updated web page; '
+                         'it converts local dates automatically. API clients must include Z or an offset such as +08:00.')
     return parsed.astimezone(timezone.utc)
 
 
 def history_request(start, end, interval_minutes):
-    begin = parse_time(start)
+    begin = parse_time(start, 'History start')
+    # Older clients may submit the removed end-time input as an empty string.
+    if isinstance(end, str) and not end.strip():
+        end = None
     if end is None:
         if begin > datetime.now(timezone.utc):
             raise ValueError('History start cannot be in the future.')
@@ -30,7 +37,7 @@ def history_request(start, end, interval_minutes):
                 'follow': True, 'caught_up': False,
                 'database': os.getenv('SUMO_HISTORY_DATABASE', 'sumo_web_database')}
     # Keep existing fixed-range checkpoints resumable.
-    finish = parse_time(end)
+    finish = parse_time(end, 'History end')
     if begin.microsecond % 1000 or finish.microsecond % 1000:
         raise ValueError('History times must have millisecond precision or coarser.')
     if finish <= begin:
@@ -58,7 +65,7 @@ def load_history(mapping, interval_seconds, history):
     All selected inputs must have data in every interval, including the tail.
     Resume queries only the unprocessed part of the original selected range.
     """
-    start, end = parse_time(history['start']), parse_time(history['end'])
+    start, end = parse_time(history['start'], 'Saved history start'), parse_time(history['end'], 'Saved history end')
     completed = history['completed']
     begin = start + timedelta(seconds=completed * interval_seconds)
     if begin >= end:

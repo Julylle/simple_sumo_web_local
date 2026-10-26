@@ -139,3 +139,20 @@ def test_follow_queries_only_unprocessed_data_and_limits_chunk_size(monkeypatch)
     selection=reader.call_args.args[2]
     assert selection['completed']==3
     assert (history.parse_time(selection['end'])-history.parse_time(plan['start'])).total_seconds()==2003*60
+
+
+@pytest.mark.parametrize('end', ['', '   ', None])
+def test_removed_end_input_is_optional_even_for_older_clients(end):
+    plan=history.history_request(' 2026-01-01T08:00:00+08:00 ',end,1)
+    assert plan['follow'] and plan['end'] is None
+    assert plan['start']=='2026-01-01T00:00:00+00:00'
+
+
+def test_time_errors_identify_start_and_end_without_guessing_timezone():
+    with pytest.raises(ValueError,match='History start is missing'):
+        history.history_request('',None,1)
+    with pytest.raises(ValueError,match='History start is missing its timezone'):
+        history.history_request('2026-01-01T08:00',None,1)
+    with pytest.raises(ValueError,match='History end has an invalid format'):
+        history.history_request('2026-01-01T08:00+08:00','invalid',1)
+    assert history.parse_time(datetime(2026,1,1,tzinfo=timezone.utc))==datetime(2026,1,1,tzinfo=timezone.utc)
