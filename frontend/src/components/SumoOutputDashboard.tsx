@@ -1,6 +1,7 @@
 import { localPlotTimestamp } from '../utils/liveSensorDisplay';
 import { t, useLanguage } from '../i18n';
-import { useState } from 'react';
+import { usePlotSetting } from '../hooks/usePlotSetting';
+import { validChoices, validCards, type PlotChoices, type PlotCards } from '../utils/plotSettings';
 import { SumoOutputPlot } from './SumoOutputPlot';
 import { doOptions, pollutantOptions, type OutputOption, type SumoResult } from './sumoOutputs';
 
@@ -17,15 +18,16 @@ export function VariableDropdown({ title, options, selected, onChange }: {
       {!options.length && <p>{t("Select influent parameters in Step1.")}</p>}
     </div></details>;
 }
-function OutputCard({title, groups, result, runId, remove, localTime = false}: {
-  title: string; groups: {title: string; options: OutputOption[]}[]; result?: SumoResult; runId: string; remove?: () => void; localTime?: boolean;
+function OutputCard({title, groups, result, runId, remove, localTime = false, settingsKey}: {
+  settingsKey: string; title: string; groups: {title: string; options: OutputOption[]}[]; result?: SumoResult; runId: string; remove?: () => void; localTime?: boolean;
 }) {
   useLanguage();
   const options = groups.flatMap(g => g.options);
-  const [selection, setSelection] = useState<string[] | null>(remove ? [] : null);
+  const [{selection, secondary, right}, setChoices] = usePlotSetting<PlotChoices>(settingsKey + ':choices', {selection: remove ? [] : null, secondary: false, right: []}, validChoices);
+  const setSelection = (selection: string[]) => setChoices(current => ({...current, selection}));
+  const setSecondary = (secondary: boolean) => setChoices(current => ({...current, secondary}));
+  const setRight = (right: string[]) => setChoices(current => ({...current, right}));
   const selected = selection === null ? options.map(o => o.key) : selection.filter(k => options.some(o => o.key === k));
-  const [secondary, setSecondary] = useState(false);
-  const [right, setRight] = useState<string[]>([]);
   const timestamps = localTime && result ? result.time_h.map((_, i) => {
     const value = result.sensor_timestamps?.[i];
     return value && Number.isFinite(Date.parse(value)) ? localPlotTimestamp(Date.parse(value)) : null;
@@ -42,19 +44,19 @@ function OutputCard({title, groups, result, runId, remove, localTime = false}: {
       <div className="empty"><b>{t("No simulation results yet")}</b><span>{t("Run SUMO to populate this plot.")}</span></div> : <>
         {available.length < selected.length && <p role="status">{t("Some selected variables are not in this result. Run SUMO again with the current Step1 parameters.")}</p>}
         {localTime && timestamps?.some(value => value === null) && <p role="status">Older samples have no recorded sensor timestamp and cannot be placed on the local-time axis. They remain available in the CSV.</p>}
-        {!!available.length && <SumoOutputPlot timestamps={timestamps} result={result} variables={available} rightAxis={secondary ? right : []} overlay runId={runId} options={options} />}
+        {!!available.length && <SumoOutputPlot settingsKey={settingsKey} timestamps={timestamps} result={result} variables={available} rightAxis={secondary ? right : []} overlay runId={runId} options={options} />}
       </>}
   </article>;
 }
 export function SumoOutputDashboard({influent, result, runId, showInfluent = true, showDo = true, localTime = false}: {influent: OutputOption[]; result?: SumoResult; runId: string; showInfluent?: boolean; showDo?: boolean; localTime?: boolean}) {
   useLanguage();
-  const [custom, setCustom] = useState<number[]>([]);
-  const [nextId, setNextId] = useState(1);
+  const scope = localTime ? 'live:outputs' : 'offline:outputs';
+  const [cards, setCards] = usePlotSetting<PlotCards>(scope + ':cards', {ids: [], nextId: 1}, validCards);
   const groups = [{title: 'Influent variables', options: influent}, {title: 'Effluent pollutants', options: pollutantOptions}, {title: 'DO concentrations', options: doOptions}];
   return <div className="sumo-output-dashboard">
-    {groups.filter(group => (showInfluent || group.title !== 'Influent variables') && (showDo || group.title !== 'DO concentrations')).map(group => <OutputCard key={group.title} title={group.title} groups={[group]} result={result} localTime={localTime} runId={runId} />)}
+    {groups.filter(group => (showInfluent || group.title !== 'Influent variables') && (showDo || group.title !== 'DO concentrations')).map(group => <OutputCard key={group.title} settingsKey={`${scope}:${group.title}`} title={group.title} groups={[group]} result={result} localTime={localTime} runId={runId} />)}
     <div className="section-title"><div><h3>{t("Custom comparison plots")}</h3><p>{t("Add a blank plot and compare variables across all three groups.")}</p></div>
-      <button className="secondary" onClick={() => {setCustom(current => [...current, nextId]); setNextId(nextId + 1);}}>{t("Add comparison plot")}</button></div>
-    {custom.map(id => <OutputCard key={id} title={t(`Comparison ${id}`)} groups={groups} result={result} localTime={localTime} runId={runId} remove={() => setCustom(current => current.filter(k => k !== id))} />)}
+      <button className="secondary" onClick={() => {setCards(current => ({ids: [...current.ids, current.nextId], nextId: current.nextId + 1}));}}>{t("Add comparison plot")}</button></div>
+    {cards.ids.map(id => <OutputCard key={id} settingsKey={`${scope}:comparison:${id}`} title={t(`Comparison ${id}`)} groups={groups} result={result} localTime={localTime} runId={runId} remove={() => setCards(current => ({...current, ids: current.ids.filter(k => k !== id)}))} />)}
   </div>;
 }

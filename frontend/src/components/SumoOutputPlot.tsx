@@ -1,3 +1,5 @@
+import { usePlotSetting } from '../hooks/usePlotSetting';
+import { validViewport, stringList } from '../utils/plotSettings';
 import { updateViewport, axisViewport, type Viewport } from '../utils/plotViewport';
 import { plotLegend } from '../utils/plotLegend';
 import { plotInteractionConfig, plotInteractionLayout } from '../plotInteraction';
@@ -8,7 +10,8 @@ import type { Data, Layout } from 'plotly.js';
 
 import { sumoOutputColors, type OutputOption } from './sumoOutputs';
 
-export function SumoOutputPlot({ result, variables, rightAxis, overlay, options, timestamps }: {
+export function SumoOutputPlot({ result, variables, rightAxis, overlay, options, timestamps, settingsKey }: {
+  settingsKey: string;
   result: { time_h: number[]; variables: Record<string, (number | null)[]> };
   timestamps?: (string | null)[];
   options: OutputOption[]; variables: string[]; rightAxis: string[]; overlay: boolean; runId: string;
@@ -17,12 +20,12 @@ export function SumoOutputPlot({ result, variables, rightAxis, overlay, options,
   const frame = useRef<HTMLDivElement>(null);
   const [resetRevision, setResetRevision] = useState(0);
   const viewportScope = timestamps ? 'date' : 'linear';
-  const [savedViewport, setSavedViewport] = useState<{scope: string; axes: Viewport}>(() => ({scope: viewportScope, axes: {}}));
-  const viewport = savedViewport.scope === viewportScope ? savedViewport.axes : {};
+  const [viewport, setViewport] = usePlotSetting<Viewport>(`${settingsKey}:viewport:${viewportScope}`, {}, validViewport);
+  const [hidden, setHidden] = usePlotSetting<string[]>(settingsKey + ':hidden', [], stringList);
   const resetAxes = useCallback(() => {
-    setSavedViewport({scope: viewportScope, axes: {}});
+    setViewport({});
     setResetRevision(value => value + 1);
-  }, [viewportScope]);
+  }, [setViewport]);
   const [width, setWidth] = useState(0);
   const labels = variables.map(key => `${t(options.find(o => o.key === key)?.label ?? key)} (${options.find(o => o.key === key)?.unit ?? ''})${overlay && rightAxis.includes(key) ? t(' [right]') : ''}`);
   const measureText = useMemo(() => {
@@ -53,10 +56,11 @@ export function SumoOutputPlot({ result, variables, rightAxis, overlay, options,
       x: timestamps ?? result.time_h, y: result.variables[key], type: 'scatter', mode: 'lines',
       name: legend.names[index],
       yaxis: right ? 'y2' : 'y',
+      visible: hidden.includes(key) ? 'legendonly' : true,
       line: { color: sumoOutputColors[Math.max(0, options.findIndex(o => o.key === key)) % sumoOutputColors.length], width: 2.5, dash: right ? 'dash' : 'solid' },
       hovertemplate: `${timestamps ? '%{x|%Y-%m-%d %H:%M:%S.%L}' : '%{x:.2f} h'}<br>%{y:.3f} ${options.find(o => o.key === key)?.unit ?? ''}<extra>%{fullData.name}</extra>`,
     };
-  }), [result, timestamps, variables, rightAxis, overlay, options, language, width]);
+  }), [result, timestamps, variables, rightAxis, overlay, options, language, width, hidden]);
   const axisTitle = (right: boolean) => {
     const units = [...new Set(options.filter(o => variables.includes(o.key) && (overlay && rightAxis.includes(o.key)) === right).map(o => o.unit))];
     return `${right ? t('Right axis') : t('Value')}${units.length === 1 ? ` (${units[0]})` : t(' (see legend / hover units)')}`;
@@ -92,11 +96,22 @@ export function SumoOutputPlot({ result, variables, rightAxis, overlay, options,
   }), [language, resetAxes]);
   return <div ref={frame} className="sumo-plot-frame" style={{ height: height + (plotWidth > width ? 18 : 0), overflowX: 'auto' }}>
     {width > 0 && <Plot data={data} layout={layout}
-      onRelayout={event => setSavedViewport(current => {
-        const previous = current.scope === viewportScope ? current.axes : {};
-        const axes = updateViewport(previous, event as unknown as Record<string, unknown>);
-        return axes === previous && current.scope === viewportScope ? current : {scope: viewportScope, axes};
-      })}
+      onRelayout={event => setViewport(current => updateViewport(current, event as unknown as Record<string, unknown>))}
+      onRestyle={event => {
+        const [changes, indices] = event as unknown as [Record<string, unknown>, number[]];
+        if (!('visible' in changes)) return;
+        setHidden(current => {
+          const next = new Set(current);
+          indices.forEach((index, position) => {
+            const key = variables[index];
+            if (!key) return;
+            const visible = Array.isArray(changes.visible) ? changes.visible[position % changes.visible.length] : changes.visible;
+            if (visible === 'legendonly' || visible === false) next.add(key);
+            else if (visible === true) next.delete(key);
+          });
+          return [...next];
+        });
+      }}
       config={config}
       style={{ width: plotWidth, height }} />}
   </div>;

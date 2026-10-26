@@ -1,6 +1,8 @@
 import { simulationInputSeries } from '../utils/simulationInputSeries';
 import { localPlotTimestamp } from '../utils/liveSensorDisplay';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { usePlotSetting } from '../hooks/usePlotSetting';
+import { validChoices, type PlotChoices } from '../utils/plotSettings';
 import { t, useLanguage } from '../i18n';
 import { SumoOutputPlot } from './SumoOutputPlot';
 import { VariableDropdown } from './SumoOutputDashboard';
@@ -13,9 +15,11 @@ export function LiveSensorPlot({ title, groupTitle, options, history, className 
   className?: string; source?: 'sensor' | 'simulation'; simulationResult?: SumoResult | null; runId?: string;
 }) {
   useLanguage();
-  const [selection, setSelection] = useState<string[] | null>(null);
-  const [secondary, setSecondary] = useState(false);
-  const [right, setRight] = useState<string[]>([]);
+  const settingsKey = `live:sensors:${groupTitle}`;
+  const [{selection, secondary, right}, setChoices] = usePlotSetting<PlotChoices>(settingsKey + ':choices', {selection: null, secondary: false, right: []}, validChoices);
+  const setSelection = (selection: string[]) => setChoices(current => ({...current, selection}));
+  const setSecondary = (secondary: boolean) => setChoices(current => ({...current, secondary}));
+  const setRight = (right: string[]) => setChoices(current => ({...current, right}));
   const selected = options.filter(o => selection === null || selection.includes(o.key));
   const { result, timestamps } = useMemo(() => {
     if (source === 'simulation') {
@@ -47,7 +51,7 @@ export function LiveSensorPlot({ title, groupTitle, options, history, className 
     </div>
     {!selected.length ? <div className="empty"><b>{t("Select variables to build this plot")}</b><span>{t("Choose one or more variables from the dropdowns above.")}</span></div>
       : !available.length ? <div className="empty"><b>{source === 'simulation' ? 'No simulated inputs yet' : t("No sensor readings yet")}</b><span>{source === 'simulation' ? 'Database inputs appear as simulation progresses.' : t("Connect KEPServer to display live sensor trends.")}</span></div>
-      : <SumoOutputPlot result={result} timestamps={timestamps} variables={available.map(o => o.key)}
+      : <SumoOutputPlot settingsKey={settingsKey} result={result} timestamps={timestamps} variables={available.map(o => o.key)}
           rightAxis={secondary ? right : []} overlay runId={runId} options={options} />}
   </section>;
 }
