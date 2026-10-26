@@ -3,10 +3,9 @@ import { useSensorComparisons } from '../hooks/useSensorComparisons';
 import { realtimePollutantOptions } from './sumoOutputs';
 import { LiveProgressDiagnostics, type LiveDiagnostics } from './LiveProgressDiagnostics';
 import { useLiveSetting } from '../hooks/useLiveSetting';
-import { sensorDisplayValue } from '../utils/liveSensorDisplay';
 import { defaultControlMapping, controlSensorOptions } from '../config/additionalControls';
 import { defaultDoMapping, doSensorOptions } from '../config/doSensors';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { LiveSensorPlot } from './LiveSensorPlot';
 import { SumoOutputDashboard } from './SumoOutputDashboard';
 
@@ -65,10 +64,6 @@ export function RealTimeSumo(){
   const [controlDraft,setControlDraft]=useLiveSetting('controlDraft',defaultControlMapping[controlSensorOptions[0].name]);
   const [readings,setReadings]=useState<Reading[]>([]);
   const [history,setHistory]=useLiveSetting<Sample[]>('sensorHistory',[]);
-  // Convert a display copy; keep raw sensor readings intact.
-  const influentPlotHistory=useMemo(()=>history.map(sample=>({
-    ...sample,value:sensorDisplayValue(sample.column,sample.value)
-  })),[history]);
   const [connected,setConnected]=useLiveSetting('connected',false);
   const [sensorError,setSensorError]=useState('');
   const pollingRef=useRef(false);
@@ -78,7 +73,8 @@ export function RealTimeSumo(){
   const [busy,setBusy]=useState(false);
   const [limitMinutes,setLimitMinutes]=useLiveSetting('limitMinutes','1');
   const limitInterval=limitMinutes.trim()===''?1:Number(limitMinutes);
-  const [simulationMode,setSimulationMode]=useLiveSetting('simulationMode','live');
+  const [savedSimulationMode,setSimulationMode]=useLiveSetting('simulationMode','resume');
+  const simulationMode=savedSimulationMode==='history_then_live'?'history_then_live':'resume';
   const [historyStart,setHistoryStart]=useLiveSetting('historyStart','');
   const historyValid=!!historyStart&&Number.isFinite(Date.parse(historyStart))&&Date.parse(historyStart)<=Date.now();
   const [modelSource,setModelSource]=useLiveSetting('modelSource','builtin');
@@ -137,7 +133,7 @@ export function RealTimeSumo(){
               setControlDraft(next.mapping[selectedControl]||'');
             }
             if(next.interval_minutes)setLimitMinutes(String(next.interval_minutes));
-            setSimulationMode(next.status==='interrupted'||next.model_id==='checkpoint'?'resume':next.history?'history_then_live':'live');
+            setSimulationMode(next.status==='interrupted'||next.model_id==='checkpoint'?'resume':next.history?'history_then_live':'resume');
             if(next.history)setHistoryStart(localDateInput(next.history.start));
           }
         }
@@ -277,9 +273,7 @@ export function RealTimeSumo(){
   const sensorGroup=(key:string)=>defaultDoMapping[key]?'do':defaultControlMapping[key]?'control':'influent';
   const comparisons = useSensorComparisons(liveRun?.id, !!liveRun?.result?.time_h.length, liveRun?.interval_minutes);
   const visualisationResult = liveRun?.result ? {...liveRun.result, comparison_series: comparisons?.series, simulation_series: mergeStoredSimulation(comparisons?.stored_series, liveRun.result)} : undefined;
-  const historicalCharts=!!liveRun?.history||simulationMode==='history_then_live';
-  const historicalChartResult=liveRun?.history?liveRun.result:undefined;
-  const chartMapping=liveRun?.history?(liveRun.mapping??mapping):mapping;
+  const chartMapping=liveRun?.mapping??mapping;
   const influentPlotOptions=Object.keys(chartMapping).filter(key=>Boolean(defaultMapping[key]||defaultControlMapping[key])).map(key=>({
     key,label:[...options,...controlSensorOptions].find(o=>o.name===key)?.label||key.split('__').pop()||key,
     unit:[...options,...controlSensorOptions].find(o=>o.name===key)?.unit||''
@@ -314,15 +308,14 @@ export function RealTimeSumo(){
             </details>
           </article>)}
         </div>
-        <div className="sensor-actions"><button className="primary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{busy?'Reading sensors...':connected?'Refresh sensor data':'Connect sensor data'}</button><button className="secondary" disabled={!connected||busy} onClick={()=>setConnected(false)}>Disconnect</button><span>Live charts update automatically after connecting.</span></div>
+        <div className="sensor-actions"><button className="primary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{busy?'Connecting...':'Connect'}</button><button className="secondary" disabled={!connected||busy} onClick={()=>setConnected(false)}>Disconnect</button><span>Check sensor connectivity and current readings. Plots update with simulation results.</span></div>
         {sensorError&&<div className="alert" role="alert">Sensor update failed: {sensorError}</div>}
       </section>
       <section className="sensor-setup simulation-setup" aria-labelledby="simulation-step-title">
         <div className="sensor-heading"><div><h3 id="simulation-step-title">Step2: Set up real time simulation</h3><p>Choose a simulation mode, then configure a new run or resume the latest saved simulation.</p></div><span className={'sensor-status '+((resumeMode?checkpointReady:modelReady)?'is-connected':'')} role="status">{liveActive?'Simulation active':preparingModel?'Preparing state':resumeMode?(checkpointReady?'Checkpoint ready':'No usable checkpoint'):modelReady?'Model ready':'Setup required'}</span></div>
           <label className="sensor-field"><span>Simulation mode</span><select value={simulationMode} disabled={running} onChange={e=>setSimulationMode(e.target.value)}>
-            <option value="live">Live · continuous (1×)</option>
-            <option value="history_then_live">Historical data → Live</option>
             <option value="resume">Resume a saved simulation</option>
+            <option value="history_then_live">Historical data → Live</option>
           </select></label>
         <div className="sensor-editor-grid sensor-input-grid" style={resumeMode?{gridTemplateColumns:'1fr'}:undefined}>
         {!resumeMode&&<>
@@ -369,13 +362,24 @@ export function RealTimeSumo(){
           {resumeMode?<>
             {!checkpoint?<p role="status">No saved simulation is available yet. Run a simulation to create a checkpoint.</p>
               :checkpoint.error?<p className="alert" role="alert">{checkpoint.error}</p>:<>
-                <p>Model: <strong>{checkpoint.model_name}</strong></p>
-                <p>Simulation time: {checkpoint.simulated_h?.toFixed(3)} h · LimitTime: {checkpoint.interval_minutes} min</p>
-                <p>Saved: {checkpoint.saved_at?new Date(checkpoint.saved_at).toLocaleString():''}</p>
-                <p className="calibration-note">Restores the saved model, state, sensor mappings and interval automatically. No model upload or initial-state preparation is needed.</p>
-                {checkpoint.sensor_boundary_at&&<p>Resume database from: {new Date(checkpoint.sensor_boundary_at).toLocaleString()}</p>}
-                {checkpoint.boundary_source==='legacy_save_time_estimate'&&<p className="calibration-note">This older checkpoint has no sensor timestamp; its save time is used as the approximate database start.</p>}
-                <ul className="calibration-note"><li><strong>Database:</strong> Replays collected sensor data from the saved boundary using the saved mappings and LimitTime.</li><li><strong>Mode:</strong> Preserves saved state and results, catches up as fast as possible, then follows new collection automatically. Missing inputs keep their previous values.</li></ul>
+                <div className="resume-layout">
+                  <div className="resume-summary">
+                    <span className="resume-eyebrow">Saved model</span>
+                    <h4 className="resume-model-name">{checkpoint.model_name}</h4>
+                    <dl className="resume-metadata">
+                      <div><dt>Simulation time</dt><dd>{checkpoint.simulated_h?.toFixed(3)??'—'} <small>h</small></dd></div>
+                      <div><dt>LimitTime</dt><dd>{checkpoint.interval_minutes??'—'} <small>min</small></dd></div>
+                      <div><dt>Last saved · local time</dt><dd>{checkpoint.saved_at?new Date(checkpoint.saved_at).toLocaleString():'—'}</dd></div>
+                      <div><dt>Resume database from · local time</dt><dd>{checkpoint.sensor_boundary_at?new Date(checkpoint.sensor_boundary_at).toLocaleString():'—'}</dd></div>
+                    </dl>
+                  </div>
+                  <aside className="resume-details" aria-label="Resume behavior">
+                    <h4>Continue from your checkpoint</h4>
+                    <p>Restores the saved model, state, sensor mappings and interval. No model upload or initial-state preparation is needed.</p>
+                    <ul><li><strong>Database:</strong> Replays collected sensor data from the saved boundary using the saved mappings and LimitTime.</li><li><strong>Mode:</strong> Preserves saved results, catches up, then follows new collection automatically. Missing inputs keep their previous values.</li></ul>
+                  </aside>
+                </div>
+                {checkpoint.boundary_source==='legacy_save_time_estimate'&&<p className="calibration-note resume-notice">This older checkpoint has no sensor timestamp; its save time is used as the approximate database start.</p>}
               </>}
           </>:<>
           {simulationMode==='history_then_live'&&<>
@@ -395,16 +399,16 @@ export function RealTimeSumo(){
         {liveActive&&liveRun?.model_name&&<p className="simulation-model-status" role="status">Running model: {liveRun.model_name}</p>}
       <p className="calibration-note">Refreshing or closing this page does not stop the server simulation. Saved output history is restored after a backend restart; choose Resume a saved simulation to continue. Sensor preview history and draft settings are retained in this browser. File selections must be reselected if not yet uploaded.</p>
       {!statusReady&&<p role="status">Reconnecting to the live simulation…</p>}
-      <div className="sensor-actions simulation-run-actions"><button className="primary" disabled={running||(resumeMode?!checkpointReady:(!modelReady||(simulationMode==='live'?!connected:!historyValid)||!(Number.isInteger(limitInterval)&&limitInterval>=1&&limitInterval<=60)))} onClick={()=>void (resumeMode?resume():start())}>{resumeMode?'Resume SUMO':'Run SUMO'}</button> <button className="secondary" disabled={busy||!['starting','running'].includes(liveRun?.status||'')} onClick={()=>void stop()}>Stop SUMO</button><span>Each completed interval saves the latest checkpoint. Stop finishes and saves the current interval.</span></div>
+      <div className="sensor-actions simulation-run-actions"><button className="primary" disabled={running||(resumeMode?!checkpointReady:(!modelReady||!historyValid||!(Number.isInteger(limitInterval)&&limitInterval>=1&&limitInterval<=60)))} onClick={()=>void (resumeMode?resume():start())}>{resumeMode?'Resume SUMO':'Run SUMO'}</button> <button className="secondary" disabled={busy||!['starting','running'].includes(liveRun?.status||'')} onClick={()=>void stop()}>Stop SUMO</button><span>Each completed interval saves the latest checkpoint. Stop finishes and saves the current interval.</span></div>
       {liveRun&&<div className="sumo-progress"><p role="status">{liveRun.status} · {liveRun.mode==='history'?'Historical replay':liveRun.mode==='live'?'Live operation':''} · {liveRun.phase||''} · {(liveRun.simulated_h||0).toFixed(2)} simulated hours · {liveRun.samples||0} output samples</p>{liveRun.history&&(liveRun.history.follow?<p role="status">{liveRun.history.caught_up?'Caught up · following sensor collection':'Catching up with collected data'} · {liveRun.history.completed} completed intervals{liveRun.history.total>liveRun.history.completed?` · ${liveRun.history.total-liveRun.history.completed} loaded intervals remaining`:''}</p>:<><progress aria-label="History replay progress" max={liveRun.history.total} value={liveRun.history.completed}/><p>Historical intervals: {liveRun.history.completed} / {liveRun.history.total}</p></>)}<LiveProgressDiagnostics value={liveRun.diagnostics}/>{liveRun.last_sumo_message&&<p>SUMO: {liveRun.last_sumo_message}</p>}{liveRun.error&&<div className="alert">{liveRun.error}</div>}{liveRun.error&&!!liveRun.sumo_commands?.length&&<details><summary>SUMO command diagnostics</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{liveRun.sumo_commands.join("\n")}</pre></details>}</div>}
       {run&&<div className="sumo-progress"><p role="status">{run.phase||run.status} · {Math.floor(run.progress_pct||0)}%</p><progress max="100" value={run.progress_pct||0}/></div>}
       {(error||run?.error)&&<div className="alert" role="alert">{error||run?.error}</div>}
       </section>
     </section>
     <section className="config-card"><div className="section-title"><div><h2>Output variables visualisation</h2></div><button className="secondary" disabled={!liveRun?.result?.time_h?.length||downloading} onClick={async()=>{setDownloading(true);try{const response=await fetch('/api/sumo/live/download');if(!response.ok)throw Error('Download failed');const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download='sumo_live_results.csv';link.click();URL.revokeObjectURL(url);}catch(e){setError(String(e));}finally{setDownloading(false);}}}>Download results CSV</button></div>
-      <LiveSensorPlot title={historicalCharts?'Influent variables · simulation inputs':'Influent variables · live sensor trends'} groupTitle="Influent variables"
-        options={influentPlotOptions} history={influentPlotHistory} source={historicalCharts?'simulation':'sensor'}
-        simulationResult={historicalChartResult} runId={historicalCharts?liveRun?.id||'history-inputs':'live-sensors'} />
+      <LiveSensorPlot title="Influent variables · simulation inputs" groupTitle="Influent variables"
+        options={influentPlotOptions} history={history} source="simulation"
+        simulationResult={liveRun?.result} runId={liveRun?.id||'simulation-inputs'} />
       <LiveSensorPlot title="DO concentrations · simulation inputs" groupTitle="DO concentrations"
         options={doPlotOptions} history={history} className="live-do-card" source="simulation"
         simulationResult={liveRun?.result} runId={liveRun?.id||'simulation-inputs'} />
