@@ -134,7 +134,7 @@ export function RealTimeSumo(){
               setControlDraft(next.mapping[selectedControl]||'');
             }
             if(next.interval_minutes)setLimitMinutes(String(next.interval_minutes));
-            setSimulationMode(next.history?'history_then_live':'live');
+            setSimulationMode(next.status==='interrupted'||next.model_id==='checkpoint'?'resume':next.history?'history_then_live':'live');
             if(next.history){setHistoryStart(localDateInput(next.history.start));setHistoryEnd(localDateInput(next.history.end));}
           }
         }
@@ -240,6 +240,7 @@ export function RealTimeSumo(){
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
   async function resume(){
+    if(!statusReady||!checkpoint||checkpoint.error)return;
     setBusy(true);setError('');
     try{
       const result:LiveRun=await json('/api/sumo/live/resume',{method:'POST'});
@@ -267,6 +268,8 @@ export function RealTimeSumo(){
     }catch(e){setError(String(e));}finally{setDownloading(false);}
   }
   const liveActive=['starting','running','stopping'].includes(liveRun?.status||'');
+  const resumeMode=simulationMode==='resume';
+  const checkpointReady=!!checkpoint&&!checkpoint.error;
   const running=!statusReady||busy||liveActive||modelUploading||!!preparingModel;
   const sensorGroup=(key:string)=>defaultDoMapping[key]?'do':defaultControlMapping[key]?'control':'influent';
   const influentPlotOptions=Object.keys(mapping).filter(key=>Boolean(defaultMapping[key]||defaultControlMapping[key])).map(key=>({
@@ -306,8 +309,14 @@ export function RealTimeSumo(){
         {sensorError&&<div className="alert" role="alert">Sensor update failed: {sensorError}</div>}
       </section>
       <section className="sensor-setup simulation-setup" aria-labelledby="simulation-step-title">
-        <div className="sensor-heading"><div><h3 id="simulation-step-title">Step2: Set up real time simulation</h3><p>Choose a model, prepare its initial state and set the sensor update interval.</p></div><span className={'sensor-status '+(modelReady?'is-connected':'')} role="status">{liveActive?'Simulation active':preparingModel?'Preparing state':modelReady?'Model ready':'Setup required'}</span></div>
-        <div className="sensor-editor-grid sensor-input-grid">
+        <div className="sensor-heading"><div><h3 id="simulation-step-title">Step2: Set up real time simulation</h3><p>Choose a simulation mode, then configure a new run or resume the latest saved simulation.</p></div><span className={'sensor-status '+((resumeMode?checkpointReady:modelReady)?'is-connected':'')} role="status">{liveActive?'Simulation active':preparingModel?'Preparing state':resumeMode?(checkpointReady?'Checkpoint ready':'No usable checkpoint'):modelReady?'Model ready':'Setup required'}</span></div>
+          <label className="sensor-field"><span>Simulation mode</span><select value={simulationMode} disabled={running} onChange={e=>setSimulationMode(e.target.value)}>
+            <option value="live">Live · continuous (1×)</option>
+            <option value="history_then_live">Historical data → Live</option>
+            <option value="resume">Resume a saved simulation</option>
+          </select></label>
+        <div className="sensor-editor-grid sensor-input-grid" style={resumeMode?{gridTemplateColumns:'1fr'}:undefined}>
+        {!resumeMode&&<>
         <article className="sensor-editor" aria-label="SUMO model selection">
           <div className="sensor-editor-title"><h4>SUMO model</h4><span>01 · Model</span></div>
         <label className="sensor-field"><span>SUMO model</span>
@@ -345,12 +354,19 @@ export function RealTimeSumo(){
 
         {modelError&&<div className="alert" role="alert">{modelError}</div>}
         </article>
+        </>}
         <article className="sensor-editor">
-          <div className="sensor-editor-title"><h4>Live operation</h4><span>03 · Timing</span></div>
-          <label className="sensor-field"><span>Simulation mode</span><select value={simulationMode} disabled={running} onChange={e=>setSimulationMode(e.target.value)}>
-            <option value="live">Live · continuous (1×)</option>
-            <option value="history_then_live">Historical data → Live</option>
-          </select></label>
+          <div className="sensor-editor-title"><h4>{resumeMode?'Saved simulation':'Simulation timing'}</h4><span>{resumeMode?'Latest checkpoint':'03 · Timing'}</span></div>
+          {resumeMode?<>
+            {!checkpoint?<p role="status">No saved simulation is available yet. Run a simulation to create a checkpoint.</p>
+              :checkpoint.error?<p className="alert" role="alert">{checkpoint.error}</p>:<>
+                <p>Model: <strong>{checkpoint.model_name}</strong></p>
+                <p>Simulation time: {checkpoint.simulated_h?.toFixed(3)} h · LimitTime: {checkpoint.interval_minutes} min</p>
+                <p>Saved: {checkpoint.saved_at?new Date(checkpoint.saved_at).toLocaleString():''}</p>
+                <p className="calibration-note">Restores the saved model, state, sensor mappings and interval automatically. No model upload or initial-state preparation is needed.</p>
+                <p className="calibration-note">Unfinished historical replay continues from the last completed interval, then switches to live. Live downtime is not replayed. Only the latest checkpoint is retained.</p>
+              </>}
+          </>:<>
           {simulationMode==='history_then_live'&&<>
             <label className="sensor-field"><span>History start (local time)</span><input type="datetime-local" value={historyStart} disabled={running} onChange={e=>setHistoryStart(e.target.value)}/></label>
             <label className="sensor-field"><span>History end (local time, exclusive)</span><input type="datetime-local" value={historyEnd} disabled={running} onChange={e=>setHistoryEnd(e.target.value)}/></label>
@@ -362,20 +378,13 @@ export function RealTimeSumo(){
           <label className="sensor-field"><span>Input update interval / Limit time (minutes)</span><input type="number" min="1" max="60" step="1" value={limitMinutes} disabled={running} onChange={e=>setLimitMinutes(e.target.value)}/></label>
           <label className="sensor-field"><span>Operation</span><input value="Continuous · until Stop SUMO" readOnly aria-label="Simulation operation"/></label>
           <p className="calibration-note">Sensor inputs refresh at each interval. The model continues from the previous interval's state until you stop it.</p>
+          </>}
         </article>
         </div>
         {liveActive&&liveRun?.model_name&&<p className="simulation-model-status" role="status">Running model: {liveRun.model_name}</p>}
-      <p className="calibration-note">Refreshing or closing this page does not stop the server simulation. Saved output history is restored after a backend restart; click Resume to continue. Sensor preview history and draft settings are retained in this browser. File selections must be reselected if not yet uploaded.</p>
+      <p className="calibration-note">Refreshing or closing this page does not stop the server simulation. Saved output history is restored after a backend restart; choose Resume a saved simulation to continue. Sensor preview history and draft settings are retained in this browser. File selections must be reselected if not yet uploaded.</p>
       {!statusReady&&<p role="status">Reconnecting to the live simulation…</p>}
-      {checkpoint&&<div className="sensor-editor simulation-recovery">
-        <div className="sensor-editor-title"><h4>Resume a saved simulation</h4><span>Latest checkpoint</span></div>
-        {checkpoint.error?<p className="alert">{checkpoint.error}</p>:<>
-          <p>Latest checkpoint: {checkpoint.model_name} · simulation time {checkpoint.simulated_h?.toFixed(3)} h · saved {checkpoint.saved_at?new Date(checkpoint.saved_at).toLocaleString():''}</p>
-          <p className="calibration-note">Resume restores the saved model, state, mappings and interval. Unfinished historical replay resumes from its last completed interval, then switches to live. Live downtime is not replayed. Only the latest checkpoint is retained.</p>
-          <button className="secondary" disabled={running} onClick={()=>void resume()}>Resume latest checkpoint</button>
-        </>}
-      </div>}
-      <div className="sensor-actions simulation-run-actions"><button className="primary" disabled={running||!modelReady||(simulationMode==='live'?!connected:!historyValid)||!(Number(limitMinutes)>=1&&Number(limitMinutes)<=60)} onClick={()=>void start()}>Run SUMO</button> <button className="secondary" disabled={busy||!['starting','running'].includes(liveRun?.status||'')} onClick={()=>void stop()}>Stop SUMO</button><span>Each completed interval saves the latest checkpoint. Stop finishes and saves the current interval.</span></div>
+      <div className="sensor-actions simulation-run-actions"><button className="primary" disabled={running||(resumeMode?!checkpointReady:(!modelReady||(simulationMode==='live'?!connected:!historyValid)||!(Number(limitMinutes)>=1&&Number(limitMinutes)<=60)))} onClick={()=>void (resumeMode?resume():start())}>{resumeMode?'Resume SUMO':'Run SUMO'}</button> <button className="secondary" disabled={busy||!['starting','running'].includes(liveRun?.status||'')} onClick={()=>void stop()}>Stop SUMO</button><span>Each completed interval saves the latest checkpoint. Stop finishes and saves the current interval.</span></div>
       {liveRun&&<div className="sumo-progress"><p role="status">{liveRun.status} · {liveRun.mode==='history'?'Historical replay':liveRun.mode==='live'?'Live operation':''} · {liveRun.phase||''} · {(liveRun.simulated_h||0).toFixed(2)} simulated hours · {liveRun.samples||0} output samples</p>{liveRun.history&&<><progress aria-label="History replay progress" max={liveRun.history.total} value={liveRun.history.completed}/><p>Historical intervals: {liveRun.history.completed} / {liveRun.history.total} · {Math.round(100*liveRun.history.completed/Math.max(1,liveRun.history.total))}%</p></>}{liveRun.error&&<div className="alert">{liveRun.error}</div>}</div>}
       {run&&<div className="sumo-progress"><p role="status">{run.phase||run.status} · {Math.floor(run.progress_pct||0)}%</p><progress max="100" value={run.progress_pct||0}/></div>}
       {(error||run?.error)&&<div className="alert" role="alert">{error||run?.error}</div>}
