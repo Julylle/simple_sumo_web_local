@@ -1,6 +1,6 @@
 # Dot-source this script before starting the backend or the collector:
 # . .\backend\scripts\load-database-env.ps1
-param([string]$Path = (Join-Path $PSScriptRoot '..\..\.env'))
+param([string]$Path = (Join-Path $PSScriptRoot '..\database\.env'))
 $ErrorActionPreference = 'Stop'
 foreach ($line in Get-Content -LiteralPath $Path -Encoding UTF8) {
     $text = $line.Trim()

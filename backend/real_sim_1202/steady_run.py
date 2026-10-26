@@ -21,7 +21,7 @@ logging.basicConfig(
 )
 
 MODEL_DIR = Path(__file__).resolve().parent
-SUMO_PROJECT = str(MODEL_DIR / "Cixi Eastern WWTP_20260920.sumo")
+SUMO_PROJECT = str(MODEL_DIR / "real_sim_1202.sumo")
 SUMO_STATE = str(MODEL_DIR / "sumo_steady_state.xml")
 OUTPUT_VARIABLES = [
     "Sumo__Plant__Effluent1__SNHx",
@@ -34,7 +34,7 @@ OUTPUT_VARIABLES = [
     "Sumo__MaxAbsDer",
 ]
 
-def prepare_steady_state(sumo_project_path, out_state_path, wall_run_seconds=3.5*60*60, inputs=None, tolerance=1e-6, work_dir=None):
+def prepare_steady_state(sumo_project_path, out_state_path, wall_run_seconds=1*60*60, inputs=None, tolerance=1e-6, work_dir=None):
     import dynamita.tool as dtool
     import dynamita.scheduler as ds
     runtime_dir = str(Path(work_dir or os.getcwd()).resolve())
