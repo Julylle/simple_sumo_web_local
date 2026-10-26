@@ -16,7 +16,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from database.simulation import open_recorder
-from services.historical_inputs import history_request, load_history, parse_time
+from services.historical_inputs import history_request, load_history, load_available_history, parse_time
 from services.kepserver import read_snapshot
 from services.model_inputs import scale_model_inputs
 from services.sensor_inputs import SENSOR_COLUMNS
@@ -71,7 +71,7 @@ def _launch(mapping, interval_minutes, model_id, selected_model, resume_ms=0, re
              "mapping": dict(mapping), "interval": interval_minutes * 60,
              "model": selected_model, "model_id": model_id,
              "history": dict(history) if history else None,
-             "mode": "history" if history and history["completed"] < history["total"] else "live",
+             "mode": "history" if history and (not history.get("caught_up") if history.get("follow") else history["completed"] < history["total"]) else "live",
              "stop": threading.Event()}
         _session = s
     threading.Thread(target=_worker, args=(s,), daemon=True, name="sumo-live").start()
@@ -118,6 +118,29 @@ def _read_model_inputs(mapping):
     """Read fresh raw sensors and convert flows only at the SUMO input boundary."""
     readings = asyncio.run(read_snapshot(mapping))
     return scale_model_inputs(readings)
+
+
+def _wait_for_collected_windows(s, done=None):
+    """Read ahead immediately; only sleep after catching up to acquisition."""
+    while not s['stop'].is_set():
+        if done is not None and done.is_set():
+            raise RuntimeError('SUMO stopped while waiting for sensor collection.')
+        windows = load_available_history(s['mapping'], s['interval'], s['history'])
+        if s['stop'].is_set():
+            return []
+        if done is not None and done.is_set():
+            raise RuntimeError('SUMO stopped while reading collected data.')
+        with _lock:
+            if windows:
+                s['history']['total'] = s['history']['completed'] + len(windows)
+                s['mode'] = 'live' if s['history'].get('caught_up') else 'history'
+                return windows
+            s['history']['caught_up'] = True
+            s['mode'] = 'live'
+            s['phase'] = 'waiting_for_sensor_collection'
+        # A halted collector leaves the model paused at its last saved boundary.
+        s['stop'].wait(2)
+    return []
 
 
 def _worker(s):
@@ -171,13 +194,16 @@ def _worker(s):
         history = s.get('history')
         with _lock:
             s['phase'] = 'loading_history' if history else 'reading_initial_sensors'
-        windows = load_history(s['mapping'], s['interval'], history) if history else []
+        following = bool(history and history.get('follow'))
+        windows = (_wait_for_collected_windows(s) if following else
+                   load_history(s['mapping'], s['interval'], history) if history else [])
         if s['stop'].is_set():
             s.update(status='stopped', phase='cancelled')
             return
         history_index = 0
         replaying = bool(windows)
-        s['mode'] = 'history' if replaying else 'live'
+        if not following:
+            s['mode'] = 'history' if replaying else 'live'
         if replaying:
             step_ms = windows[0].duration_ms
             max_ms += sum(window.duration_ms for window in windows)
@@ -299,6 +325,11 @@ def _worker(s):
             if s["stop"].is_set():
                 break
             history_index += 1
+            if following and history_index >= len(windows):
+                windows = _wait_for_collected_windows(s, done)
+                history_index = 0
+                if not windows:
+                    break
             if replaying and history_index < len(windows):
                 window = windows[history_index]
                 new_values, step_ms = window.values, window.duration_ms
@@ -321,10 +352,13 @@ def _worker(s):
             for key, value in new_values.items():
                 ds.sumo.sendCommand(job, f"set {key} {value};")
             target_ms = current_ms + step_ms
+            if following and target_ms >= max_ms:
+                max_ms = target_ms + 365 * dtool.day
+                ds.sumo.sendCommand(job, f'set Sumo__StopTime {max_ms};')
             ds.sumo.sendCommand(job, f"set Sumo__DataComm {step_ms};")
             ds.sumo.sendCommand(job, f"set Sumo__LimitTime {target_ms};")
             with _lock:
-                s["phase"] = "replaying_history" if replaying else "simulating_live"
+                s["phase"] = "replaying_history" if s.get("mode") == "history" else "simulating_live"
         if errors:
             raise RuntimeError(errors[0])
         with _lock:

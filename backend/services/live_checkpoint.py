@@ -137,4 +137,6 @@ def saved_snapshot():
                 'simulated_h': metadata['simulated_ms'] / 3600000,
                 'samples': len(result['time_h']), 'result': result,
                 'history': metadata.get('history'),
-                'mode': 'history' if metadata.get('history') and metadata['history']['completed'] < metadata['history']['total'] else 'live'}
+                'mode': ('history' if (not metadata['history'].get('caught_up') if metadata['history'].get('follow')
+                                      else metadata['history']['completed'] < metadata['history']['total']) else 'live')
+                        if metadata.get('history') else 'live'}

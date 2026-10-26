@@ -94,3 +94,48 @@ def test_api_rejects_missing_history_range_and_unknown_mode(monkeypatch):
         response = client.post('/api/sumo/live/start', json={'mapping':MAPPING, **extra})
         assert response.status_code == 422
     assert live._session is None
+
+
+def test_open_ended_request_requires_only_start():
+    plan = history.history_request('2026-01-01T10:00:00+10:00', None, 1)
+    assert plan['follow'] and plan['end'] is None and plan['completed'] == 0
+    assert not plan['caught_up']
+    with pytest.raises(ValueError, match='future'):
+        history.history_request('2999-01-01T00:00Z', None, 1)
+
+
+def test_follow_uses_slowest_input_and_only_complete_intervals(monkeypatch):
+    plan = history.history_request('2026-01-01T00:00Z', None, 1)
+    store, cursor = fake_store(monkeypatch, [])
+    cursor.fetchall.side_effect = [
+        [(Q, datetime(2026,1,1,0,2,10)), (NH, datetime(2026,1,1,0,1,30))],
+        [(0,Q,41.7),(0,NH,20)],
+    ]
+    windows = history.load_available_history(MAPPING,60,plan)
+    assert len(windows)==1 and windows[0].duration_ms==60000
+    assert windows[0].timestamp=='2026-01-01T00:01:00+00:00'
+    assert cursor.execute.call_count==2
+    assert cursor.execute.call_args.args[1][3]==datetime(2026,1,1,0,1)
+
+
+@pytest.mark.parametrize('rows', [[],[(Q,datetime(2026,1,1,0,2))],
+    [(Q,datetime(2026,1,1,0,0,59)),(NH,datetime(2026,1,1,0,0,59))]])
+def test_follow_waits_for_missing_or_incomplete_newest_data(monkeypatch, rows):
+    plan=history.history_request('2026-01-01T00:00Z',None,1)
+    store,cursor=fake_store(monkeypatch,rows)
+    assert history.load_available_history(MAPPING,60,plan)==[]
+    assert cursor.execute.call_count==1
+    store.close.assert_called_once()
+
+
+def test_follow_queries_only_unprocessed_data_and_limits_chunk_size(monkeypatch):
+    plan=history.history_request('2026-01-01T00:00Z',None,1)
+    plan['completed']=3
+    fake_store(monkeypatch,[(Q,datetime(2026,2,1)),(NH,datetime(2026,2,1))])
+    from unittest.mock import Mock
+    reader=Mock(return_value=['window'])
+    monkeypatch.setattr(history,'load_history',reader)
+    assert history.load_available_history(MAPPING,60,plan)==['window']
+    selection=reader.call_args.args[2]
+    assert selection['completed']==3
+    assert (history.parse_time(selection['end'])-history.parse_time(plan['start'])).total_seconds()==2003*60

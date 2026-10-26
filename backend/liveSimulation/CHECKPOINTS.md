@@ -8,7 +8,7 @@ A new bundle is written and flushed to a temporary file before atomically replac
 
 A browser refresh only reconnects to the current server session; it does not stop the worker. Browser drafts and the bounded one-hour sensor preview are stored locally, while simulation output history is stored on the server. Other browsers see the same live output and active mappings. This is a shared session, not a per-user login system. Stop and new-run buttons ask for confirmation; these prompts are not an authorization boundary.
 
-After restarting the backend, saved output is immediately available for plots and CSV download without launching SUMO. To continue calculation, choose **Resume a saved simulation** under **Simulation mode**, then click **Resume SUMO**. The backend restores the saved model and simulation time, rereads sensors, and runs the next interval. Downtime is not replayed and simulation time is not reset to zero. The original run ID and cumulative result arrays are retained; duplicate initial samples at the restored time are ignored. Recovery is explicit, not automatically started on server boot. Normal **Run SUMO** starts from the selected initial state; its first completed interval replaces the old checkpoint.
+After restarting the backend, saved output is immediately available for plots and CSV download without launching SUMO. To continue calculation, choose **Resume a saved simulation** under **Simulation mode**, then click **Resume SUMO**. The backend restores the saved model and simulation time. Direct live mode rereads sensors without replaying downtime; database-following mode processes unconsumed collected intervals. Simulation time is not reset to zero. The original run ID and cumulative result arrays are retained; duplicate initial samples at the restored time are ignored. Recovery is explicit, not automatically started on server boot. Normal **Run SUMO** starts from the selected initial state; its first completed interval replaces the old checkpoint.
 
 **Stop SUMO** completes and checkpoints the current interval before stopping. Checkpoint save failures stop the live run rather than advancing without a durable recovery point. A new checkpoint becomes available only after at least one full interval has completed and its save has succeeded.
 
@@ -18,38 +18,41 @@ Live output samples now include `sensor_timestamps`: UTC timestamps captured imm
 
 ## Historical replay followed by live operation
 
-In Step2 choose **Historical data → Live**, enter a local start/end time, and set
-LimitTime. The browser sends timezone-qualified UTC timestamps. The end is
-exclusive. Use an initial state appropriate for the selected historical start.
+In Step2 choose **Historical data → Live**, enter a local **start time** and set
+LimitTime. There is no end-time input. Use an initial state appropriate for the
+selected start. The browser sends timezone-qualified UTC timestamps.
 
-The backend reads the `raw_data` / `raw_variables` tables in `sumo_web_database`
-using the existing `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, and `MYSQL_PASSWORD`.
-`SUMO_HISTORY_DATABASE` can override the history database without changing the
-simulation recorder's `MYSQL_DATABASE`. The database account needs SELECT access
-to these history tables. No database creation or schema migration is performed.
+The backend reads `raw_data` / `raw_variables` in `sumo_web_database` using
+`MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, and `MYSQL_PASSWORD`.
+`SUMO_HISTORY_DATABASE` can override the history database independently of the
+simulation recorder's `MYSQL_DATABASE`. The account needs SELECT access. No
+schema migration or database creation is performed.
 
-One indexed, parameterized SQL query computes interval means of good-quality
-`numeric_value` readings, matched by both SUMO variable and OPC tag. It uses
-`acquired_at` (UTC), not PLC source timestamps. Raw input means receive the same
-flow conversion as live OPC inputs, exactly once; `scaled_value` is not scaled
-again. Every selected input must have at least one valid reading per interval;
-missing intervals fail before creating a SUMO job. The final interval may be
-shorter than LimitTime. At most 100,000 intervals may be selected per run.
+The selected inputs' latest good acquisition timestamps determine the newest
+complete interval: all inputs must have reached its end. The newest partial
+interval waits for more collection. History is loaded in chunks of at most 2,000
+intervals with indexed latest-reading lookups and SQL interval averaging. Means
+use good-quality raw `numeric_value` samples by `acquired_at` UTC, matched by both
+SUMO variable and OPC tag, with the same one-time flow scaling as live inputs.
+Missing required values in older, complete intervals produce an explicit error;
+they are not filled with zero or skipped.
 
-Replay has no real-time sleeping: each completed boundary publishes output,
-flushes any enabled database recorder, saves the latest checkpoint, assigns the
-next historical inputs and advances the same scheduler job. Native solver,
-checkpoint and database write time still determine throughput. The browser polls
-results every two seconds and shows completed/total historical intervals.
+Replay runs without real-time sleeping. After each chunk it checks again for
+newly collected data, so data arriving during replay is also simulated. Each
+completed interval updates results, flushes an enabled recorder and replaces the
+latest disk checkpoint. The browser polls results every two seconds.
 
-After the selected range finishes, a fresh KEPServer snapshot is read and the
-same job/state continues at the configured LimitTime with real-time pacing. The
-gap between the selected end and now is deliberately not simulated. If KEPServer
-is unavailable, the worker stops with an error and retains the completed history
-checkpoint. Resume restores that state and tries live operation again.
+Once caught up, the mode becomes live and displays
+`waiting_for_sensor_collection`. The same SUMO job stays paused at the last
+boundary. Every two seconds the backend checks for the next complete LimitTime
+interval; once collected, that interval runs and the process repeats. This mode
+continues using the database collector's records, not a direct OPC snapshot.
+Keep `python -m database.collector` / `runCollector.ps1` running. If acquisition
+stops, simulation waits without advancing; Stop remains available. Database
+connection errors fail the run with the previous checkpoint retained.
 
-Checkpoints include the historical selection and number of completed intervals.
-Resume during replay re-queries only the remaining historical intervals, then
-switches to live. The underlying historical database must therefore remain
-available and unchanged for reproducible recovery. Only the latest checkpoint
-is retained, including during accelerated replay.
+Resume restores the cursor (completed interval count), same state, mapping and
+start time; it loads only unprocessed intervals. Data collected during downtime
+is replayed without gaps. The database must remain available and unchanged for
+reproducible recovery. Old fixed-end checkpoints retain their original behavior.
+The ordinary **Live · continuous (1×)** mode still reads OPC directly.

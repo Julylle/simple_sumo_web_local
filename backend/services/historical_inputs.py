@@ -20,7 +20,17 @@ def parse_time(value):
 
 
 def history_request(start, end, interval_minutes):
-    begin, finish = parse_time(start), parse_time(end)
+    begin = parse_time(start)
+    if end is None:
+        if begin > datetime.now(timezone.utc):
+            raise ValueError('History start cannot be in the future.')
+        if begin.microsecond % 1000:
+            raise ValueError('History times must have millisecond precision or coarser.')
+        return {'start': begin.isoformat(), 'end': None, 'total': 0, 'completed': 0,
+                'follow': True, 'caught_up': False,
+                'database': os.getenv('SUMO_HISTORY_DATABASE', 'sumo_web_database')}
+    # Keep existing fixed-range checkpoints resumable.
+    finish = parse_time(end)
     if begin.microsecond % 1000 or finish.microsecond % 1000:
         raise ValueError('History times must have millisecond precision or coarser.')
     if finish <= begin:
@@ -53,13 +63,7 @@ def load_history(mapping, interval_seconds, history):
     begin = start + timedelta(seconds=completed * interval_seconds)
     if begin >= end:
         return []
-    filters, params = [], []
-    for column, node in mapping.items():
-        match = re.fullmatch(r'ns=\d+;s=(.+)', node)
-        if not match:
-            raise ValueError('History requires string OPC node IDs: ' + node)
-        filters.append('(v.sumo_name=%s AND v.opc_tag=%s)')
-        params.extend([column, match.group(1)])
+    filters, params = mapping_filters(mapping)
     sql = '''SELECT FLOOR(TIMESTAMPDIFF(MICROSECOND,%s,r.acquired_at)/%s) AS bucket,
                     v.sumo_name, AVG(r.numeric_value)
              FROM raw_data r JOIN raw_variables v ON v.id=r.variable_id
@@ -93,3 +97,47 @@ def load_history(mapping, interval_seconds, history):
         converted = scale_model_inputs([{'column': name, 'value': value} for name, value in values.items()])
         windows.append(HistoryWindow(round((right-left).total_seconds()*1000), right.isoformat(), converted))
     return windows
+
+
+def mapping_filters(mapping):
+    filters, params = [], []
+    for column, node in mapping.items():
+        match = re.fullmatch(r'ns=\d+;s=(.+)', node)
+        if not match:
+            raise ValueError('History requires string OPC node IDs: ' + node)
+        filters.append('(v.sumo_name=%s AND v.opc_tag=%s)')
+        params.extend([column, match.group(1)])
+    return filters, params
+
+
+def load_available_history(mapping, interval_seconds, history):
+    """Find the latest complete interval shared by all inputs, then read a chunk.
+
+    Indexed latest-row lookups avoid repeatedly scanning the complete raw archive.
+    A partial newest interval is held back until acquisition crosses its boundary.
+    """
+    filters, params = mapping_filters(mapping)
+    sql = """SELECT v.sumo_name, MAX((
+        SELECT r.acquired_at FROM raw_data r
+        WHERE r.variable_id=v.id AND r.quality='good' AND r.numeric_value IS NOT NULL
+          AND r.acquired_at <= UTC_TIMESTAMP(6)
+        ORDER BY r.acquired_at DESC LIMIT 1))
+        FROM raw_variables v WHERE """ + ' OR '.join(filters) + ' GROUP BY v.sumo_name'
+    store = Store()
+    try:
+        store.connect(database=history['database'])
+        with store.connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            latest = {name: value.replace(tzinfo=timezone.utc) for name, value in cursor.fetchall() if value is not None}
+    finally:
+        store.close()
+    if set(mapping) - latest.keys():
+        return []
+    start = parse_time(history['start'])
+    available = math.floor((min(latest.values()) - start).total_seconds() / interval_seconds)
+    if available <= history['completed']:
+        return []
+    # Bound memory and query size while repeatedly catching up to a moving frontier.
+    count = min(available, history['completed'] + 2000)
+    end = start + timedelta(seconds=count * interval_seconds)
+    return load_history(mapping, interval_seconds, {**history, 'end': end.isoformat()})
