@@ -288,9 +288,9 @@ def main(argv=None):
         mapping = {row['SumoName']: 'ns=2;s=' + row['OpcTag'] for row in rows if row['SumoName'] in SENSOR_COLUMNS}
         if set(mapping) != set(SENSOR_COLUMNS):
             raise ValueError('Default CSV does not cover every web sensor mapping.')
-    if (not isinstance(mapping, dict) or not 1 <= len(mapping) <= 40 or
+    if (not isinstance(mapping, dict) or not 1 <= len(mapping) <= len(SENSOR_COLUMNS) or
         any(k not in SENSOR_COLUMNS or not isinstance(v, str) or not v.strip() for k, v in mapping.items())):
-        raise ValueError('Provide 1–40 valid web sensor mappings.')
+        raise ValueError(f'Provide 1–{len(SENSOR_COLUMNS)} valid web sensor mappings.')
     project = args.project.resolve()
     output = args.output.resolve()
     if project == output:
