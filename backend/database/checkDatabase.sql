@@ -1,6 +1,3 @@
--- Check whether the database exists on this server
-SHOW DATABASES LIKE 'sumo_web_database';
-
 -- Create a dedicated database
 CREATE DATABASE sumo_web_database
     CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
@@ -24,6 +21,12 @@ GRANT ALL PRIVILEGES ON sumo_web_database.*
 -- Verify the assigned permissions
 SHOW GRANTS FOR 'sumo_web'@'localhost';
 
+-- Check whether the database exists on this server
+SHOW DATABASES LIKE 'sumo_web_database';
+
+-- Show the MySQL server's data directory
+-- The database location is C:\ProgramData\MySQL\MySQL Server 8.1\Data\sumo_web_database
+SHOW VARIABLES LIKE 'datadir';
 
 -- Inspect the latest sensor readings
 SELECT acquired_at, variable, OpcTag,
