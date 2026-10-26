@@ -155,7 +155,15 @@
 .sumo-plot-frame { width:100%; min-width:0; overflow:hidden; }
 .sumo-overlay-card, .sumo-plots .chart-card { padding:18px 14px 8px; border:1px solid #e2e8f0; border-radius:12px; background:#fff; box-shadow:0 2px 8px #0f172a05; }
 .sumo-overlay-card .chart-head, .sumo-plots .chart-head { padding:0 8px; }
-.sumo-plot-frame .modebar { background:transparent !important; }
+/* A compact, consistent toolbar for every Plotly chart. */
+.js-plotly-plot .plotly .modebar { top:6px; right:8px; background:transparent !important; }
+.js-plotly-plot .plotly .modebar-group { padding:3px; border:1px solid #e2e8f0; border-radius:9px; background:#fff !important; box-shadow:0 2px 6px #0f172a08; }
+.js-plotly-plot .plotly .modebar-btn { padding:7px; border-radius:6px; }
+.js-plotly-plot .plotly .modebar-btn path { fill:#64748b; }
+.js-plotly-plot .plotly .modebar-btn:hover, .js-plotly-plot .plotly .modebar-btn.active { background:#eff6ff; }
+.js-plotly-plot .plotly .modebar-btn:hover path, .js-plotly-plot .plotly .modebar-btn.active path { fill:#2563eb; }
+.js-plotly-plot .plotly .modebar-btn:focus-visible { outline:2px solid #2563eb; outline-offset:1px; }
+.js-plotly-plot .plotly .nsewdrag { cursor:crosshair; }
 .sumo-output-dashboard{display:grid;gap:24px}
 .sumo-group-dropdowns{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:12px 0}
 .sumo-group-dropdowns > .sumo-axis-toggle{display:inline-flex;align-items:center;gap:7px;min-height:38px;white-space:nowrap;font-size:12px;cursor:pointer}
