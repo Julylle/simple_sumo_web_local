@@ -89,9 +89,9 @@ class Store:
             with self.connection.cursor() as c:
                 c.execute('INSERT IGNORE INTO mapping_versions VALUES (%s,%s,%s,%s)',
                           (digest, 'cx_opcua1124.csv', dbtime(utcnow()), content))
-                c.executemany('INSERT IGNORE INTO raw_variables (mapping_sha,row_number,sumo_name,opc_tag,metadata) VALUES (%s,%s,%s,%s,%s)',
+                c.executemany('INSERT IGNORE INTO raw_variables (mapping_sha,`row_number`,sumo_name,opc_tag,metadata) VALUES (%s,%s,%s,%s,%s)',
                               [(digest, i, r['SumoName'], r['OpcTag'], encode(r)) for i, r in enumerate(rows, 1)])
-                c.execute('SELECT row_number,id FROM raw_variables WHERE mapping_sha=%s', (digest,))
+                c.execute('SELECT `row_number`,id FROM raw_variables WHERE mapping_sha=%s', (digest,))
                 ids = dict(c.fetchall())
             self.connection.commit()
             return [ids[i] for i in range(1, len(rows)+1)]

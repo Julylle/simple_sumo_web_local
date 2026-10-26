@@ -88,7 +88,7 @@ WHERE run_id = 'YOUR-RUN-UUID'
   AND variable = 'Sumo__Plant__CSTR3_10__TCOD'
 ORDER BY simulated_ms LIMIT 1000;
 
-SELECT row_number,sumo_name,opc_tag,metadata FROM raw_variables ORDER BY id;
+SELECT `row_number`,sumo_name,opc_tag,metadata FROM raw_variables ORDER BY id;
 SELECT category,COUNT(*) FROM sumo_variables GROUP BY category;
 SELECT run_id,run_mode,model_sha,started_at FROM sumo_runs ORDER BY started_at DESC;
 SELECT table_name,ROUND((data_length+index_length)/1024/1024,1) AS size_mb

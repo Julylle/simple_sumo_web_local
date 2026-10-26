@@ -7,11 +7,11 @@ CREATE TABLE IF NOT EXISTS mapping_versions (
 CREATE TABLE IF NOT EXISTS raw_variables (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   mapping_sha CHAR(64) NOT NULL,
-  row_number INT NOT NULL,
+  `row_number` INT NOT NULL,
   sumo_name VARCHAR(512) NOT NULL,
   opc_tag VARCHAR(512) NOT NULL,
   metadata JSON NOT NULL,
-  UNIQUE KEY mapping_row (mapping_sha,row_number),
+  UNIQUE KEY mapping_row (mapping_sha,`row_number`),
   KEY variable_name (sumo_name(191)),
   FOREIGN KEY (mapping_sha) REFERENCES mapping_versions(mapping_sha)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
@@ -91,7 +91,7 @@ SELECT r.*, v.sumo_name AS variable, v.opc_tag AS OpcTag,
  JSON_UNQUOTE(JSON_EXTRACT(v.metadata,'$.Scaling')) AS Scaling,
  JSON_UNQUOTE(JSON_EXTRACT(v.metadata,'$.Offset')) AS Offset,
  JSON_UNQUOTE(JSON_EXTRACT(v.metadata,'$.Comment')) AS Comment,
- v.mapping_sha, v.row_number, v.metadata
+ v.mapping_sha, v.`row_number`, v.metadata
 FROM raw_data r JOIN raw_variables v ON v.id=r.variable_id;
 CREATE OR REPLACE VIEW `sumo simulation` AS
 SELECT s.id AS sample_id,s.run_id,s.simulated_ms,s.simulated_ms/3600000.0 AS time_h,
