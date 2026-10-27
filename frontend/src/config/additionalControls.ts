@@ -15,9 +15,6 @@ export const defaultControlMapping: Record<string,string> = {
   Sumo__Plant__Sideflowdivider9__param__Qpumped_target: "ns=2;s=GEeth.PLC128.Influent_flow_Q1",
   Sumo__Plant__param__Qair_1_1_sensor: 'ns=2;s=SiemensEth.PLC204.I_airflow1_new',
   Sumo__Plant__param__Qair_1_2_sensor: 'ns=2;s=SiemensEth.PLC204.I_airflow2',
-  "Sumo__Plant__Primary1__param__TSS_sensor": "ns=2;s=GEeth.PLC132.PE_TSS_sensor",
-  "Sumo__Plant__Influent__param__frVSS_TSS": "ns=2;s=MySQL.Dev6.Influent_VSS_TSS_Ratio",
-  "Sumo__Plant__Primary1__param__TSS_lab": "ns=2;s=MySQL.Dev2.primary_eff_tss.primary_eff_tss__1_",
 };
 const controlUnits: Record<string,string> = {
   "Sumo__Plant__Sideflowdivider3__param__Qpumped_target": "m3.d-1",
@@ -35,9 +32,6 @@ const controlUnits: Record<string,string> = {
   "Sumo__Plant__Switchcontroller2__param__CVtreshold": "g TSS.m-3",
   "Sumo__Plant__Switchcontroller3__param__CVtreshold": "g TSS.m-3",
   "Sumo__Plant__Sideflowdivider9__param__Qpumped_target": "m3.d-1",
-  "Sumo__Plant__Primary1__param__TSS_sensor": "mg.L-1",
-  "Sumo__Plant__Influent__param__frVSS_TSS": "-",
-  "Sumo__Plant__Primary1__param__TSS_lab": "mg.L-1",
 
 };
 export const controlSensorOptions = Object.keys(defaultControlMapping).map(name => ({

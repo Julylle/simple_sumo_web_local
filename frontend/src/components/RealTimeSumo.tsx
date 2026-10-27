@@ -33,6 +33,9 @@ const defaultMapping: Record<string,string> = {
   "Sumo__Plant__Influent__param__TKN": "ns=2;s=MySQL.Dev4.TN_nh3_sen_ratio",
   "Sumo__Plant__Influent__param__TP": "ns=2;s=MySQL.Dev1.inlet_tp.inlet_tp__1_",
   "Sumo__Plant__Influent__param__COD_analyzer": "ns=2;s=GEeth.PLC128.JS_COD",
+  "Sumo__Plant__Primary1__param__TSS_sensor": "ns=2;s=GEeth.PLC132.PE_TSS_sensor",
+  "Sumo__Plant__Influent__param__frVSS_TSS": "ns=2;s=MySQL.Dev6.Influent_VSS_TSS_Ratio",
+  "Sumo__Plant__Primary1__param__TSS_lab": "ns=2;s=MySQL.Dev2.primary_eff_tss.primary_eff_tss__1_",
 };
 // Dropdown selection only controls the editor, never the subscribed input set.
 const allDefaultMapping = {...defaultMapping,...defaultDoMapping,...defaultControlMapping};
@@ -292,7 +295,7 @@ export function RealTimeSumo(){
   const sensorGroup=(key:string)=>defaultDoMapping[key]?'do':defaultControlMapping[key]?'control':'influent';
   // Fill all influent defaults once without overwriting custom tags or future removals.
   useEffect(()=>{
-    if(!statusReady||liveActive||preparingModel||influentDefaultsVersion>=1)return;
+    if(!statusReady||liveActive||preparingModel||influentDefaultsVersion>=2)return;
     setMapping(old=>{
       const next={...old};
       for(const [name,node] of Object.entries(defaultMapping))
@@ -302,11 +305,11 @@ export function RealTimeSumo(){
     const column=defaultMapping[selectedColumn]?selectedColumn:defaultColumn;
     setNodeDraft(mapping[column] || defaultMapping[column]);
     setConnected(false);
-    setInfluentDefaultsVersion(1);
+    setInfluentDefaultsVersion(2);
   },[statusReady,liveActive,preparingModel,influentDefaultsVersion]);
   // Populate existing browser drafts once; subsequent Remove actions stay removed.
   useEffect(()=>{
-    if(!statusReady||liveActive||preparingModel||controlDefaultsVersion>=1)return;
+    if(!statusReady||liveActive||preparingModel||controlDefaultsVersion>=2)return;
     setMapping(old=>{
       const next={...old};
       for(const [name,node] of Object.entries(defaultControlMapping))
@@ -315,7 +318,7 @@ export function RealTimeSumo(){
     });
     setControlDraft(mapping[selectedControl] || defaultControlMapping[selectedControl] || '');
     setConnected(false);
-    setControlDefaultsVersion(1);
+    setControlDefaultsVersion(2);
   },[statusReady,liveActive,preparingModel,controlDefaultsVersion]);
   useEffect(()=>{
     if(!defaultMapping[selectedColumn]){
