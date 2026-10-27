@@ -68,6 +68,7 @@ export function RealTimeSumo(){
   useLanguage();
   const [storedMapping,setMapping]=useLiveSetting<Record<string,string>>('mapping',allDefaultMapping);
   const mapping=selectedMappings(storedMapping);
+  const [influentDefaultsVersion,setInfluentDefaultsVersion]=useLiveSetting('influentDefaultsVersion',0);
   const [controlDefaultsVersion,setControlDefaultsVersion]=useLiveSetting('controlDefaultsVersion',0);
   const [selectedColumn,setSelectedColumn]=useLiveSetting('selectedColumn',defaultColumn);
   const [nodeDraft,setNodeDraft]=useLiveSetting('nodeDraft',defaultNode);
@@ -289,6 +290,20 @@ export function RealTimeSumo(){
   const checkpointReady=!!checkpoint&&!checkpoint.error;
   const running=!statusReady||busy||liveActive||modelUploading||!!preparingModel;
   const sensorGroup=(key:string)=>defaultDoMapping[key]?'do':defaultControlMapping[key]?'control':'influent';
+  // Fill all influent defaults once without overwriting custom tags or future removals.
+  useEffect(()=>{
+    if(!statusReady||liveActive||preparingModel||influentDefaultsVersion>=1)return;
+    setMapping(old=>{
+      const next={...old};
+      for(const [name,node] of Object.entries(defaultMapping))
+        if(typeof next[name]!=='string'||!next[name].trim())next[name]=node;
+      return next;
+    });
+    const column=defaultMapping[selectedColumn]?selectedColumn:defaultColumn;
+    setNodeDraft(mapping[column] || defaultMapping[column]);
+    setConnected(false);
+    setInfluentDefaultsVersion(1);
+  },[statusReady,liveActive,preparingModel,influentDefaultsVersion]);
   // Populate existing browser drafts once; subsequent Remove actions stay removed.
   useEffect(()=>{
     if(!statusReady||liveActive||preparingModel||controlDefaultsVersion>=1)return;
