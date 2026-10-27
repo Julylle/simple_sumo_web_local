@@ -57,3 +57,22 @@ def test_cancellation_is_not_wrapped(monkeypatch):
     install_client(monkeypatch, AsyncMock(side_effect=asyncio.CancelledError()))
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(kepserver.read_snapshot({Q: NODE}))
+
+
+def test_bad_sensor_skipped_and_next_sensor_read(monkeypatch):
+    other = "Sumo__Plant__Clarifier1__param__Qsludge_target"
+    read = AsyncMock(side_effect=[ua.UaStatusCodeError(ua.StatusCodes.Bad), 41.7])
+    install_client(monkeypatch, read)
+    skipped = []
+    readings = asyncio.run(kepserver.read_snapshot(
+        {other: "ns=2;s=bad_ras", Q: NODE}, skip_bad=True, skipped=skipped))
+    assert [r["column"] for r in readings] == [Q]
+    assert skipped[0]["column"] == other
+    assert "Bad" in skipped[0]["reason"]
+    assert read.await_count == 2
+
+
+def test_skip_bad_does_not_swallow_connection_failure(monkeypatch):
+    install_client(monkeypatch, AsyncMock(side_effect=ConnectionError("offline")))
+    with pytest.raises(RuntimeError, match="offline"):
+        asyncio.run(kepserver.read_snapshot({Q: NODE}, skip_bad=True))

@@ -306,6 +306,7 @@ def main(argv=None):
     writable = {row[1] for row in fields if len(row) > 4 and row[4] in ('Parameter', 'SystemParameter', 'Dimension')}
     if set(mapping) - writable:
         raise ValueError('SUMO inputs not writable: ' + ', '.join(sorted(set(mapping) - writable)))
+    skipped = []
     snapshot_stage = "Preparing OPC UA snapshot"
     def report_snapshot_progress(message):
         nonlocal snapshot_stage
@@ -316,7 +317,8 @@ def main(argv=None):
     async def fresh_snapshot():
         try:
             return await asyncio.wait_for(
-                read_snapshot(mapping, progress=report_snapshot_progress),
+                read_snapshot(mapping, progress=report_snapshot_progress,
+                              skip_bad=True, skipped=skipped),
                 timeout=args.snapshot_timeout,
             )
         except asyncio.TimeoutError as exc:
@@ -328,14 +330,17 @@ def main(argv=None):
             ) from exc
     readings = asyncio.run(fresh_snapshot())
     values = scale_model_inputs(readings)
-    if set(values) != set(mapping):
+    skipped_columns = {r['column'] for r in skipped}
+    if (set(values) & skipped_columns or
+            set(values) | skipped_columns != set(mapping)):
         raise ValueError('Incomplete sensor snapshot; steady-state calculation was not started.')
     output.parent.mkdir(parents=True, exist_ok=True)
     snapshot = output.parent / f'steady_sensor_inputs_{datetime.now():%Y%m%d_%H%M%S_%f}.json'
     snapshot.write_text(json.dumps({'project': str(project), 'mapping': mapping,
-        'sensor_read_at': max(r['timestamp'] for r in readings), 'readings': readings,
+        'sensor_read_at': max((r['timestamp'] for r in readings), default=None),
+        'readings': readings, 'skipped_bad_sensors': skipped,
         'values': values, 'tolerance': args.tolerance}, indent=2, ensure_ascii=False, allow_nan=False), encoding='utf-8')
-    print(f'Read {len(values)} fresh inputs. Snapshot: {snapshot}', flush=True)
+    print(f'Read {len(values)} fresh inputs; skipped {len(skipped)} Bad sensors. Snapshot: {snapshot}', flush=True)
     for name, value in values.items():
         print(f'  {name} = {value:.15g}', flush=True)
     recovery = output.with_name(f'{output.stem}_unconverged_{datetime.now():%Y%m%d_%H%M%S_%f}.xml')
