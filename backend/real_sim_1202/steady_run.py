@@ -28,6 +28,8 @@ OUTPUT_VARIABLES = [
     "Sumo__Plant__Effluent1__SNOx",
     "Sumo__Plant__Influent__TCOD",
     "Sumo__Plant__Influent__Q",
+    "Sumo__Plant__Influent__I",
+    "Sumo__Plant__Influent__II",
     "Sumo__Plant__Effluent1__TCOD",
     "Sumo__Plant__CSTR3_10__XVSS",
     "Sumo__Plant__CSTR3_10__TCOD",
