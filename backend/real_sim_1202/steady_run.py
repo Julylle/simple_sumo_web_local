@@ -28,15 +28,17 @@ OUTPUT_VARIABLES = [
     "Sumo__Plant__Effluent1__SNOx",
     "Sumo__Plant__Influent__TCOD",
     "Sumo__Plant__Influent__Q",
-    "Sumo__Plant__Influent__I",
-    "Sumo__Plant__Influent__II",
+    "Sumo__Plant__Influent_I__Q",
+    "Sumo__Plant__Influent_II__Q",
+    "Sumo__Plant__II_Clarifier_eff__Q",
+    "Sumo__Plant__MLR_3__Q",
+    "Sumo__Plant__Effluent1__Q",
     "Sumo__Plant__Effluent1__TCOD",
     "Sumo__Plant__CSTR3_10__XVSS",
-    "Sumo__Plant__CSTR3_10__TCOD",
     "Sumo__MaxAbsDer",
 ]
 
-def prepare_steady_state(sumo_project_path, out_state_path, wall_run_seconds=5*60*60, inputs=None, tolerance=100, work_dir=None, timeout_state_path=None):
+def prepare_steady_state(sumo_project_path, out_state_path, wall_run_seconds=0.5*60*60, inputs=None, tolerance=1200, work_dir=None, timeout_state_path=None):
     import dynamita.tool as dtool
     import dynamita.scheduler as ds
     runtime_dir = str(Path(work_dir or os.getcwd()).resolve())
@@ -264,8 +266,8 @@ def main(argv=None):
     source = parser.add_mutually_exclusive_group()
     source.add_argument('--mapping', type=Path, help='JSON object mapping SUMO parameter names to full OPC UA node IDs.')
     source.add_argument('--live-url', help='Backend base URL to obtain the current live/checkpoint mapping; sensor values are freshly read.')
-    parser.add_argument('--tolerance', type=float, default=100)
-    parser.add_argument('--timeout-hours', type=float, default=5)
+    parser.add_argument('--tolerance', type=float, default=800)
+    parser.add_argument('--timeout-hours', type=float, default=0.5)
     parser.add_argument('--snapshot-timeout', type=float, default=120,
                         help='Total OPC UA snapshot timeout in seconds (default: 120); independent of solver timeout.')
     args = parser.parse_args(argv)
