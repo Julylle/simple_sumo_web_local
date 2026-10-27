@@ -266,11 +266,15 @@ def main(argv=None):
     source.add_argument('--live-url', help='Backend base URL to obtain the current live/checkpoint mapping; sensor values are freshly read.')
     parser.add_argument('--tolerance', type=float, default=100)
     parser.add_argument('--timeout-hours', type=float, default=5)
+    parser.add_argument('--snapshot-timeout', type=float, default=120,
+                        help='Total OPC UA snapshot timeout in seconds (default: 120); independent of solver timeout.')
     args = parser.parse_args(argv)
     if not math.isfinite(args.tolerance) or args.tolerance <= 0:
         parser.error('--tolerance must be positive and finite.')
     if not math.isfinite(args.timeout_hours) or args.timeout_hours <= 0:
         parser.error('--timeout-hours must be positive and finite.')
+    if not math.isfinite(args.snapshot_timeout) or args.snapshot_timeout <= 0:
+        parser.error('--snapshot-timeout must be positive and finite.')
     from services.kepserver import read_snapshot
     from services.model_inputs import scale_model_inputs
     from services.sensor_inputs import SENSOR_COLUMNS
@@ -302,8 +306,26 @@ def main(argv=None):
     writable = {row[1] for row in fields if len(row) > 4 and row[4] in ('Parameter', 'SystemParameter', 'Dimension')}
     if set(mapping) - writable:
         raise ValueError('SUMO inputs not writable: ' + ', '.join(sorted(set(mapping) - writable)))
+    snapshot_stage = "Preparing OPC UA snapshot"
+    def report_snapshot_progress(message):
+        nonlocal snapshot_stage
+        snapshot_stage = message
+        print(message, flush=True)
+        logging.info(message)
+
     async def fresh_snapshot():
-        return await asyncio.wait_for(read_snapshot(mapping), timeout=30)
+        try:
+            return await asyncio.wait_for(
+                read_snapshot(mapping, progress=report_snapshot_progress),
+                timeout=args.snapshot_timeout,
+            )
+        except asyncio.TimeoutError as exc:
+            raise TimeoutError(
+                f"OPC UA snapshot timed out (total limit {args.snapshot_timeout:g} s). "
+                f"Last stage: {snapshot_stage}. "
+                f"An individual OPC UA request may have timed out earlier: {exc}. "
+                "SUMO was not started; the existing state was not replaced."
+            ) from exc
     readings = asyncio.run(fresh_snapshot())
     values = scale_model_inputs(readings)
     if set(values) != set(mapping):
