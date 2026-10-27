@@ -22,7 +22,8 @@ def test_default_mapping_matches_all_web_presets():
     _, _, rows = load_mapping()
     defaults = {r['SumoName']: 'ns=2;s='+r['OpcTag'] for r in rows if r['SumoName'] in SENSOR_COLUMNS}
     assert defaults == pairs
-    assert len(defaults) == 53
+    assert len(defaults) == 73
+    assert set(defaults) == {r["SumoName"] for r in rows if r["IO"] == "I"}
 
 
 @pytest.mark.parametrize('source_mode', ['mapping', 'live-url'])

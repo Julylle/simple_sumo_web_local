@@ -287,9 +287,9 @@ export function RealTimeSumo(){
   const running=!statusReady||busy||liveActive||modelUploading||!!preparingModel;
   const sensorGroup=(key:string)=>defaultDoMapping[key]?'do':defaultControlMapping[key]?'control':'influent';
   useEffect(()=>{
-    if(!statusReady||liveActive||preparingModel||inputMappingVersion>=3)return;
+    if(!statusReady||liveActive||preparingModel||inputMappingVersion>=4)return;
     setMapping(old=>completeMapping(old));
-    setInputMappingVersion(3);
+    setInputMappingVersion(4);
   },[statusReady,liveActive,preparingModel,inputMappingVersion]);
   const comparisons = useSensorComparisons(liveRun?.id, !!liveRun?.result?.time_h.length, liveRun?.interval_minutes);
   const visualisationResult = liveRun?.result ? {...liveRun.result, comparison_series: comparisons?.series, simulation_series: mergeStoredSimulation(comparisons?.stored_series, liveRun.result)} : undefined;
