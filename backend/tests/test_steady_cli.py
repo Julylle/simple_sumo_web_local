@@ -21,7 +21,9 @@ def test_default_mapping_matches_all_web_presets():
     pairs = dict(re.findall(r'["\']?(Sumo__Plant__[A-Za-z0-9_]+)["\']?\s*:\s*["\'](ns=2;s=[^"\']+)["\']', text))
     _, _, rows = load_mapping()
     defaults = {r['SumoName']: 'ns=2;s='+r['OpcTag'] for r in rows if r['SumoName'] in SENSOR_COLUMNS}
-    assert defaults == pairs
+    expected = {k:v for k,v in defaults.items() if not ('__CSTR' in k and not k.endswith('__SO2'))}
+    assert expected == pairs
+    assert len(pairs) == 55
     assert len(defaults) == 73
     assert set(defaults) == {r["SumoName"] for r in rows if r["IO"] == "I"}
 

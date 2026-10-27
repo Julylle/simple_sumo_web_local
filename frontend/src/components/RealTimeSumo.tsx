@@ -39,9 +39,10 @@ const defaultMapping: Record<string,string> = {
 };
 // Dropdown selection only controls the editor, never the subscribed input set.
 const allDefaultMapping = {...defaultMapping,...defaultDoMapping,...defaultControlMapping};
-function completeMapping(saved: Record<string,string>): Record<string,string> {
-  return Object.fromEntries(Object.entries(allDefaultMapping).map(([name,node]) =>
-    [name, typeof saved[name] === 'string' && saved[name].trim() ? saved[name].trim() : node]));
+function selectedMappings(saved: Record<string,string>): Record<string,string> {
+  return Object.fromEntries(Object.entries(saved).filter(([name,node]) =>
+    name in allDefaultMapping && typeof node === 'string' && node.trim()
+  ).map(([name,node]) => [name,node.trim()]));
 }
 // These configured inputs must remain selectable even if the SUMO API is offline.
 const influentUnits: Record<string,string> = {
@@ -68,8 +69,8 @@ async function json(url:string,init?:RequestInit) {
 }
 export function RealTimeSumo(){
   useLanguage();
-  const [mapping,setMapping]=useLiveSetting<Record<string,string>>('mapping',allDefaultMapping);
-  const [inputMappingVersion,setInputMappingVersion]=useLiveSetting('inputMappingVersion',1);
+  const [storedMapping,setMapping]=useLiveSetting<Record<string,string>>('mapping',allDefaultMapping);
+  const mapping=selectedMappings(storedMapping);
   const [selectedColumn,setSelectedColumn]=useLiveSetting('selectedColumn',defaultColumn);
   const [nodeDraft,setNodeDraft]=useLiveSetting('nodeDraft',defaultNode);
   const [selectedDo,setSelectedDo]=useLiveSetting('selectedDo',doSensorOptions[0].name);
@@ -78,7 +79,7 @@ export function RealTimeSumo(){
   const [controlDraft,setControlDraft]=useLiveSetting('controlDraft',defaultControlMapping[controlSensorOptions[0].name]);
   const [readings,setReadings]=useState<Reading[]>([]);
   const [history,setHistory]=useLiveSetting<Sample[]>('sensorHistory',[]);
-  const [connected,setConnected]=useLiveSetting('connected',false);
+  const [connected,setConnected]=useState(false);
   const [sensorError,setSensorError]=useState('');
   const pollingRef=useRef(false);
   const mappingRef=useRef(mapping);
@@ -165,9 +166,9 @@ export function RealTimeSumo(){
       if(pollingRef.current)return;
       pollingRef.current=true;
       try{
-        const selected=completeMapping(mappingRef.current);
+        const selected=selectedMappings(mappingRef.current);
         const result=await json('/api/kepserver/snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mapping:selected})});
-        if(cancelled)return;
+        if(cancelled || JSON.stringify(selected)!==JSON.stringify(selectedMappings(mappingRef.current)))return;
         const receivedAt=Date.now();
         setReadings(result.readings);
         setHistory(old=>[...old,...(result.readings as Reading[]).map(r=>({...r,receivedAt:Number.isFinite(Date.parse(r.timestamp))?Date.parse(r.timestamp):receivedAt}))].filter(s=>s.receivedAt>=receivedAt-3600000).slice(-28800));
@@ -185,13 +186,18 @@ export function RealTimeSumo(){
   async function refresh(){
     setConnected(false);setBusy(true);setError('');setSensorError('');setRun(null);
     try {
-      const selected=completeMapping(mapping);
+      const selected=selectedMappings(mapping);
       setMapping(selected);
       const result=await json('/api/kepserver/snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mapping:selected})});
+      if(JSON.stringify(selected)!==JSON.stringify(selectedMappings(mappingRef.current)))return;
+      if(!Array.isArray(result.readings) || result.readings.length!==Object.keys(selected).length ||
+          !Object.entries(selected).every(([column,node])=>result.readings.some(
+            (r:Reading)=>r.column===column && r.node_id===node && Number.isFinite(r.value))))
+        throw new Error('Incomplete sensor snapshot; reconnect before calculating.');
+      setConnected(true);
       setReadings(result.readings);
       const receivedAt=Date.now();
       setHistory(old=>[...old,...(result.readings as Reading[]).map(r=>({...r,receivedAt:Number.isFinite(Date.parse(r.timestamp))?Date.parse(r.timestamp):receivedAt}))].filter(s=>s.receivedAt>=receivedAt-3600000).slice(-28800));
-      setConnected(true);
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
   async function uploadModel(){
@@ -212,7 +218,7 @@ export function RealTimeSumo(){
         if(!Number.isFinite(Number(steadyTolerance))||Number(steadyTolerance)<=0)
           throw new Error('Convergence tolerance must be positive.');
         form.append('tolerance',steadyTolerance);
-        form.append('mapping',JSON.stringify(completeMapping(mapping)));
+        form.append('mapping',JSON.stringify(selectedMappings(mapping)));
       }
       const model=await json('/api/sumo/live/models',{method:'POST',body:form});
       if(model.status==='ready')setUploadedModel(model);
@@ -246,7 +252,7 @@ export function RealTimeSumo(){
     if(!window.confirm(t('Start a new historical simulation? Results at matching timestamps for the same model will be updated. Other timestamps and raw sensor data are kept. The latest checkpoint is replaced after the first completed interval.')))return;
     setBusy(true);setError('');
     try{
-      const selected=completeMapping(mapping);
+      const selected=selectedMappings(mapping);
       const result:LiveRun=await json('/api/sumo/live/start',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({mapping:selected,interval_minutes:limitInterval,model_id:uploadedModel?.id||'builtin',mode:simulationMode,
           ...(simulationMode==='history_then_live'?{history_start:new Date(historyStart).toISOString()}: {})})});
@@ -261,7 +267,6 @@ export function RealTimeSumo(){
       setLiveRun(result);
       if(result.checkpoint?.mapping)setMapping(result.checkpoint.mapping);
       if(result.checkpoint?.interval_minutes)setLimitMinutes(String(result.checkpoint.interval_minutes));
-      setConnected(true);
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
   async function stop(){
@@ -287,10 +292,11 @@ export function RealTimeSumo(){
   const running=!statusReady||busy||liveActive||modelUploading||!!preparingModel;
   const sensorGroup=(key:string)=>defaultDoMapping[key]?'do':defaultControlMapping[key]?'control':'influent';
   useEffect(()=>{
-    if(!statusReady||liveActive||preparingModel||inputMappingVersion>=4)return;
-    setMapping(old=>completeMapping(old));
-    setInputMappingVersion(4);
-  },[statusReady,liveActive,preparingModel,inputMappingVersion]);
+    if(!defaultControlMapping[selectedControl]){
+      setSelectedControl(controlSensorOptions[0].name);
+      setControlDraft(mapping[controlSensorOptions[0].name] || '');
+    }
+  },[selectedControl]);
   const comparisons = useSensorComparisons(liveRun?.id, !!liveRun?.result?.time_h.length, liveRun?.interval_minutes);
   const visualisationResult = liveRun?.result ? {...liveRun.result, comparison_series: comparisons?.series, simulation_series: mergeStoredSimulation(comparisons?.stored_series, liveRun.result)} : undefined;
   const chartMapping=liveRun?.mapping??mapping;
@@ -319,11 +325,11 @@ export function RealTimeSumo(){
             <details className="sensor-mapping-list" onMouseLeave={event => { event.currentTarget.open = false; }}><summary>{t("Review mappings")}</summary>
               {Object.entries(mapping).filter(([key])=>sensorGroup(key)===group.kind).map(([column,node])=><div className="sensor-mapping-row" key={column}>
                 <div><strong>{t([...options,...doSensorOptions,...controlSensorOptions].find(o=>o.name===column)?.label||column.split('__').pop())}</strong><code>{node}</code></div>
-                <button className="secondary" aria-label={t('Reset '+column)} disabled={running} onClick={()=>{
+                <button className="secondary" aria-label={t('Remove '+column)} disabled={running} onClick={()=>{
                   setConnected(false);setHistory([]);setReadings([]);setSensorError('');
-                  setMapping(old=>({...old,[column]:allDefaultMapping[column]}));
-                  if(group.selected===column)group.setDraft(allDefaultMapping[column]);
-                }}>{t("Reset")}</button>
+                  setMapping(old=>{const next={...old};delete next[column];return next;});
+                  if(group.selected===column)group.setDraft('');
+                }}>{t("Remove")}</button>
               </div>)}
             </details>
           </article>)}
@@ -347,7 +353,7 @@ export function RealTimeSumo(){
             <option value="upload">{t("Upload a SUMO model")}</option>
           </select>
         </label>
-        {modelSource==='upload'&&<label className="sensor-field"><span>{t("SUMO project (.sumo, max 50 MB)")}</span><input type="file" accept=".sumo" disabled={running} onChange={e=>{setModelFile(e.target.files?.[0]||null);setUploadedModel(null);setModelError('');}}/></label>}
+        {modelSource==='upload'&&<label className="sensor-field"><span>{t("SUMO project (.sumo, max 50 MB)")}</span><input className="sumo-file-input" type="file" accept=".sumo" disabled={running} onChange={e=>{setModelFile(e.target.files?.[0]||null);setUploadedModel(null);setModelError('');}}/></label>}
           <p className="calibration-note">{t("Use the built-in plant model or upload a compiled SUMO project that supports your sensor variables.")}</p>
           <p className="calibration-note simulation-card-footnote">{t("Prepared models are available until the backend restarts.")}</p>
         </article>
@@ -360,7 +366,7 @@ export function RealTimeSumo(){
           </select>
         </label>
         {stateMode==='upload'?<>
-          <label className="sensor-field"><span>{t("Steady-state file (.xml, max 20 MB)")}</span><input type="file" accept=".xml" disabled={running} onChange={e=>{setStateFile(e.target.files?.[0]||null);setStateFilename(e.target.files?.[0]?.name||'');setUploadedModel(null);setModelError('');}}/></label>
+          <label className="sensor-field"><span>{t("Steady-state file (.xml, max 20 MB)")}</span><input className="sumo-file-input" type="file" accept=".xml" disabled={running} onChange={e=>{setStateFile(e.target.files?.[0]||null);setStateFilename(e.target.files?.[0]?.name||'');setUploadedModel(null);setModelError('');}}/></label>
           {stateFilename&&!stateFile&&!uploadedModel&&<p role="status">{t("Reselect ")}{t(stateFilename)}{t(" to prepare this state, or clear the selection to use the built-in state. ")}<button className="secondary" disabled={running} onClick={()=>setStateFilename('')}>{t("Clear file selection")}</button></p>}
           <p className="calibration-note">{t(modelSource==='builtin'&&!stateFile&&!stateFilename?'Using the built-in sumo_steady_state.xml. Select a file to replace it.':'Choose a steady-state XML matching the selected model.')}</p>
         </>:<>

@@ -271,3 +271,24 @@
 .sensor-step-collapsible[open]>summary{margin-bottom:20px}
 .sensor-step-collapsible[open]>summary .sensor-step-chevron{transform:rotate(180deg)}
 @media(max-width:900px){.sensor-step-collapsible>summary.sensor-heading{flex-direction:row;flex-wrap:wrap}.sensor-step-collapsible>summary>div{flex-basis:calc(100% - 50px)}.sensor-step-collapsible>summary .sensor-status{order:3}.sensor-step-collapsible>summary .sensor-step-chevron{margin-left:auto}}
+
+/* Model and state pickers share the simulation card controls. */
+.simulation-setup .sumo-file-input {
+  width: 100%; min-width: 0; box-sizing: border-box;
+  padding: 10px; border: 1px solid #cbd5e1; border-radius: 12px;
+  background: #f8fafc; color: #475569; font: inherit;
+}
+.simulation-setup .sumo-file-input::file-selector-button {
+  margin-right: 12px; padding: 10px 16px; border: 1px solid #bfdbfe;
+  border-radius: 8px; background: #eff6ff; color: #1d4ed8;
+  font: inherit; font-weight: 600; cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.simulation-setup .sumo-file-input:hover::file-selector-button {
+  background: #dbeafe; border-color: #93c5fd;
+}
+.simulation-setup .sumo-file-input:focus-visible {
+  outline: 2px solid #2563eb; outline-offset: 3px;
+}
+.simulation-setup .sumo-file-input:disabled { opacity: .55; cursor: not-allowed; }
+.simulation-setup .sumo-file-input:disabled::file-selector-button { cursor: not-allowed; }
