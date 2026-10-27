@@ -383,4 +383,9 @@ export const zh: Record<string, string> = {
   "A simulation value is incompatible with the database column type.": "模拟值与数据库列类型不兼容。",
   "A simulation value exceeds the database column size.": "模拟值超出数据库列容量。",
   "Check the backend log for the original database error.": "请查看后端日志中的原始数据库错误。",
+  "Start a new historical simulation? Results at matching timestamps for the same model will be updated. Other timestamps and raw sensor data are kept. The latest checkpoint is replaced after the first completed interval.": "开始新的历史模拟？将更新同一模型相同时间点的模拟结果，保留其他时间点及原始传感器数据。首个区间完成后将更新最近检查点。",
+  "Simulation results": "模拟结果",
+  "MLSS / MLVSS": "MLSS / MLVSS",
+  "recorded nitrate and MLSS/MLVSS means over ": "硝酸盐及 MLSS/MLVSS 记录的平均区间为 ",
+  " seconds, compared with corresponding simulation results. Missing measurements remain gaps.": " 秒，与对应模拟结果对比；缺失的实测值保留为空缺。",
 };

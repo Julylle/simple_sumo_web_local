@@ -21,7 +21,7 @@ logging.basicConfig(
 )
 
 MODEL_DIR = Path(__file__).resolve().parent
-SUMO_PROJECT = str(MODEL_DIR / "real_sim_1202.sumo")
+SUMO_PROJECT = str(MODEL_DIR / "real_sim_1202_test.sumo")
 SUMO_STATE = str(MODEL_DIR / "sumo_steady_state.xml")
 OUTPUT_VARIABLES = [
     "Sumo__Plant__Effluent1__SNHx",
@@ -36,7 +36,7 @@ OUTPUT_VARIABLES = [
     "Sumo__MaxAbsDer",
 ]
 
-def prepare_steady_state(sumo_project_path, out_state_path, wall_run_seconds=0.5*60*60, inputs=None, tolerance=100, work_dir=None, timeout_state_path=None):
+def prepare_steady_state(sumo_project_path, out_state_path, wall_run_seconds=5*60*60, inputs=None, tolerance=100, work_dir=None, timeout_state_path=None):
     import dynamita.tool as dtool
     import dynamita.scheduler as ds
     runtime_dir = str(Path(work_dir or os.getcwd()).resolve())
@@ -265,7 +265,7 @@ def main(argv=None):
     source.add_argument('--mapping', type=Path, help='JSON object mapping SUMO parameter names to full OPC UA node IDs.')
     source.add_argument('--live-url', help='Backend base URL to obtain the current live/checkpoint mapping; sensor values are freshly read.')
     parser.add_argument('--tolerance', type=float, default=100)
-    parser.add_argument('--timeout-hours', type=float, default=0.5)
+    parser.add_argument('--timeout-hours', type=float, default=5)
     args = parser.parse_args(argv)
     if not math.isfinite(args.tolerance) or args.tolerance <= 0:
         parser.error('--tolerance must be positive and finite.')
@@ -290,9 +290,9 @@ def main(argv=None):
         mapping = {row['SumoName']: 'ns=2;s=' + row['OpcTag'] for row in rows if row['SumoName'] in SENSOR_COLUMNS}
         if set(mapping) != set(SENSOR_COLUMNS):
             raise ValueError('Default CSV does not cover every web sensor mapping.')
-    if (not isinstance(mapping, dict) or not 1 <= len(mapping) <= 40 or
+    if (not isinstance(mapping, dict) or not 1 <= len(mapping) <= len(SENSOR_COLUMNS) or
         any(k not in SENSOR_COLUMNS or not isinstance(v, str) or not v.strip() for k, v in mapping.items())):
-        raise ValueError('Provide 1–40 valid web sensor mappings.')
+        raise ValueError(f'Provide 1–{len(SENSOR_COLUMNS)} valid web sensor mappings.')
     project = args.project.resolve()
     output = args.output.resolve()
     if project == output:

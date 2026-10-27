@@ -14,6 +14,7 @@ def write_error_detail(error):
     """Show actionable database errors without returning SQL or credentials."""
     code = error.args[0] if error.args and isinstance(error.args[0], int) else None
     reasons = {
+        0: 'MySQL connection is unavailable. Check the backend traceback for the original connection or write failure.',
         1142: 'Database account lacks permission for the requested write or deletion.',
         1146: 'Required simulation tables are missing.',
         1451: 'Foreign key constraints prevent deletion of old simulation results.',
@@ -46,9 +47,7 @@ class SimulationRecorder:
             raise
         self.names = list(self.ids)
         self.run_id = run_id
-        # Only an explicitly new historical run replaces prior results.
-        # Resume must never infer replacement from a zero simulation time.
-        self.replace_pending = mode == 'history_then_live' and configuration.get('replace_existing_results') is True
+        self.overwrite_history = mode == 'history_then_live'
         self.error = None
         self.queue = Queue(maxsize=8)
         self.thread = Thread(target=self._write, daemon=True, name='sumo-mysql')
@@ -65,16 +64,14 @@ class SimulationRecorder:
                         item.set()
                     elif self.error is None:
                         ms, data, sensor_time = item
-                        if self.replace_pending:
+                        if self.overwrite_history:
                             self.store.write_simulation(self.run_id, self.ids, ms, data, sensor_time,
-                                                        replace_previous=True)
-                            self.replace_pending = False
+                                                        overwrite_history=True)
                         else:
                             self.store.write_simulation(self.run_id, self.ids, ms, data, sensor_time)
                 except Exception as exc:
                     self.error = exc
-                    logging.exception('SUMO database write failed for run %s (replacement pending: %s)',
-                                      self.run_id, self.replace_pending)
+                    logging.exception('SUMO database write failed for run %s', self.run_id)
                 finally:
                     self.queue.task_done()
         finally:
@@ -82,7 +79,7 @@ class SimulationRecorder:
 
     def check(self):
         if self.error:
-            operation = 'first sample and replacement' if self.replace_pending else 'sample write'
+            operation = 'sample write'
             raise RuntimeError(f'SUMO MySQL write failed ({operation}). {write_error_detail(self.error)} '
                                'Simulation stopped to avoid silent history loss.') from self.error
 

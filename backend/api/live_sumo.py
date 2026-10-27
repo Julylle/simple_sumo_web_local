@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Response, UploadFile, File, Form
 import json
 from typing import Literal
 from pydantic import BaseModel, Field
+from services.sensor_inputs import SENSOR_COLUMNS
 from liveSimulation import liveSimulation as live_sumo
 from services.live_models import register_model, model_status, MAX_MODEL_BYTES, MAX_STATE_BYTES, BUILTIN_DIR
 
@@ -12,7 +13,7 @@ class LiveStart(BaseModel):
     mode: Literal["live", "history_then_live"] = "live"
     history_start: str | None = None
     history_end: str | None = None
-    mapping: dict[str, str] = Field(min_length=1, max_length=40)
+    mapping: dict[str, str] = Field(min_length=1, max_length=len(SENSOR_COLUMNS))
     interval_minutes: int = Field(default=1, ge=1, le=60)
     model_id: str = Field(default="builtin", min_length=1, max_length=64)
 

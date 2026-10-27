@@ -232,3 +232,42 @@
 .resume-details{padding:20px;background:#eff6ff;border:1px solid #dbeafe;border-radius:12px;min-width:0}.resume-details h4{margin:0 0 12px;color:#1e3a8a;font-size:14px}.resume-details p,.resume-details li{font-size:13px;line-height:1.7;color:#475569}.resume-details p{margin:0}.resume-details ul{margin:16px 0 0;padding-left:18px}.resume-details li+li{margin-top:12px}.simulation-setup .resume-notice{padding:12px 16px;border-left:3px solid #eab308;background:#fffbeb;border-radius:6px}
 @media(max-width:900px){.resume-layout{grid-template-columns:1fr;gap:18px}}
 @media(max-width:480px){.resume-metadata{grid-template-columns:1fr}.resume-details{padding:16px}}
+
+/* Historical → Live: a three-stage setup with one clear action area. */
+.history-setup{background:linear-gradient(135deg,#f5f9ff 0%,#f8fafc 55%,#f0f7fa 100%);border-color:#d6e3ef;padding:26px}
+.history-setup .sensor-heading{padding-bottom:20px;border-bottom:1px solid #dce6ef;margin-bottom:22px}
+.history-setup .simulation-mode-field{display:grid;grid-template-columns:150px minmax(0,360px);align-items:center;gap:18px;margin-bottom:24px}
+.history-setup .simulation-mode-field>span{font-size:13px;color:#334155}
+.history-setup .simulation-mode-field select{background:#fff;border-color:#b9cde2;font-weight:600;color:#1e3a5f}
+.history-setup .history-setup-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;align-items:stretch}
+.history-setup .sensor-editor{border-color:#dce5ef;border-radius:16px;padding:22px;gap:20px;box-shadow:0 4px 18px #17385806}
+.history-setup .sensor-editor-title{flex-direction:row-reverse;justify-content:flex-end;gap:12px;padding-bottom:16px;border-bottom:1px solid #edf2f7;min-height:34px}
+.history-setup .sensor-editor-title>span{flex-shrink:0;padding:7px 10px;border-radius:8px;background:#edf4ff;color:#35649a;font-size:11px;font-weight:700;letter-spacing:.02em}
+.history-setup .sensor-editor-title h4{font-size:15px;line-height:1.4}
+.history-setup .sensor-field{gap:9px}
+.history-setup .sensor-field input,.history-setup .sensor-field select{height:46px;border-color:#d4dfea;border-radius:9px}
+.history-setup .sensor-field input[type=file]{height:auto;min-height:90px;padding:14px 10px;border:1px dashed #b7cbe0;background:#f8fbff;line-height:1.8}
+.history-setup input[type=file]::file-selector-button{background:#eaf2fc;border:0;color:#285a92;border-radius:7px;padding:8px 10px;margin-bottom:6px}
+.history-setup .history-behavior{list-style:none;padding:14px 16px;background:#f5f8fc;border:1px solid #e5edf5;border-radius:10px;display:grid;gap:10px}
+.history-setup .history-behavior strong{color:#425975}
+.history-setup .simulation-prepare-action{padding-top:14px;border-top:1px solid #edf2f7;margin-top:auto}
+.history-setup .simulation-prepare-action button{background:#eef5ff;border-color:#c4d8f2;color:#24548b;min-height:44px}
+.history-setup .measurement-ready{padding:12px 14px;background:#edf9f2;border:1px solid #cbe8d5;border-radius:9px;color:#23613d}
+.history-setup .simulation-model-status{padding:12px 16px;border:1px solid #cbdff2;background:#eff6ff;border-radius:10px}
+.history-setup .simulation-run-actions{background:#fff;border:1px solid #dce5ef;border-radius:12px;padding:16px 18px;margin-top:20px;gap:12px}
+.history-setup .simulation-run-actions .primary{min-width:150px;min-height:44px;box-shadow:0 3px 8px #2563eb18}
+.history-setup .simulation-run-actions>span{padding-left:6px}
+@media(max-width:1200px){.history-setup .history-setup-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.history-setup .history-timing-card{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start}.history-timing-card>.sensor-editor-title,.history-timing-card>.history-behavior,.history-timing-card>p{grid-column:1/-1}}
+@media(max-width:720px){.history-setup{padding:16px}.history-setup .history-setup-grid{grid-template-columns:1fr;gap:16px}.history-setup .history-timing-card{display:flex;grid-column:auto}.history-setup .sensor-editor{padding:18px}.history-setup .simulation-mode-field{grid-template-columns:1fr;gap:9px;margin-bottom:18px}.history-setup .simulation-run-actions{padding:14px}.history-setup .simulation-run-actions>span{padding-left:0}.history-setup .simulation-run-actions .primary{min-width:0}}
+
+/* Keep infrequently changed sensor settings collapsed without unmounting inputs. */
+.sensor-step-collapsible>summary.sensor-heading{display:flex;align-items:center;gap:16px;cursor:pointer;list-style:none;margin:0;border-radius:8px}
+.sensor-step-collapsible>summary::-webkit-details-marker{display:none}
+.sensor-step-collapsible>summary::marker{content:""}
+.sensor-step-collapsible>summary>div{flex:1;min-width:0}
+.sensor-step-collapsible>summary h3{margin-bottom:4px}
+.sensor-step-collapsible>summary:focus-visible{outline:3px solid #bfdbfe;outline-offset:6px}
+.sensor-step-chevron{display:flex;align-items:center;justify-content:center;flex:0 0 30px;width:30px;height:30px;border:1px solid #dbe5ef;border-radius:8px;background:#fff;color:#35649a;font-size:20px;line-height:1}
+.sensor-step-collapsible[open]>summary{margin-bottom:20px}
+.sensor-step-collapsible[open]>summary .sensor-step-chevron{transform:rotate(180deg)}
+@media(max-width:900px){.sensor-step-collapsible>summary.sensor-heading{flex-direction:row;flex-wrap:wrap}.sensor-step-collapsible>summary>div{flex-basis:calc(100% - 50px)}.sensor-step-collapsible>summary .sensor-status{order:3}.sensor-step-collapsible>summary .sensor-step-chevron{margin-left:auto}}

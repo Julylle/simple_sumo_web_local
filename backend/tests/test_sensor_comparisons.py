@@ -15,14 +15,14 @@ def test_confirmed_sensors_match_collector_csv():
     _, _, rows = load_mapping()
     for name, tag in comparisons.COMPARISON_SENSORS.values():
         assert any(row['SumoName']==name and row['OpcTag']==tag and row['Scaling']=='1' for row in rows)
-    assert len(comparisons.COMPARISON_SENSORS) == 2
+    assert len(comparisons.COMPARISON_SENSORS) == 6
     assert not any('NHx' in key for key in comparisons.COMPARISON_SENSORS)
 
 
 def test_measured_means_are_time_aligned_and_gaps_are_not_forward_filled(monkeypatch):
     store=MagicMock()
     cursor=store.connection.cursor.return_value.__enter__.return_value
-    first, second = list(comparisons.COMPARISON_SENSORS)
+    first, second = list(comparisons.COMPARISON_SENSORS)[:2]
     cursor.fetchall.side_effect=[[(0,comparisons.COMPARISON_SENSORS[first][0],0),
                                  (2,comparisons.COMPARISON_SENSORS[second][0],4.5)], []]
     monkeypatch.setattr(comparisons,'Store',lambda:store)
@@ -127,3 +127,17 @@ def test_stored_output_is_scoped_to_run_and_model_progress():
     assert params==(comparisons.STORED_OUTPUT,'run-1',180000)
     assert 's.run_id=%s AND s.simulated_ms<=%s' in sql
     assert 's.acquired_at' not in sql
+
+
+def test_solids_lab_values_and_simulation_subscriptions(monkeypatch):
+    store=MagicMock()
+    cursor=store.connection.cursor.return_value.__enter__.return_value
+    keys=[key for key in comparisons.COMPARISON_SENSORS if key.startswith('lab:')]
+    assert len(keys)==4
+    cursor.fetchall.side_effect=[[(1,comparisons.COMPARISON_SENSORS[key][0],2000+i)
+                                  for i,key in enumerate(keys)], []]
+    monkeypatch.setattr(comparisons,'Store',lambda:store)
+    result=comparisons.read_comparisons(fixture_snapshot())
+    for i,key in enumerate(keys):
+        assert key.removeprefix('lab:') in comparisons.LIVE_EXTRA_OUTPUTS
+        assert result['series'][key]['values']==[None,2000+i,None]

@@ -19,3 +19,13 @@ export const realtimePollutantOptions: OutputOption[] = [
     compareTo: `Sumo__Plant__${tank}__SNOx`,
   })),
 ];
+
+// Lab observations remain separate from model outputs and model inputs.
+export const realtimeSolidsOptions: OutputOption[] = [3,4].flatMap(lane =>
+  ([['MLSS','XTSS','mg TSS/L'],['MLVSS','XVSS','mg VSS/L']] as const).flatMap(([label,variable,unit]) => {
+    const key=`Sumo__Plant__CSTR${lane}_10__${variable}`;
+    return [
+      {key,label:`CSTR${lane}_10 ${label} · simulation`,unit},
+      {key:`lab:${key}`,label:`CSTR${lane}_10 ${label} · lab`,unit,compareTo:key},
+    ];
+  }));

@@ -40,9 +40,21 @@ SELECT batch_id, MAX(acquired_at) AS collected_at,
        COUNT(*) AS row_count,
        SUM(quality = 'good') AS good_count
 FROM sumo_web_database.raw_data
-WHERE acquired_at >= UTC_TIMESTAMP() `sumo simulation`- INTERVAL 10 MINUTE
+WHERE acquired_at >= UTC_TIMESTAMP() - INTERVAL 10 MINUTE
 GROUP BY batch_id
 ORDER BY collected_at DESC;
+
+-- Check the first and last time in the database
+SELECT
+    MIN(acquired_at) AS first_time,
+    MAX(acquired_at) AS last_time
+FROM sumo_web_database.`raw data`;
+
+-- Check the first and last time in the database
+SELECT
+    MIN(acquired_at) AS first_time,
+    MAX(acquired_at) AS last_time
+FROM sumo_web_database.`sumo simulation`;
 
 
 -- Find the latest simulation run

@@ -64,35 +64,34 @@ def test_local_views_match_shanghai_plot_and_keep_canonical_utc():
     finally:store.close()
 
 
-def test_new_history_replaces_results_and_keeps_raw_records_atomically():
+def test_history_overwrites_only_matching_absolute_time_atomically():
+    from datetime import datetime, timezone, timedelta
     store = Store().connect()
     try:
         store.initialize()
-        with store.connection.cursor() as c:
-            c.execute('SELECT COUNT(*) FROM raw_data')
-            raw_count = c.fetchone()[0]
         old, new = str(uuid4()), str(uuid4())
-        variables = [{'name':'replace_test','type':'REAL','category':'StateVariable','unit':'mg/L'}]
-        old_ids = store.register_run(old, 'd'*64, 'replace-test', variables, 'history_then_live', {})
-        store.write_simulation(old, old_ids, 60000, {'replace_test': 1})
-        ids = store.register_run(new, 'd'*64, 'replace-test', variables, 'history_then_live', {})
-        # A broken first sample must not destroy the old result.
+        digest = uuid4().hex * 2
+        variables = [{'name':'state','type':'REAL','category':'StateVariable','unit':'mg/L'}]
+        ids = store.register_run(old, digest, 'overwrite-test', variables, 'history_then_live', {})
+        stamp = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        store.write_simulation(old, ids, 60000, {'state': 1}, stamp)
+        store.write_simulation(old, ids, 120000, {'state': 9}, stamp + timedelta(minutes=1))
+        store.register_run(new, digest, 'overwrite-test', variables, 'history_then_live', {})
+        # Different relative time, identical absolute time: reuse old sample.
         with pytest.raises(Exception):
-            store.write_simulation(new, {'replace_test': 18446744073709551615}, 60000,
-                                   {'replace_test': 2}, replace_previous=True)
+            store.write_simulation(new, {'state': 18446744073709551615}, 0,
+                                   {'state': 2}, stamp, overwrite_history=True)
         with store.connection.cursor() as c:
             c.execute('SELECT COUNT(*) FROM sumo_samples WHERE run_id=%s', (old,))
-            assert c.fetchone()[0] == 1
-        store.write_simulation(new, ids, 60000, {'replace_test': 2}, replace_previous=True)
-        store.write_simulation(new, ids, 120000, {'replace_test': 3})
-        with store.connection.cursor() as c:
-            c.execute('SELECT DISTINCT run_id FROM sumo_samples')
-            assert c.fetchall() == ((new,),)
-            c.execute('SELECT COUNT(*) FROM sumo_values')
             assert c.fetchone()[0] == 2
-            c.execute('SELECT COUNT(*) FROM sumo_runs WHERE run_id=%s', (old,))
-            assert c.fetchone()[0] == 0
-            c.execute('SELECT COUNT(*) FROM raw_data')
-            assert c.fetchone()[0] == raw_count
+        store.write_simulation(new, ids, 0, {'state': 2}, stamp, overwrite_history=True)
+        store.write_simulation(new, ids, 0, {'state': 3}, stamp, overwrite_history=True)
+        with store.connection.cursor() as c:
+            c.execute('SELECT s.run_id,s.simulated_ms,v.numeric_value FROM sumo_samples s '
+                      'JOIN sumo_values v ON v.sample_id=s.id WHERE s.run_id IN (%s,%s) '
+                      'ORDER BY s.sensor_read_at', (old, new))
+            assert c.fetchall() == ((new, 0, 3.0), (old, 120000, 9.0))
+            c.execute('SELECT COUNT(*) FROM sumo_runs WHERE run_id IN (%s,%s)', (old, new))
+            assert c.fetchone()[0] == 2
     finally:
         store.close()

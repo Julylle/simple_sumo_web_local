@@ -31,17 +31,22 @@ const defaultMapping: Record<string,string> = {
   "Sumo__Plant__Influent__param__Ammonia_analyzer": "ns=2;s=GEeth.PLC128.JS_NH3N",
   "Sumo__Plant__Influent__param__TCOD": "ns=2;s=MySQL.Dev4.COD_nh3_sen_ratio",
   "Sumo__Plant__Influent__param__TKN": "ns=2;s=MySQL.Dev4.TN_nh3_sen_ratio",
-  "Sumo__Plant__Influent__param__TP": "ns=2;s=MySQL.Dev1.inlet_tp.inlet_tp__1_"
+  "Sumo__Plant__Influent__param__TP": "ns=2;s=MySQL.Dev1.inlet_tp.inlet_tp__1_",
+  "Sumo__Plant__Influent__param__COD_analyzer": "ns=2;s=GEeth.PLC128.JS_COD",
+  "Sumo__Plant__Primary1__param__TSS_sensor": "ns=2;s=GEeth.PLC132.PE_TSS_sensor",
+  "Sumo__Plant__Influent__param__frVSS_TSS": "ns=2;s=MySQL.Dev6.Influent_VSS_TSS_Ratio",
+  "Sumo__Plant__Primary1__param__TSS_lab": "ns=2;s=MySQL.Dev2.primary_eff_tss.primary_eff_tss__1_"
 };
-// These 12 configured inputs must remain selectable even if the SUMO API is offline.
+// These configured inputs must remain selectable even if the SUMO API is offline.
 const influentUnits: Record<string,string> = {
+  COD_analyzer: 'mg COD/L', TSS_lab: 'mg TSS/L', frVSS_TSS: '-',
   Q: 'm3/d', pH: 'pH', T: 'deg C', Ammonia_sensor_Horiba: 'mg/L',
   COD_lab: 'mg/L', TKN_lab: 'mg/L', Ammonia_lab: 'mg/L', TSS_sensor: 'mg/L',
   Ammonia_analyzer: 'mg/L', TCOD: 'mg COD/L', TKN: 'mg N/L', TP: 'mg P/L',
 };
 const options: Option[] = Object.keys(defaultMapping).map(name => {
   const label = name.split('__').pop()!;
-  return {name, label, unit: influentUnits[label]};
+  return {name, label: name.includes('__Primary1__') ? 'Primary1 · ' + label : label, unit: influentUnits[label]};
 });
 const defaultColumn = 'Sumo__Plant__Influent__param__Ammonia_sensor_Horiba';
 const defaultNode = defaultMapping[defaultColumn];
@@ -58,6 +63,7 @@ async function json(url:string,init?:RequestInit) {
 export function RealTimeSumo(){
   useLanguage();
   const [mapping,setMapping]=useLiveSetting<Record<string,string>>('mapping',{...defaultMapping,...defaultDoMapping,...defaultControlMapping});
+  const [inputMappingVersion,setInputMappingVersion]=useLiveSetting('inputMappingVersion',1);
   const [selectedColumn,setSelectedColumn]=useLiveSetting('selectedColumn',defaultColumn);
   const [nodeDraft,setNodeDraft]=useLiveSetting('nodeDraft',defaultNode);
   const [selectedDo,setSelectedDo]=useLiveSetting('selectedDo',doSensorOptions[0].name);
@@ -230,7 +236,7 @@ export function RealTimeSumo(){
   async function start(){
     if(!statusReady||!modelReady)return;
     if(simulationMode==='history_then_live'&&!historyValid){setError('Select a historical start time in the past.');return;}
-    if(!window.confirm(t('Start a new historical simulation? After the first successful result write, all previous SUMO simulation results in the history database will be replaced. Raw sensor data is kept. The latest checkpoint is replaced after the first completed interval. Download old results first if needed.')))return;
+    if(!window.confirm(t('Start a new historical simulation? Results at matching timestamps for the same model will be updated. Other timestamps and raw sensor data are kept. The latest checkpoint is replaced after the first completed interval.')))return;
     setBusy(true);setError('');
     try{
       const selected=Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()));
@@ -273,6 +279,11 @@ export function RealTimeSumo(){
   const checkpointReady=!!checkpoint&&!checkpoint.error;
   const running=!statusReady||busy||liveActive||modelUploading||!!preparingModel;
   const sensorGroup=(key:string)=>defaultDoMapping[key]?'do':defaultControlMapping[key]?'control':'influent';
+  useEffect(()=>{
+    if(!statusReady||liveActive||preparingModel||inputMappingVersion>=2)return;
+    setMapping(old=>({...{"Sumo__Plant__WAS_1__param__Qpumped_target": "ns=2;s=SiemensEth.PLC200.I_Q_WAS", "Sumo__Plant__WAS_2__param__Qpumped_target": "ns=2;s=GEeth.PLC147.II_Q_WAS", "Sumo__Plant__Clarifier1__param__Qsludge_target": "ns=2;s=Omron_PLC.PLC4.RAS_flow_Q_I", "Sumo__Plant__Clarifier2__param__Qsludge_target": "ns=2;s=GEeth.PLC147.RAS_flow_Q_II", "Sumo__Plant__MLR1_1__param__Qpumped_target": "ns=2;s=SiemensEth.PLC200.MLR _Flow_I_1", "Sumo__Plant__MLR1_2__param__Qpumped_target": "ns=2;s=SiemensEth.PLC200.MLR _Flow_I_2", "Sumo__Plant__Switchcontroller2__param__CVtreshold": "ns=2;s=MySQL.SWC1.parm_mlvss.parm_mlvss__1_", "Sumo__Plant__Switchcontroller3__param__CVtreshold": "ns=2;s=MySQL.SWC3.parm_mlvss.parm_mlvss__1_", "Sumo__Plant__Sideflowdivider9__param__Qpumped_target": "ns=2;s=GEeth.PLC128.Influent_flow_Q1", "Sumo__Plant__Influent__param__COD_analyzer": "ns=2;s=GEeth.PLC128.JS_COD", "Sumo__Plant__Primary1__param__TSS_sensor": "ns=2;s=GEeth.PLC132.PE_TSS_sensor", "Sumo__Plant__Influent__param__frVSS_TSS": "ns=2;s=MySQL.Dev6.Influent_VSS_TSS_Ratio", "Sumo__Plant__Primary1__param__TSS_lab": "ns=2;s=MySQL.Dev2.primary_eff_tss.primary_eff_tss__1_"},...old}));
+    setInputMappingVersion(2);
+  },[statusReady,liveActive,preparingModel,inputMappingVersion]);
   const comparisons = useSensorComparisons(liveRun?.id, !!liveRun?.result?.time_h.length, liveRun?.interval_minutes);
   const visualisationResult = liveRun?.result ? {...liveRun.result, comparison_series: comparisons?.series, simulation_series: mergeStoredSimulation(comparisons?.stored_series, liveRun.result)} : undefined;
   const chartMapping=liveRun?.mapping??mapping;
@@ -286,8 +297,8 @@ export function RealTimeSumo(){
     <section className="page-head"><div><h1>{t("SUMO Real-time Simulation")}</h1><p>{t("Cixi Eastern WWTP · KEPServer OPC UA · Manual simulation")}</p></div></section>
     <section className="config-card">
       <div className="section-title"><div><h2>{t("Simulation settings")}</h2></div></div>
-      <section className="sensor-setup" aria-labelledby="sensor-step-title">
-        <div className="sensor-heading"><div><h3 id="sensor-step-title">{t("Step1: Connect sensors through KEPServer")}</h3><p>{t("Review the prefilled influent, DO and additional control tags, then connect to read sensor data.")}</p></div><span className={'sensor-status '+(connected?'is-connected':'')} role="status">{t(connected?'Connected · every 5 s':'Disconnected')}</span></div>
+      <details className="sensor-setup sensor-step-collapsible" aria-labelledby="sensor-step-title">
+        <summary className="sensor-heading"><div><h3 id="sensor-step-title">{t("Step1: Connect sensors through KEPServer")}</h3><p>{t("Review the prefilled influent, DO and additional control tags, then connect to read sensor data.")}</p></div><span className={'sensor-status '+(connected?'is-connected':'')} role="status">{t(connected?'Connected · every 5 s':'Disconnected')}</span><span className="sensor-step-chevron" aria-hidden="true">⌄</span></summary>
         <div className="sensor-editor-grid sensor-input-grid">
           {[{title:'Influent variable',items:options,selected:selectedColumn,draft:nodeDraft,setSelected:setSelectedColumn,setDraft:setNodeDraft,kind:'influent'},
             {title:'DO sensors',items:doSensorOptions,selected:selectedDo,draft:doDraft,setSelected:setSelectedDo,setDraft:setDoDraft,kind:'do'},
@@ -312,16 +323,16 @@ export function RealTimeSumo(){
         </div>
         <div className="sensor-actions"><button className="primary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{t(busy?'Connecting...':'Connect')}</button><button className="secondary" disabled={!connected||busy} onClick={()=>setConnected(false)}>{t("Disconnect")}</button><span>{t("Check sensor connectivity and current readings. Plots update with simulation results.")}</span></div>
         {sensorError&&<div className="alert" role="alert">{t("Sensor update failed: ")}{t(sensorError)}</div>}
-      </section>
-      <section className="sensor-setup simulation-setup" aria-labelledby="simulation-step-title">
+      </details>
+      <section className={`sensor-setup simulation-setup ${resumeMode ? "" : "history-setup"}`} aria-labelledby="simulation-step-title">
         <div className="sensor-heading"><div><h3 id="simulation-step-title">{t("Step2: Set up real time simulation")}</h3><p>{t("Choose a simulation mode, then configure a new run or resume the latest saved simulation.")}</p></div><span className={'sensor-status '+((resumeMode?checkpointReady:modelReady)?'is-connected':'')} role="status">{t(liveActive?'Simulation active':preparingModel?'Preparing state':resumeMode?(checkpointReady?'Checkpoint ready':'No usable checkpoint'):modelReady?'Model ready':'Setup required')}</span></div>
-          <label className="sensor-field"><span>{t("Simulation mode")}</span><select value={simulationMode} disabled={running} onChange={e=>setSimulationMode(e.target.value)}>
+          <label className="sensor-field simulation-mode-field"><span>{t("Simulation mode")}</span><select value={simulationMode} disabled={running} onChange={e=>setSimulationMode(e.target.value)}>
             <option value="resume">{t("Resume a saved simulation")}</option>
             <option value="history_then_live">{t("Historical data → Live")}</option>
           </select></label>
-        <div className="sensor-editor-grid sensor-input-grid" style={resumeMode?{gridTemplateColumns:'1fr'}:undefined}>
+        <div className={`sensor-editor-grid sensor-input-grid ${resumeMode ? "" : "history-setup-grid"}`} style={resumeMode?{gridTemplateColumns:'1fr'}:undefined}>
         {!resumeMode&&<>
-        <article className="sensor-editor" aria-label={t("SUMO model selection")}>
+        <article className="sensor-editor history-model-card" aria-label={t("SUMO model selection")}>
           <div className="sensor-editor-title"><h4>{t("SUMO model")}</h4><span>{t("01 · Model")}</span></div>
         <label className="sensor-field"><span>{t("SUMO model")}</span>
           <select value={modelSource} disabled={running} onChange={e=>{setModelSource(e.target.value);setUploadedModel(null);setModelError('');}}>
@@ -333,7 +344,7 @@ export function RealTimeSumo(){
           <p className="calibration-note">{t("Use the built-in plant model or upload a compiled SUMO project that supports your sensor variables.")}</p>
           <p className="calibration-note simulation-card-footnote">{t("Prepared models are available until the backend restarts.")}</p>
         </article>
-        <article className="sensor-editor">
+        <article className="sensor-editor history-state-card">
           <div className="sensor-editor-title"><h4>{t("Initial state")}</h4><span>{t("02 · Preparation")}</span></div>
         <label className="sensor-field"><span>{t("Steady state")}</span>
           <select value={stateMode} disabled={running} onChange={e=>{setStateMode(e.target.value);setUploadedModel(null);setModelError('');}}>
@@ -359,7 +370,7 @@ export function RealTimeSumo(){
         {modelError&&<div className="alert" role="alert">{t(modelError)}</div>}
         </article>
         </>}
-        <article className="sensor-editor">
+        <article className={`sensor-editor ${resumeMode ? "" : "history-timing-card"}`}>
           <div className="sensor-editor-title"><h4>{t(resumeMode?'Saved simulation':'Simulation timing')}</h4><span>{t(resumeMode?'Latest checkpoint':'03 · Timing')}</span></div>
           {resumeMode?<>
             {!checkpoint?<p role="status">{t("No saved simulation is available yet. Run a simulation to create a checkpoint.")}</p>
@@ -386,7 +397,7 @@ export function RealTimeSumo(){
           </>:<>
           {simulationMode==='history_then_live'&&<>
             <label className="sensor-field"><span>{t("History start (local time)")}</span><input type="datetime-local" value={historyStart} disabled={running} onChange={e=>setHistoryStart(e.target.value)}/></label>
-            <ul className="calibration-note">
+            <ul className="calibration-note history-behavior">
               <li><strong>{t("Database:")}</strong>{t(" sumo_web_database for historical inputs and simulation results.")}</li>
               <li><strong>{t("Mode:")}</strong>{t(" Runs history in LimitTime intervals as fast as possible, then checks for new data at the same interval (default: 1 minute). Missing inputs keep their previous values.")}</li>
             </ul>
@@ -407,7 +418,7 @@ export function RealTimeSumo(){
       {(error||run?.error)&&<div className="alert" role="alert">{t(error||run?.error)}</div>}
       </section>
     </section>
-    <section className="config-card"><div className="section-title"><div><h2>{t("Output variables visualisation")}</h2></div><button className="secondary" disabled={!liveRun?.result?.time_h?.length||downloading} onClick={async()=>{setDownloading(true);try{const response=await fetch('/api/sumo/live/download');if(!response.ok)throw Error('Download failed');const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download='sumo_live_results.csv';link.click();URL.revokeObjectURL(url);}catch(e){setError(String(e));}finally{setDownloading(false);}}}>{t("Download results CSV")}</button></div>
+    <section className="config-card"><div className="section-title"><div><h2>{t("Simulation results")}</h2></div><button className="secondary" disabled={!liveRun?.result?.time_h?.length||downloading} onClick={async()=>{setDownloading(true);try{const response=await fetch('/api/sumo/live/download');if(!response.ok)throw Error('Download failed');const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download='sumo_live_results.csv';link.click();URL.revokeObjectURL(url);}catch(e){setError(String(e));}finally{setDownloading(false);}}}>{t("Download results CSV")}</button></div>
       <LiveSensorPlot title={t("Influent variables · simulation inputs")} groupTitle="Influent variables"
         options={influentPlotOptions} history={history} source="simulation"
         simulationResult={liveRun?.result} runId={liveRun?.id||'simulation-inputs'} />
@@ -415,7 +426,7 @@ export function RealTimeSumo(){
         options={doPlotOptions} history={history} className="live-do-card" source="simulation"
         simulationResult={liveRun?.result} runId={liveRun?.id||'simulation-inputs'} />
       {comparisons?.error&&<p role="status">{t(comparisons.error)}</p>}
-      {comparisons?.aggregation_seconds&&<p className="calibration-note">{t("Dotted sensor curves from ")}{t(comparisons.database || 'sumo_web_database')}{t(": recorded nitrate means over ")}{t(comparisons.aggregation_seconds)}{t(" seconds, compared with simulated SNOx. Missing measurements remain gaps.")}</p>}
+      {comparisons?.aggregation_seconds&&<p className="calibration-note">{t("Dotted sensor curves from ")}{t(comparisons.database || 'sumo_web_database')}{t(": recorded nitrate and MLSS/MLVSS means over ")}{t(comparisons.aggregation_seconds)}{t(" seconds, compared with corresponding simulation results. Missing measurements remain gaps.")}</p>}
       <SumoOutputDashboard localTime pollutants={realtimePollutantOptions} showInfluent={false} showDo={false} influent={influentPlotOptions} result={visualisationResult} runId={liveRun?.id||''}/>
     </section>
   </>;
