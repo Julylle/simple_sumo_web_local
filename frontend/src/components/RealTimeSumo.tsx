@@ -37,6 +37,12 @@ const defaultMapping: Record<string,string> = {
   "Sumo__Plant__Influent__param__frVSS_TSS": "ns=2;s=MySQL.Dev6.Influent_VSS_TSS_Ratio",
   "Sumo__Plant__Primary1__param__TSS_lab": "ns=2;s=MySQL.Dev2.primary_eff_tss.primary_eff_tss__1_"
 };
+// Dropdown selection only controls the editor, never the subscribed input set.
+const allDefaultMapping = {...defaultMapping,...defaultDoMapping,...defaultControlMapping};
+function completeMapping(saved: Record<string,string>): Record<string,string> {
+  return Object.fromEntries(Object.entries(allDefaultMapping).map(([name,node]) =>
+    [name, typeof saved[name] === 'string' && saved[name].trim() ? saved[name].trim() : node]));
+}
 // These configured inputs must remain selectable even if the SUMO API is offline.
 const influentUnits: Record<string,string> = {
   COD_analyzer: 'mg COD/L', TSS_lab: 'mg TSS/L', frVSS_TSS: '-',
@@ -62,7 +68,7 @@ async function json(url:string,init?:RequestInit) {
 }
 export function RealTimeSumo(){
   useLanguage();
-  const [mapping,setMapping]=useLiveSetting<Record<string,string>>('mapping',{...defaultMapping,...defaultDoMapping,...defaultControlMapping});
+  const [mapping,setMapping]=useLiveSetting<Record<string,string>>('mapping',allDefaultMapping);
   const [inputMappingVersion,setInputMappingVersion]=useLiveSetting('inputMappingVersion',1);
   const [selectedColumn,setSelectedColumn]=useLiveSetting('selectedColumn',defaultColumn);
   const [nodeDraft,setNodeDraft]=useLiveSetting('nodeDraft',defaultNode);
@@ -159,7 +165,7 @@ export function RealTimeSumo(){
       if(pollingRef.current)return;
       pollingRef.current=true;
       try{
-        const selected=Object.fromEntries(Object.entries(mappingRef.current).filter(([,node])=>node.trim()));
+        const selected=completeMapping(mappingRef.current);
         const result=await json('/api/kepserver/snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mapping:selected})});
         if(cancelled)return;
         const receivedAt=Date.now();
@@ -179,7 +185,8 @@ export function RealTimeSumo(){
   async function refresh(){
     setConnected(false);setBusy(true);setError('');setSensorError('');setRun(null);
     try {
-      const selected=Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()));
+      const selected=completeMapping(mapping);
+      setMapping(selected);
       const result=await json('/api/kepserver/snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mapping:selected})});
       setReadings(result.readings);
       const receivedAt=Date.now();
@@ -205,7 +212,7 @@ export function RealTimeSumo(){
         if(!Number.isFinite(Number(steadyTolerance))||Number(steadyTolerance)<=0)
           throw new Error('Convergence tolerance must be positive.');
         form.append('tolerance',steadyTolerance);
-        form.append('mapping',JSON.stringify(Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()))));
+        form.append('mapping',JSON.stringify(completeMapping(mapping)));
       }
       const model=await json('/api/sumo/live/models',{method:'POST',body:form});
       if(model.status==='ready')setUploadedModel(model);
@@ -239,7 +246,7 @@ export function RealTimeSumo(){
     if(!window.confirm(t('Start a new historical simulation? Results at matching timestamps for the same model will be updated. Other timestamps and raw sensor data are kept. The latest checkpoint is replaced after the first completed interval.')))return;
     setBusy(true);setError('');
     try{
-      const selected=Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()));
+      const selected=completeMapping(mapping);
       const result:LiveRun=await json('/api/sumo/live/start',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({mapping:selected,interval_minutes:limitInterval,model_id:uploadedModel?.id||'builtin',mode:simulationMode,
           ...(simulationMode==='history_then_live'?{history_start:new Date(historyStart).toISOString()}: {})})});
@@ -280,9 +287,9 @@ export function RealTimeSumo(){
   const running=!statusReady||busy||liveActive||modelUploading||!!preparingModel;
   const sensorGroup=(key:string)=>defaultDoMapping[key]?'do':defaultControlMapping[key]?'control':'influent';
   useEffect(()=>{
-    if(!statusReady||liveActive||preparingModel||inputMappingVersion>=2)return;
-    setMapping(old=>({...{"Sumo__Plant__WAS_1__param__Qpumped_target": "ns=2;s=SiemensEth.PLC200.I_Q_WAS", "Sumo__Plant__WAS_2__param__Qpumped_target": "ns=2;s=GEeth.PLC147.II_Q_WAS", "Sumo__Plant__Clarifier1__param__Qsludge_target": "ns=2;s=Omron_PLC.PLC4.RAS_flow_Q_I", "Sumo__Plant__Clarifier2__param__Qsludge_target": "ns=2;s=GEeth.PLC147.RAS_flow_Q_II", "Sumo__Plant__MLR1_1__param__Qpumped_target": "ns=2;s=SiemensEth.PLC200.MLR _Flow_I_1", "Sumo__Plant__MLR1_2__param__Qpumped_target": "ns=2;s=SiemensEth.PLC200.MLR _Flow_I_2", "Sumo__Plant__Switchcontroller2__param__CVtreshold": "ns=2;s=MySQL.SWC1.parm_mlvss.parm_mlvss__1_", "Sumo__Plant__Switchcontroller3__param__CVtreshold": "ns=2;s=MySQL.SWC3.parm_mlvss.parm_mlvss__1_", "Sumo__Plant__Sideflowdivider9__param__Qpumped_target": "ns=2;s=GEeth.PLC128.Influent_flow_Q1", "Sumo__Plant__Influent__param__COD_analyzer": "ns=2;s=GEeth.PLC128.JS_COD", "Sumo__Plant__Primary1__param__TSS_sensor": "ns=2;s=GEeth.PLC132.PE_TSS_sensor", "Sumo__Plant__Influent__param__frVSS_TSS": "ns=2;s=MySQL.Dev6.Influent_VSS_TSS_Ratio", "Sumo__Plant__Primary1__param__TSS_lab": "ns=2;s=MySQL.Dev2.primary_eff_tss.primary_eff_tss__1_"},...old}));
-    setInputMappingVersion(2);
+    if(!statusReady||liveActive||preparingModel||inputMappingVersion>=3)return;
+    setMapping(old=>completeMapping(old));
+    setInputMappingVersion(3);
   },[statusReady,liveActive,preparingModel,inputMappingVersion]);
   const comparisons = useSensorComparisons(liveRun?.id, !!liveRun?.result?.time_h.length, liveRun?.interval_minutes);
   const visualisationResult = liveRun?.result ? {...liveRun.result, comparison_series: comparisons?.series, simulation_series: mergeStoredSimulation(comparisons?.stored_series, liveRun.result)} : undefined;
@@ -298,7 +305,7 @@ export function RealTimeSumo(){
     <section className="config-card">
       <div className="section-title"><div><h2>{t("Simulation settings")}</h2></div></div>
       <details className="sensor-setup sensor-step-collapsible" aria-labelledby="sensor-step-title">
-        <summary className="sensor-heading"><div><h3 id="sensor-step-title">{t("Step1: Connect sensors through KEPServer")}</h3><p>{t("Review the prefilled influent, DO and additional control tags, then connect to read sensor data.")}</p></div><span className={'sensor-status '+(connected?'is-connected':'')} role="status">{t(connected?'Connected · every 5 s':'Disconnected')}</span><span className="sensor-step-chevron" aria-hidden="true">⌄</span></summary>
+        <summary className="sensor-heading"><div><h3 id="sensor-step-title">{t("Step1: Connect sensors through KEPServer")}</h3><p>{t("Connect reads all configured influent, DO and additional control tags. Dropdowns only select the mapping to edit.")}</p></div><span className={'sensor-status '+(connected?'is-connected':'')} role="status">{t(connected?'Connected · every 5 s':'Disconnected')}</span><span className="sensor-step-chevron" aria-hidden="true">⌄</span></summary>
         <div className="sensor-editor-grid sensor-input-grid">
           {[{title:'Influent variable',items:options,selected:selectedColumn,draft:nodeDraft,setSelected:setSelectedColumn,setDraft:setNodeDraft,kind:'influent'},
             {title:'DO sensors',items:doSensorOptions,selected:selectedDo,draft:doDraft,setSelected:setSelectedDo,setDraft:setDoDraft,kind:'do'},
@@ -312,11 +319,11 @@ export function RealTimeSumo(){
             <details className="sensor-mapping-list" onMouseLeave={event => { event.currentTarget.open = false; }}><summary>{t("Review mappings")}</summary>
               {Object.entries(mapping).filter(([key])=>sensorGroup(key)===group.kind).map(([column,node])=><div className="sensor-mapping-row" key={column}>
                 <div><strong>{t([...options,...doSensorOptions,...controlSensorOptions].find(o=>o.name===column)?.label||column.split('__').pop())}</strong><code>{node}</code></div>
-                <button className="secondary" aria-label={t('Remove '+column)} disabled={running} onClick={()=>{
+                <button className="secondary" aria-label={t('Reset '+column)} disabled={running} onClick={()=>{
                   setConnected(false);setHistory([]);setReadings([]);setSensorError('');
-                  setMapping(old=>{const next={...old};delete next[column];return next;});
-                  if(group.selected===column)group.setDraft('');
-                }}>{t("Remove")}</button>
+                  setMapping(old=>({...old,[column]:allDefaultMapping[column]}));
+                  if(group.selected===column)group.setDraft(allDefaultMapping[column]);
+                }}>{t("Reset")}</button>
               </div>)}
             </details>
           </article>)}
