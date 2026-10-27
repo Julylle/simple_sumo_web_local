@@ -33,9 +33,6 @@ const defaultMapping: Record<string,string> = {
   "Sumo__Plant__Influent__param__TKN": "ns=2;s=MySQL.Dev4.TN_nh3_sen_ratio",
   "Sumo__Plant__Influent__param__TP": "ns=2;s=MySQL.Dev1.inlet_tp.inlet_tp__1_",
   "Sumo__Plant__Influent__param__COD_analyzer": "ns=2;s=GEeth.PLC128.JS_COD",
-  "Sumo__Plant__Primary1__param__TSS_sensor": "ns=2;s=GEeth.PLC132.PE_TSS_sensor",
-  "Sumo__Plant__Influent__param__frVSS_TSS": "ns=2;s=MySQL.Dev6.Influent_VSS_TSS_Ratio",
-  "Sumo__Plant__Primary1__param__TSS_lab": "ns=2;s=MySQL.Dev2.primary_eff_tss.primary_eff_tss__1_"
 };
 // Dropdown selection only controls the editor, never the subscribed input set.
 const allDefaultMapping = {...defaultMapping,...defaultDoMapping,...defaultControlMapping};
@@ -71,6 +68,7 @@ export function RealTimeSumo(){
   useLanguage();
   const [storedMapping,setMapping]=useLiveSetting<Record<string,string>>('mapping',allDefaultMapping);
   const mapping=selectedMappings(storedMapping);
+  const [controlDefaultsVersion,setControlDefaultsVersion]=useLiveSetting('controlDefaultsVersion',0);
   const [selectedColumn,setSelectedColumn]=useLiveSetting('selectedColumn',defaultColumn);
   const [nodeDraft,setNodeDraft]=useLiveSetting('nodeDraft',defaultNode);
   const [selectedDo,setSelectedDo]=useLiveSetting('selectedDo',doSensorOptions[0].name);
@@ -291,6 +289,25 @@ export function RealTimeSumo(){
   const checkpointReady=!!checkpoint&&!checkpoint.error;
   const running=!statusReady||busy||liveActive||modelUploading||!!preparingModel;
   const sensorGroup=(key:string)=>defaultDoMapping[key]?'do':defaultControlMapping[key]?'control':'influent';
+  // Populate existing browser drafts once; subsequent Remove actions stay removed.
+  useEffect(()=>{
+    if(!statusReady||liveActive||preparingModel||controlDefaultsVersion>=1)return;
+    setMapping(old=>{
+      const next={...old};
+      for(const [name,node] of Object.entries(defaultControlMapping))
+        if(typeof next[name]!=='string'||!next[name].trim())next[name]=node;
+      return next;
+    });
+    setControlDraft(mapping[selectedControl] || defaultControlMapping[selectedControl] || '');
+    setConnected(false);
+    setControlDefaultsVersion(1);
+  },[statusReady,liveActive,preparingModel,controlDefaultsVersion]);
+  useEffect(()=>{
+    if(!defaultMapping[selectedColumn]){
+      setSelectedColumn(defaultColumn);
+      setNodeDraft(mapping[defaultColumn] || '');
+    }
+  },[selectedColumn]);
   useEffect(()=>{
     if(!defaultControlMapping[selectedControl]){
       setSelectedControl(controlSensorOptions[0].name);
