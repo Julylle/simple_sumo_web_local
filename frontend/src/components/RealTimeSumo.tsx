@@ -7,6 +7,7 @@ import { useLiveSetting } from '../hooks/useLiveSetting';
 import { defaultControlMapping, controlSensorOptions } from '../config/additionalControls';
 import { defaultDoMapping, doSensorOptions } from '../config/doSensors';
 import { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { LiveSensorPlot } from './LiveSensorPlot';
 import { SumoOutputDashboard } from './SumoOutputDashboard';
 
@@ -82,6 +83,7 @@ export function RealTimeSumo(){
   const [readings,setReadings]=useState<Reading[]>([]);
   const [history,setHistory]=useLiveSetting<Sample[]>('sensorHistory',[]);
   const [connected,setConnected]=useState(false);
+  const [connecting,setConnecting]=useState(false);
   const [sensorError,setSensorError]=useState('');
   const pollingRef=useRef(false);
   const mappingRef=useRef(mapping);
@@ -186,21 +188,24 @@ export function RealTimeSumo(){
     setMapping(old=>({...old,[column]:node}));setReadings([]);setRun(null);
   }
   async function refresh(){
-    setConnected(false);setBusy(true);setError('');setSensorError('');setRun(null);
+    setConnecting(true);setConnected(false);setBusy(true);setError('');setSensorError('');setRun(null);
     try {
       const selected=selectedMappings(mapping);
       setMapping(selected);
       const result=await json('/api/kepserver/snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mapping:selected})});
-      if(JSON.stringify(selected)!==JSON.stringify(selectedMappings(mappingRef.current)))return;
+      if(JSON.stringify(selected)!==JSON.stringify(selectedMappings(mappingRef.current)))
+        throw new Error('Sensor mappings changed while connecting. Please reconnect.');
       if(!Array.isArray(result.readings) || result.readings.length!==Object.keys(selected).length ||
           !Object.entries(selected).every(([column,node])=>result.readings.some(
             (r:Reading)=>r.column===column && r.node_id===node && Number.isFinite(r.value))))
         throw new Error('Incomplete sensor snapshot; reconnect before calculating.');
-      setConnected(true);
+      // Commit connection feedback before processing plot history.
+      flushSync(()=>{setConnected(true);setConnecting(false);});
       setReadings(result.readings);
       const receivedAt=Date.now();
       setHistory(old=>[...old,...(result.readings as Reading[]).map(r=>({...r,receivedAt:Number.isFinite(Date.parse(r.timestamp))?Date.parse(r.timestamp):receivedAt}))].filter(s=>s.receivedAt>=receivedAt-3600000).slice(-28800));
-    }catch(e){setError(String(e));}finally{setBusy(false);}
+    }catch(e){setConnected(false);setSensorError(String(e));}
+    finally{setConnecting(false);setBusy(false);}
   }
   async function uploadModel(){
     if(modelSource==='upload'&&!modelFile)return;
@@ -346,7 +351,7 @@ export function RealTimeSumo(){
     <section className="config-card">
       <div className="section-title"><div><h2>{t("Simulation settings")}</h2></div></div>
       <details className="sensor-setup sensor-step-collapsible" aria-labelledby="sensor-step-title">
-        <summary className="sensor-heading"><div><h3 id="sensor-step-title">{t("Step1: Connect sensors through KEPServer")}</h3><p>{t("Connect reads all configured influent, DO and additional control tags. Dropdowns only select the mapping to edit.")}</p></div><span className={'sensor-status '+(connected?'is-connected':'')} role="status">{t(connected?'Connected · every 5 s':'Disconnected')}</span><span className="sensor-step-chevron" aria-hidden="true">⌄</span></summary>
+        <summary className="sensor-heading"><div><h3 id="sensor-step-title">{t("Step1: Connect sensors through KEPServer")}</h3><p>{t("Connect reads all configured influent, DO and additional control tags. Dropdowns only select the mapping to edit.")}</p></div><span className={'sensor-status '+(connected?'is-connected':'')} role="status">{t(connecting?'Connecting...':connected?'Connected':'Disconnected')}</span><span className="sensor-step-chevron" aria-hidden="true">⌄</span></summary>
         <div className="sensor-editor-grid sensor-input-grid">
           {[{title:'Influent variable',items:options,selected:selectedColumn,draft:nodeDraft,setSelected:setSelectedColumn,setDraft:setNodeDraft,kind:'influent'},
             {title:'DO sensors',items:doSensorOptions,selected:selectedDo,draft:doDraft,setSelected:setSelectedDo,setDraft:setDoDraft,kind:'do'},
@@ -369,8 +374,8 @@ export function RealTimeSumo(){
             </details>
           </article>)}
         </div>
-        <div className="sensor-actions"><button className="primary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{t(busy?'Connecting...':'Connect')}</button><button className="secondary" disabled={!connected||busy} onClick={()=>setConnected(false)}>{t("Disconnect")}</button><span>{t("Check sensor connectivity and current readings. Plots update with simulation results.")}</span></div>
-        {sensorError&&<div className="alert" role="alert">{t("Sensor update failed: ")}{t(sensorError)}</div>}
+        <div className="sensor-actions"><button className="primary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{t(connecting?'Connecting...':connected?'Connected':'Connect')}</button><button className="secondary" disabled={!connected||busy} onClick={()=>setConnected(false)}>{t("Disconnect")}</button><span>{t("Check sensor connectivity and current readings. Plots update with simulation results.")}</span></div>
+        {sensorError&&<div className="alert" role="alert">{t("Sensor connection/read failed: ")}{t(sensorError)}</div>}
       </details>
       <section className={`sensor-setup simulation-setup ${resumeMode ? "" : "history-setup"}`} aria-labelledby="simulation-step-title">
         <div className="sensor-heading"><div><h3 id="simulation-step-title">{t("Step2: Set up real time simulation")}</h3><p>{t("Choose a simulation mode, then configure a new run or resume the latest saved simulation.")}</p></div><span className={'sensor-status '+((resumeMode?checkpointReady:modelReady)?'is-connected':'')} role="status">{t(liveActive?'Simulation active':preparingModel?'Preparing state':resumeMode?(checkpointReady?'Checkpoint ready':'No usable checkpoint'):modelReady?'Model ready':'Setup required')}</span></div>

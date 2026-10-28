@@ -1,5 +1,7 @@
 // UI copy only. Model identifiers, CSV headers and numeric values are never translated.
 export const zh: Record<string, string> = {
+  'Sensor connection/read failed:': '传感器连接或读取失败：',
+
   'Airflow: Excel time series': '曝气量：Excel 时间序列',
   '← Return activated sludge (RAS)': '← 回流活性污泥（RAS）',
   'Choose CSV file': '选择 CSV 文件',
