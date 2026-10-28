@@ -12,7 +12,7 @@ import { LiveSensorPlot } from './LiveSensorPlot';
 import { SumoOutputDashboard } from './SumoOutputDashboard';
 
 type Option = {name:string;label:string;unit:string};
-type Reading = {column:string;node_id:string;value:number;timestamp:string};
+type Reading = {column:string;node_id:string;value:number;timestamp:string;source?:string;age_seconds?:number;opc_error?:string};
 type Sample = Reading & { receivedAt: number };
 type UploadedModel = {id:string;name:string;state_name:string};
 type Checkpoint = {sensor_boundary_at?:string;boundary_source?:string;error?:string;model_name?:string;saved_at?:string;simulated_h?:number;interval_minutes?:number;mapping?:Record<string,string>};
@@ -173,6 +173,7 @@ export function RealTimeSumo(){
         const selected=selectedMappings(mappingRef.current);
         const result=await json('/api/kepserver/snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mapping:selected})});
         if(cancelled || JSON.stringify(selected)!==JSON.stringify(selectedMappings(mappingRef.current)))return;
+        if(result.unavailable?.length)throw new Error(result.unavailable.map((r:{column:string;reason:string;database_error:string})=>`${r.column}: ${r.reason}; ${r.database_error}`).join('\n'));
         const receivedAt=Date.now();
         setReadings(result.readings);
         setHistory(old=>[...old,...(result.readings as Reading[]).map(r=>({...r,receivedAt:Number.isFinite(Date.parse(r.timestamp))?Date.parse(r.timestamp):receivedAt}))].filter(s=>s.receivedAt>=receivedAt-3600000).slice(-28800));
@@ -195,6 +196,7 @@ export function RealTimeSumo(){
       const result=await json('/api/kepserver/snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mapping:selected})});
       if(JSON.stringify(selected)!==JSON.stringify(selectedMappings(mappingRef.current)))
         throw new Error('Sensor mappings changed while connecting. Please reconnect.');
+      if(result.unavailable?.length)throw new Error(result.unavailable.map((r:{column:string;reason:string;database_error:string})=>`${r.column}: ${r.reason}; ${r.database_error}`).join('\n'));
       if(!Array.isArray(result.readings) || result.readings.length!==Object.keys(selected).length ||
           !Object.entries(selected).every(([column,node])=>result.readings.some(
             (r:Reading)=>r.column===column && r.node_id===node && Number.isFinite(r.value))))
@@ -351,7 +353,7 @@ export function RealTimeSumo(){
     <section className="config-card">
       <div className="section-title"><div><h2>{t("Simulation settings")}</h2></div></div>
       <details className="sensor-setup sensor-step-collapsible" aria-labelledby="sensor-step-title">
-        <summary className="sensor-heading"><div><h3 id="sensor-step-title">{t("Step1: Connect sensors through KEPServer")}</h3><p>{t("Connect reads all configured influent, DO and additional control tags. Dropdowns only select the mapping to edit.")}</p></div><span className={'sensor-status '+(connected?'is-connected':'')} role="status">{t(connecting?'Connecting...':connected?'Connected':'Disconnected')}</span><span className="sensor-step-chevron" aria-hidden="true">⌄</span></summary>
+        <summary className="sensor-heading"><div><h3 id="sensor-step-title">{t("Step1: Connect sensors through KEPServer")}</h3><p>{t("Connect reads all configured influent, DO and additional control tags. Dropdowns only select the mapping to edit.")}</p></div><span className={'sensor-status '+(connected&&!sensorError?'is-connected':'')} role="status">{t(connecting?'Connecting...':sensorError?'Data unavailable':connected?'Connected':'Disconnected')}</span><span className="sensor-step-chevron" aria-hidden="true">⌄</span></summary>
         <div className="sensor-editor-grid sensor-input-grid">
           {[{title:'Influent variable',items:options,selected:selectedColumn,draft:nodeDraft,setSelected:setSelectedColumn,setDraft:setNodeDraft,kind:'influent'},
             {title:'DO sensors',items:doSensorOptions,selected:selectedDo,draft:doDraft,setSelected:setSelectedDo,setDraft:setDoDraft,kind:'do'},
@@ -374,7 +376,14 @@ export function RealTimeSumo(){
             </details>
           </article>)}
         </div>
-        <div className="sensor-actions"><button className="primary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{t(connecting?'Connecting...':connected?'Connected':'Connect')}</button><button className="secondary" disabled={!connected||busy} onClick={()=>setConnected(false)}>{t("Disconnect")}</button><span>{t("Check sensor connectivity and current readings. Plots update with simulation results.")}</span></div>
+        <div className="sensor-actions"><button className="primary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{t(connecting?'Connecting...':connected&&!sensorError?'Connected':'Connect')}</button><button className="secondary" disabled={!connected||busy} onClick={()=>setConnected(false)}>{t("Disconnect")}</button><span>{t("Check sensor connectivity and current readings. Plots update with simulation results.")}</span></div>
+        {connected&&!sensorError&&readings.some(r=>r.source?.startsWith('database'))&&<div role="status">
+          <p>{t('Connected using database fallback for the following sensors:')}</p>
+          <ul>{readings.filter(r=>r.source?.startsWith('database')).map(r=><li key={r.column}>
+            <code>{r.column}</code> · {r.source==='database_current'?t('Database at requested time'):t('Previous available database value')}
+            {' · '}{r.value}{' · '}{r.timestamp}{' · '}{t('Age (seconds):')}{Math.round(r.age_seconds||0)}
+          </li>)}</ul>
+        </div>}
         {sensorError&&<div className="alert" role="alert">{t("Sensor connection/read failed: ")}{t(sensorError)}</div>}
       </details>
       <section className={`sensor-setup simulation-setup ${resumeMode ? "" : "history-setup"}`} aria-labelledby="simulation-step-title">

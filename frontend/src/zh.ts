@@ -1,5 +1,10 @@
 // UI copy only. Model identifiers, CSV headers and numeric values are never translated.
 export const zh: Record<string, string> = {
+  'Data unavailable': '数据不可用',
+  'Connected using database fallback for the following sensors:': '已连接，以下传感器使用数据库备用数据：',
+  'Database at requested time': '对应时刻数据库数据',
+  'Previous available database value': '此前最近有效数据库数据',
+  'Age (seconds):': '数据年龄（秒）：',
   'Sensor connection/read failed:': '传感器连接或读取失败：',
 
   'Airflow: Excel time series': '曝气量：Excel 时间序列',

@@ -15,7 +15,7 @@ def test_snapshot_timeout_budget_and_success(monkeypatch, configured, expected):
     else:
         monkeypatch.setenv("KEPSERVER_SNAPSHOT_TIMEOUT_SECONDS", configured)
     readings = [{"column": next(iter(MAPPING)), "node_id": "ns=2;s=flow", "value": 10}]
-    monkeypatch.setattr(kepserver, "read_snapshot", AsyncMock(return_value=readings))
+    monkeypatch.setattr(kepserver, "read_resilient_snapshot", AsyncMock(return_value={"readings": readings}))
     async def wait(awaitable, timeout):
         assert timeout == expected
         return await awaitable
@@ -27,7 +27,7 @@ def test_snapshot_timeout_budget_and_success(monkeypatch, configured, expected):
     (RuntimeError("Bad sensor: ns=2;s=flow"), 502, "Bad sensor: ns=2;s=flow"),
 ])
 def test_failed_snapshot_is_not_success(monkeypatch, error, status, detail):
-    monkeypatch.setattr(kepserver, "read_snapshot", AsyncMock(side_effect=error))
+    monkeypatch.setattr(kepserver, "read_resilient_snapshot", AsyncMock(side_effect=error))
     with pytest.raises(HTTPException) as caught:
         asyncio.run(kepserver.snapshot(kepserver.SnapshotRequest(mapping=MAPPING)))
     assert caught.value.status_code == status
