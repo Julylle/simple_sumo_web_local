@@ -1,5 +1,6 @@
 // UI copy only. Model identifiers, CSV headers and numeric values are never translated.
 export const zh: Record<string, string> = {
+  'Database fallback details': '数据库备用数据详情',
   'Data unavailable': '数据不可用',
   'Connected using database fallback for the following sensors:': '已连接，以下传感器使用数据库备用数据：',
   'Database at requested time': '对应时刻数据库数据',

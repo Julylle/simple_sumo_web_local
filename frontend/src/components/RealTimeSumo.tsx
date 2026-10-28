@@ -377,13 +377,13 @@ export function RealTimeSumo(){
           </article>)}
         </div>
         <div className="sensor-actions"><button className="primary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{t(connecting?'Connecting...':connected&&!sensorError?'Connected':'Connect')}</button><button className="secondary" disabled={!connected||busy} onClick={()=>setConnected(false)}>{t("Disconnect")}</button><span>{t("Check sensor connectivity and current readings. Plots update with simulation results.")}</span></div>
-        {connected&&!sensorError&&readings.some(r=>r.source?.startsWith('database'))&&<div role="status">
-          <p>{t('Connected using database fallback for the following sensors:')}</p>
+        {connected&&!sensorError&&readings.some(r=>r.source?.startsWith('database'))&&<details className="sensor-mapping-list">
+          <summary>{t('Database fallback details')} ({readings.filter(r=>r.source?.startsWith('database')).length})</summary>
           <ul>{readings.filter(r=>r.source?.startsWith('database')).map(r=><li key={r.column}>
             <code>{r.column}</code> · {r.source==='database_current'?t('Database at requested time'):t('Previous available database value')}
             {' · '}{r.value}{' · '}{r.timestamp}{' · '}{t('Age (seconds):')}{Math.round(r.age_seconds||0)}
           </li>)}</ul>
-        </div>}
+        </details>}
         {sensorError&&<div className="alert" role="alert">{t("Sensor connection/read failed: ")}{t(sensorError)}</div>}
       </details>
       <section className={`sensor-setup simulation-setup ${resumeMode ? "" : "history-setup"}`} aria-labelledby="simulation-step-title">
