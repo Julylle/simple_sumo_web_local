@@ -152,10 +152,15 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
         engine.message_callback(1, '530041 Loaded')
         if resume_ms:
             emit(resume_ms)
-        emit(resume_ms+60000)
+            engine.message_callback(1, '530003 Simulation paused.')
+        else:
+            emit(resume_ms+60000)
         return 1
     def send(job, command):
-        if command.startswith('save '):
+        if command == 'continue;':
+            engine.message_callback(1, '530008 Simulation continues...')
+            emit(resume_ms+60000)
+        elif command.startswith('save '):
             path = Path(command.split('"')[1])
             path.write_text(f'<systemstate><time>{current}</time></systemstate>')
             engine.message_callback(1, '530045 Saved')
