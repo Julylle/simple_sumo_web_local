@@ -68,3 +68,27 @@ def test_legacy_fixed_history_already_in_direct_live_uses_fresh_input_clock():
         'history':{'start':'2026-01-01T00:00Z','end':'2026-01-01T00:01:30Z','completed':2,'last_inputs':{Q:1000}}}
     assert resume_history(metadata)['start'] == '2026-01-02T10:01:00+00:00'
     assert resume_history(metadata)['last_inputs'] == {Q:2000}
+
+
+def test_repeated_local_clock_checkpoints_keep_cumulative_resume_boundary(session):
+    from services import live_checkpoint as checkpoint
+    from services.resume_history import resume_history
+    from datetime import datetime, timezone, timedelta
+    origin = datetime(2026, 10, 29, tzinfo=timezone.utc)
+    cumulative = 167160000
+    for iteration in range(3):
+        session['resume_ms'] = cumulative
+        session['history'] = {'start': (origin + timedelta(minutes=iteration)).isoformat(),
+                              'model_time_offset_ms': cumulative, 'follow': True,
+                              'last_inputs': {Q: 1000}}
+        cumulative += 60000
+        checkpoint.save_checkpoint(session, session['model']['state'], cumulative)
+        metadata, model, folder = checkpoint.restore_checkpoint()
+        try:
+            assert metadata['simulated_ms'] == cumulative
+            assert metadata['native_simulated_ms'] == 60000
+            plan = resume_history(metadata)
+            assert plan['model_time_offset_ms'] == cumulative
+            assert plan['start'] == (origin + timedelta(minutes=iteration+1)).isoformat()
+        finally:
+            folder.cleanup()

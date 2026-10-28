@@ -91,7 +91,7 @@ def test_restart_resume_uses_checkpoint_time_mapping_and_model(session, monkeypa
 
 
 @pytest.mark.parametrize('database_enabled', [False, True])
-@pytest.mark.parametrize('resume_ms', [0, 120000])
+@pytest.mark.parametrize('resume_ms', [0, 120000, 167160000])
 @pytest.mark.parametrize('stop_at_boundary', [False, True])
 @pytest.mark.parametrize('locked_cleanup', [False, True])
 def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failure(session, tmp_path, monkeypatch, resume_ms, stop_at_boundary, locked_cleanup, database_enabled):
@@ -136,7 +136,7 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
     def emit(ms):
         nonlocal current
         current = ms
-        engine.datacomm_callback(1, {'Sumo__Time':ms, Q:1000, extra_output:5})
+        engine.datacomm_callback(1, {'Sumo__Time':ms-resume_ms, Q:1000, extra_output:5})
         if stop_at_boundary and ms == resume_ms+120000:
             session['stop'].set()
     def schedule(model, commands, **kwargs):
@@ -145,8 +145,8 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
         assert commands[1].startswith('load ')
         assert commands[2] == 'maptoic;'
         assert commands.index(f'set {Q} 1000;') > 2
-        assert f'set Sumo__Time {resume_ms};' in commands
-        assert f'set Sumo__LimitTime {resume_ms+60000};' in commands
+        assert 'set Sumo__Time 0;' in commands
+        assert 'set Sumo__LimitTime 60000;' in commands
         assert len([c for c in commands if c.startswith('load ')]) == 1
         assert ('all_state_test' in followed) == database_enabled
         engine.message_callback(1, '530041 Loaded')
@@ -165,7 +165,7 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
             path.write_text(f'<systemstate><time>{current}</time></systemstate>')
             engine.message_callback(1, '530045 Saved')
         elif command.startswith('set Sumo__LimitTime '):
-            emit(int(command.split()[-1].rstrip(';')))
+            emit(resume_ms + int(command.split()[-1].rstrip(';')))
     original_temporary_directory = live.tempfile.TemporaryDirectory
     temporary_folders = []
     cleanup_calls = []
@@ -207,6 +207,11 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
         assert session['status'] == 'failed'
         assert 'Sensor disconnected' in session['error']
     assert cp.checkpoint_info()['simulated_ms'] == resume_ms+120000
+    assert cp.checkpoint_info()['native_simulated_ms'] == 120000
+    assert cp.checkpoint_info()['native_time_offset_ms'] == resume_ms
+    if database_enabled:
+        assert [c.args[0] for c in recorder.submit.call_args_list] == [resume_ms+60000, resume_ms+120000]
+        assert [c.args[1]['Sumo__Time'] for c in recorder.submit.call_args_list] == [resume_ms+60000, resume_ms+120000]
     assert len(session['times']) == (3 if resume_ms else 2)
     assert session['variables'][extra_output] == ([None,5,5] if resume_ms else [5,5])
     assert cp.saved_snapshot()['result']['variables'][extra_output] == session['variables'][extra_output]
