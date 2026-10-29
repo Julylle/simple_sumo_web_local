@@ -33,7 +33,7 @@ export function SimulationCharts({ data, calibrationPanel, measurements }: {
       name: t(`${name} · Simulated`), legendgroup: name, line: { width: 2, color } });
     if (observed?.some(value => value !== null) && measurements.data) traces.push({
       x: measurements.data.time_h, y: observed, type: "scatter", mode: "markers",
-      name: t(`${name} · Measured`), legendgroup: name, marker: { size: 8, color } });
+      name: t(`${name} · Measured`), legendgroup: name, marker: { size: 8, color, opacity: 0.45 } });
     return traces;
   });
   return (
