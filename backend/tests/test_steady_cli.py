@@ -2,7 +2,7 @@ import json
 import re
 import zipfile
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, ANY
 
 import pytest
 from real_sim_1202 import steady_run
@@ -21,8 +21,11 @@ def test_default_mapping_matches_all_web_presets():
     pairs = dict(re.findall(r'["\']?(Sumo__Plant__[A-Za-z0-9_]+)["\']?\s*:\s*["\'](ns=2;s=[^"\']+)["\']', text))
     _, _, rows = load_mapping()
     defaults = {r['SumoName']: 'ns=2;s='+r['OpcTag'] for r in rows if r['SumoName'] in SENSOR_COLUMNS}
-    assert defaults == pairs
-    assert len(defaults) == 53
+    expected = {k:v for k,v in defaults.items() if not ('__CSTR' in k and not k.endswith('__SO2'))}
+    assert expected == pairs
+    assert len(pairs) == 55
+    assert len(defaults) == 73
+    assert set(defaults) == {r["SumoName"] for r in rows if r["IO"] == "I"}
 
 
 @pytest.mark.parametrize('source_mode', ['mapping', 'live-url'])
@@ -78,7 +81,7 @@ def test_cli_reads_once_applies_web_scaling_and_only_replaces_success(tmp_path, 
         snapshot = json.loads(next(tmp_path.glob('steady_sensor_inputs_*.json')).read_text())
         assert snapshot['readings'][0]['value'] == 41.7
         assert snapshot['values'][Q] == pytest.approx(1000)
-    read.assert_awaited_once_with({Q:'ns=2;s=flow'})
+    read.assert_awaited_once_with({Q:'ns=2;s=flow'}, progress=ANY, skip_bad=True, skipped=[])
     assert bool(calls) == (failure not in ('sensor', 'incomplete'))
     assert not list(tmp_path.glob('*.pending.xml'))
 
@@ -86,3 +89,66 @@ def test_cli_reads_once_applies_web_scaling_and_only_replaces_success(tmp_path, 
 def test_default_project_location_does_not_depend_on_cwd(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     assert Path(steady_run.SUMO_PROJECT).parent == Path(steady_run.__file__).resolve().parent
+
+
+@pytest.mark.parametrize("timeout", ["0", "-1", "nan", "inf"])
+def test_invalid_snapshot_timeout_rejected(timeout):
+    with pytest.raises(SystemExit):
+        steady_run.main(["--snapshot-timeout", timeout])
+
+
+def test_snapshot_deadline_preserves_state_and_identifies_stage(tmp_path, monkeypatch):
+    import asyncio
+    project = tmp_path / "test.sumo"
+    output = tmp_path / "state.xml"
+    output.write_text("<systemstate><old/></systemstate>")
+    mapping = tmp_path / "mapping.json"
+    mapping.write_text(json.dumps({Q: "ns=2;s=slow"}))
+    with zipfile.ZipFile(project, "w") as archive:
+        archive.writestr("variables.var", f"0\t{Q}\t0\tREAL\tParameter")
+    cancelled = []
+    async def blocked(mapping, *, progress, skip_bad, skipped):
+        progress(f"Reading 1/1: {Q} (ns=2;s=slow)")
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.append(True)
+    monkeypatch.setattr(kepserver, "read_snapshot", blocked)
+    def unexpected_solver(*args, **kwargs):
+        pytest.fail("Solver must not start after a failed snapshot")
+    monkeypatch.setattr(steady_run, "prepare_steady_state", unexpected_solver)
+    with pytest.raises(TimeoutError, match="ns=2;s=slow"):
+        steady_run.main(["--project", str(project), "--output", str(output),
+                         "--mapping", str(mapping), "--snapshot-timeout", "0.01"])
+    assert cancelled == [True]
+    assert output.read_text() == "<systemstate><old/></systemstate>"
+    assert not list(tmp_path.glob("steady_sensor_inputs_*.json"))
+
+
+@pytest.mark.parametrize("all_bad", [False, True])
+def test_bad_sensors_omitted_from_solver_inputs(tmp_path, monkeypatch, all_bad):
+    ras = "Sumo__Plant__Clarifier1__param__Qsludge_target"
+    project = tmp_path / "test.sumo"
+    output = tmp_path / "state.xml"
+    mapping = tmp_path / "mapping.json"
+    mapping.write_text(json.dumps({Q: "ns=2;s=flow", ras: "ns=2;s=bad_ras"}))
+    with zipfile.ZipFile(project, "w") as archive:
+        archive.writestr("variables.var", "\n".join(
+            f"0\t{name}\t0\tREAL\tParameter" for name in (Q, ras)))
+    async def read(mapping, *, progress, skip_bad, skipped):
+        assert skip_bad
+        for name in ([ras, Q] if all_bad else [ras]):
+            skipped.append({"column": name, "node_id": mapping[name], "reason": "Bad"})
+        return [] if all_bad else [{"column": Q, "value": 41.7, "timestamp": "2026-10-27T00:00:00Z"}]
+    monkeypatch.setattr(kepserver, "read_snapshot", read)
+    def solve(project_path, output_path, **kwargs):
+        assert ras not in kwargs["inputs"]
+        assert kwargs["inputs"] == ({} if all_bad else {Q: pytest.approx(1000)})
+        Path(output_path).write_text("<systemstate><new/></systemstate>")
+    monkeypatch.setattr(steady_run, "prepare_steady_state", solve)
+    steady_run.main(["--project", str(project), "--output", str(output), "--mapping", str(mapping)])
+    record = json.loads(next(tmp_path.glob("steady_sensor_inputs_*.json")).read_text())
+    assert record["skipped_bad_sensors"][0]["column"] == ras
+    assert ras not in record["values"]
+    if all_bad:
+        assert record["sensor_read_at"] is None

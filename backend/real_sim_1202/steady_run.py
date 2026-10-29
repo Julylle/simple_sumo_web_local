@@ -28,15 +28,17 @@ OUTPUT_VARIABLES = [
     "Sumo__Plant__Effluent1__SNOx",
     "Sumo__Plant__Influent__TCOD",
     "Sumo__Plant__Influent__Q",
-    "Sumo__Plant__Influent__I",
-    "Sumo__Plant__Influent__II",
+    "Sumo__Plant__Influent_I__Q",
+    "Sumo__Plant__Influent_II__Q",
+    "Sumo__Plant__II_Clarifier_eff__Q",
+    "Sumo__Plant__MLR_3__Q",
+    "Sumo__Plant__Effluent1__Q",
     "Sumo__Plant__Effluent1__TCOD",
     "Sumo__Plant__CSTR3_10__XVSS",
-    "Sumo__Plant__CSTR3_10__TCOD",
     "Sumo__MaxAbsDer",
 ]
 
-def prepare_steady_state(sumo_project_path, out_state_path, wall_run_seconds=5*60*60, inputs=None, tolerance=100, work_dir=None, timeout_state_path=None):
+def prepare_steady_state(sumo_project_path, out_state_path, wall_run_seconds=0.5*60*60, inputs=None, tolerance=1200, work_dir=None, timeout_state_path=None):
     import dynamita.tool as dtool
     import dynamita.scheduler as ds
     runtime_dir = str(Path(work_dir or os.getcwd()).resolve())
@@ -264,13 +266,17 @@ def main(argv=None):
     source = parser.add_mutually_exclusive_group()
     source.add_argument('--mapping', type=Path, help='JSON object mapping SUMO parameter names to full OPC UA node IDs.')
     source.add_argument('--live-url', help='Backend base URL to obtain the current live/checkpoint mapping; sensor values are freshly read.')
-    parser.add_argument('--tolerance', type=float, default=100)
-    parser.add_argument('--timeout-hours', type=float, default=5)
+    parser.add_argument('--tolerance', type=float, default=800)
+    parser.add_argument('--timeout-hours', type=float, default=0.5)
+    parser.add_argument('--snapshot-timeout', type=float, default=120,
+                        help='Total OPC UA snapshot timeout in seconds (default: 120); independent of solver timeout.')
     args = parser.parse_args(argv)
     if not math.isfinite(args.tolerance) or args.tolerance <= 0:
         parser.error('--tolerance must be positive and finite.')
     if not math.isfinite(args.timeout_hours) or args.timeout_hours <= 0:
         parser.error('--timeout-hours must be positive and finite.')
+    if not math.isfinite(args.snapshot_timeout) or args.snapshot_timeout <= 0:
+        parser.error('--snapshot-timeout must be positive and finite.')
     from services.kepserver import read_snapshot
     from services.model_inputs import scale_model_inputs
     from services.sensor_inputs import SENSOR_COLUMNS
@@ -302,18 +308,41 @@ def main(argv=None):
     writable = {row[1] for row in fields if len(row) > 4 and row[4] in ('Parameter', 'SystemParameter', 'Dimension')}
     if set(mapping) - writable:
         raise ValueError('SUMO inputs not writable: ' + ', '.join(sorted(set(mapping) - writable)))
+    skipped = []
+    snapshot_stage = "Preparing OPC UA snapshot"
+    def report_snapshot_progress(message):
+        nonlocal snapshot_stage
+        snapshot_stage = message
+        print(message, flush=True)
+        logging.info(message)
+
     async def fresh_snapshot():
-        return await asyncio.wait_for(read_snapshot(mapping), timeout=30)
+        try:
+            return await asyncio.wait_for(
+                read_snapshot(mapping, progress=report_snapshot_progress,
+                              skip_bad=True, skipped=skipped),
+                timeout=args.snapshot_timeout,
+            )
+        except asyncio.TimeoutError as exc:
+            raise TimeoutError(
+                f"OPC UA snapshot timed out (total limit {args.snapshot_timeout:g} s). "
+                f"Last stage: {snapshot_stage}. "
+                f"An individual OPC UA request may have timed out earlier: {exc}. "
+                "SUMO was not started; the existing state was not replaced."
+            ) from exc
     readings = asyncio.run(fresh_snapshot())
     values = scale_model_inputs(readings)
-    if set(values) != set(mapping):
+    skipped_columns = {r['column'] for r in skipped}
+    if (set(values) & skipped_columns or
+            set(values) | skipped_columns != set(mapping)):
         raise ValueError('Incomplete sensor snapshot; steady-state calculation was not started.')
     output.parent.mkdir(parents=True, exist_ok=True)
     snapshot = output.parent / f'steady_sensor_inputs_{datetime.now():%Y%m%d_%H%M%S_%f}.json'
     snapshot.write_text(json.dumps({'project': str(project), 'mapping': mapping,
-        'sensor_read_at': max(r['timestamp'] for r in readings), 'readings': readings,
+        'sensor_read_at': max((r['timestamp'] for r in readings), default=None),
+        'readings': readings, 'skipped_bad_sensors': skipped,
         'values': values, 'tolerance': args.tolerance}, indent=2, ensure_ascii=False, allow_nan=False), encoding='utf-8')
-    print(f'Read {len(values)} fresh inputs. Snapshot: {snapshot}', flush=True)
+    print(f'Read {len(values)} fresh inputs; skipped {len(skipped)} Bad sensors. Snapshot: {snapshot}', flush=True)
     for name, value in values.items():
         print(f'  {name} = {value:.15g}', flush=True)
     recovery = output.with_name(f'{output.stem}_unconverged_{datetime.now():%Y%m%d_%H%M%S_%f}.xml')

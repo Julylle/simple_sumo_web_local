@@ -43,8 +43,8 @@ def resume_history(metadata):
     return {
         'start': boundary.isoformat(), 'end': None, 'completed': 0, 'total': 0,
         'follow': True, 'caught_up': False,
-        # Native SUMO time continues from the checkpoint, not zero. The replay
-        # cursor counts only intervals after this resume boundary.
+        # Application time continues from the checkpoint; native job time restarts
+        # at zero. The replay cursor counts only intervals after this boundary.
         'model_time_offset_ms': metadata['simulated_ms'],
         'database': previous.get('database') or os.getenv('SUMO_HISTORY_DATABASE', 'sumo_web_database'),
         'resume_boundary_source': source,

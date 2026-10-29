@@ -24,7 +24,9 @@ def save_checkpoint(session, state_file, simulated_ms):
     root = ET.fromstring(state)
     if root.tag != 'systemstate' or not len(root):
         raise ValueError('Invalid checkpoint systemstate.')
-    metadata = {'version': 1, 'run_id': session['id'], 'simulated_ms': simulated_ms,
+    metadata = {'native_time_offset_ms': session.get('resume_ms', 0),
+                'native_simulated_ms': simulated_ms - session.get('resume_ms', 0),
+                'version': 1, 'run_id': session['id'], 'simulated_ms': simulated_ms,
                 'saved_at': datetime.now(timezone.utc).isoformat(),
                 'model_name': session['model']['name'], 'mapping': session['mapping'],
                 'interval_minutes': session['interval'] // 60,

@@ -43,8 +43,8 @@ def test_history_runs_without_wait_then_same_job_switches_to_live(session, tmp_p
     session['stop']=Stop()
     current=[session['resume_ms']]
     def emit(ms):
-        current[0]=ms
-        emissions.append((ms,clock[0]))
+        current[0]=session["resume_ms"]+ms
+        emissions.append((session["resume_ms"]+ms,clock[0]))
         engine.datacomm_callback(1,{'Sumo__Time':ms,Q:1000})
         if stop_in_history:session['stop'].set()
     def schedule(model,commands,**kwargs):
@@ -146,12 +146,12 @@ def test_follow_waits_for_collector_then_advances_same_job_and_can_stop(session,
             return self.is_set()
     session['stop']=Stop()
     def emit(ms):
-        emissions.append((ms,clock[0]))
+        emissions.append((session["resume_ms"]+ms,clock[0]))
         engine.datacomm_callback(1,{'Sumo__Time':ms,Q:1000})
     def schedule(model,commands,**kwargs):
         commands, followed = read_startup(commands, kwargs['variables'])
         assert Q in followed
-        engine.message_callback(1,'530041 Loaded');emit(resume_ms+60000);return 1
+        engine.message_callback(1,'530041 Loaded');emit(60000);return 1
     def send(job,command):
         if command.startswith('save '):
             Path(command.split('"')[1]).write_text('<systemstate><value/></systemstate>')
@@ -234,12 +234,14 @@ def test_missing_limit_time_defaults_to_one_minute():
     assert LiveStart(mapping={Q:'ns=2;s=tag'}).interval_minutes==1
 
 
-@pytest.mark.parametrize('outcome', ['timeout', 'stop', 'rejected', 'unknown_command'])
+@pytest.mark.parametrize('outcome', ['timeout', 'stop', 'rejected', 'unknown_command', 'paused_stuck', 'negative_clock'])
 def test_missing_native_boundary_does_not_wait_forever(session, tmp_path, monkeypatch, outcome):
     session['history'] = history_request('2026-01-01T00:00Z', None, 1)
     cp.save_checkpoint(session, session['model']['state'], 0)
     previous = cp.checkpoint_path().read_bytes()
-    monkeypatch.setenv('SUMO_BOUNDARY_TIMEOUT_SECONDS', '0.001')
+    monkeypatch.setenv('SUMO_BOUNDARY_TIMEOUT_SECONDS', '1.2' if outcome == 'paused_stuck' else '0.001')
+    if outcome == 'negative_clock':
+        session['resume_ms'] = session['sim_ms'] = 60000
     monkeypatch.setattr(live, 'ROOT', tmp_path)
     monkeypatch.setattr(live, 'open_recorder', Mock(return_value=None))
     monkeypatch.setattr(live, 'load_available_history', Mock(return_value=[
@@ -261,6 +263,11 @@ def test_missing_native_boundary_does_not_wait_forever(session, tmp_path, monkey
         monkeypatch.setitem(sys.modules, module.__name__, module)
     def schedule(*args, **kwargs):
         engine.message_callback(1, '230013 Unknown command fol' if outcome == 'unknown_command' else 'Native startup diagnostic')
+        if outcome in ('paused_stuck', 'negative_clock'):
+            engine.message_callback(1, '530041 Loaded')
+            engine.datacomm_callback(1, {'Sumo__Time': -1 if outcome == 'negative_clock' else 0, Q: 1000})
+        if outcome == 'paused_stuck':
+            engine.message_callback(1, '530003 Simulation paused.')
         if outcome == 'stop':
             session['stop'].set()
         return -1 if outcome == 'rejected' else 1
@@ -269,18 +276,24 @@ def test_missing_native_boundary_does_not_wait_forever(session, tmp_path, monkey
     assert cp.checkpoint_path().read_bytes() == previous
     assert session['history']['completed'] == 0
     diagnostic = '230013 Unknown command fol' if outcome == 'unknown_command' else 'Native startup diagnostic'
+    if outcome == 'paused_stuck':
+        diagnostic = '530003 Simulation paused.'
+        assert [c.args[1] for c in engine.sendCommand.call_args_list].count('continue;') == 1
+    elif outcome == 'negative_clock':
+        diagnostic = '530041 Loaded'
     assert session['last_sumo_message'] == diagnostic
     assert session['sumo_commands'][0].startswith('execute ')
     assert session['sumo_commands'][1] == f'set {Q} 90000;'
     assert session['sumo_commands'][2].startswith('load ')
-    assert session['sumo_commands'][-1] == 'start;'
+    assert session['sumo_commands'][-1] == ('continue;' if outcome == 'paused_stuck' else 'start;')
     if outcome == 'stop':
         assert session['status'] == 'stopped'
         assert session['phase'] == 'stopped_before_boundary'
     else:
         assert session['status'] == 'failed'
-        assert diagnostic in session['error']
-        assert {'timeout': 'did not reach LimitTime', 'rejected': 'rejected the job', 'unknown_command': 'SUMO rejected command'}[outcome] in session['error']
+        if outcome != 'negative_clock':
+            assert diagnostic in session['error']
+        assert {'timeout': 'did not reach LimitTime', 'rejected': 'rejected the job', 'unknown_command': 'SUMO rejected command', 'paused_stuck': 'continuation attempted: True', 'negative_clock': 'Invalid SUMO local clock'}[outcome] in session['error']
     engine.cleanup.assert_called_once()
     assert not any(call.args[1].startswith('save ') for call in engine.sendCommand.call_args_list)
 

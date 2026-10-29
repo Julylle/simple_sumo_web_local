@@ -7,11 +7,12 @@ import { useLiveSetting } from '../hooks/useLiveSetting';
 import { defaultControlMapping, controlSensorOptions } from '../config/additionalControls';
 import { defaultDoMapping, doSensorOptions } from '../config/doSensors';
 import { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { LiveSensorPlot } from './LiveSensorPlot';
 import { SumoOutputDashboard } from './SumoOutputDashboard';
 
 type Option = {name:string;label:string;unit:string};
-type Reading = {column:string;node_id:string;value:number;timestamp:string};
+type Reading = {column:string;node_id:string;value:number;timestamp:string;source?:string;age_seconds?:number;opc_error?:string};
 type Sample = Reading & { receivedAt: number };
 type UploadedModel = {id:string;name:string;state_name:string};
 type Checkpoint = {sensor_boundary_at?:string;boundary_source?:string;error?:string;model_name?:string;saved_at?:string;simulated_h?:number;interval_minutes?:number;mapping?:Record<string,string>};
@@ -35,8 +36,15 @@ const defaultMapping: Record<string,string> = {
   "Sumo__Plant__Influent__param__COD_analyzer": "ns=2;s=GEeth.PLC128.JS_COD",
   "Sumo__Plant__Primary1__param__TSS_sensor": "ns=2;s=GEeth.PLC132.PE_TSS_sensor",
   "Sumo__Plant__Influent__param__frVSS_TSS": "ns=2;s=MySQL.Dev6.Influent_VSS_TSS_Ratio",
-  "Sumo__Plant__Primary1__param__TSS_lab": "ns=2;s=MySQL.Dev2.primary_eff_tss.primary_eff_tss__1_"
+  "Sumo__Plant__Primary1__param__TSS_lab": "ns=2;s=MySQL.Dev2.primary_eff_tss.primary_eff_tss__1_",
 };
+// Dropdown selection only controls the editor, never the subscribed input set.
+const allDefaultMapping = {...defaultMapping,...defaultDoMapping,...defaultControlMapping};
+function selectedMappings(saved: Record<string,string>): Record<string,string> {
+  return Object.fromEntries(Object.entries(saved).filter(([name,node]) =>
+    name in allDefaultMapping && typeof node === 'string' && node.trim()
+  ).map(([name,node]) => [name,node.trim()]));
+}
 // These configured inputs must remain selectable even if the SUMO API is offline.
 const influentUnits: Record<string,string> = {
   COD_analyzer: 'mg COD/L', TSS_lab: 'mg TSS/L', frVSS_TSS: '-',
@@ -62,8 +70,10 @@ async function json(url:string,init?:RequestInit) {
 }
 export function RealTimeSumo(){
   useLanguage();
-  const [mapping,setMapping]=useLiveSetting<Record<string,string>>('mapping',{...defaultMapping,...defaultDoMapping,...defaultControlMapping});
-  const [inputMappingVersion,setInputMappingVersion]=useLiveSetting('inputMappingVersion',1);
+  const [storedMapping,setMapping]=useLiveSetting<Record<string,string>>('mapping',allDefaultMapping);
+  const mapping=selectedMappings(storedMapping);
+  const [influentDefaultsVersion,setInfluentDefaultsVersion]=useLiveSetting('influentDefaultsVersion',0);
+  const [controlDefaultsVersion,setControlDefaultsVersion]=useLiveSetting('controlDefaultsVersion',0);
   const [selectedColumn,setSelectedColumn]=useLiveSetting('selectedColumn',defaultColumn);
   const [nodeDraft,setNodeDraft]=useLiveSetting('nodeDraft',defaultNode);
   const [selectedDo,setSelectedDo]=useLiveSetting('selectedDo',doSensorOptions[0].name);
@@ -72,7 +82,8 @@ export function RealTimeSumo(){
   const [controlDraft,setControlDraft]=useLiveSetting('controlDraft',defaultControlMapping[controlSensorOptions[0].name]);
   const [readings,setReadings]=useState<Reading[]>([]);
   const [history,setHistory]=useLiveSetting<Sample[]>('sensorHistory',[]);
-  const [connected,setConnected]=useLiveSetting('connected',false);
+  const [connected,setConnected]=useState(false);
+  const [connecting,setConnecting]=useState(false);
   const [sensorError,setSensorError]=useState('');
   const pollingRef=useRef(false);
   const mappingRef=useRef(mapping);
@@ -159,9 +170,10 @@ export function RealTimeSumo(){
       if(pollingRef.current)return;
       pollingRef.current=true;
       try{
-        const selected=Object.fromEntries(Object.entries(mappingRef.current).filter(([,node])=>node.trim()));
+        const selected=selectedMappings(mappingRef.current);
         const result=await json('/api/kepserver/snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mapping:selected})});
-        if(cancelled)return;
+        if(cancelled || JSON.stringify(selected)!==JSON.stringify(selectedMappings(mappingRef.current)))return;
+        if(result.unavailable?.length)throw new Error(result.unavailable.map((r:{column:string;reason:string;database_error:string})=>`${r.column}: ${r.reason}; ${r.database_error}`).join('\n'));
         const receivedAt=Date.now();
         setReadings(result.readings);
         setHistory(old=>[...old,...(result.readings as Reading[]).map(r=>({...r,receivedAt:Number.isFinite(Date.parse(r.timestamp))?Date.parse(r.timestamp):receivedAt}))].filter(s=>s.receivedAt>=receivedAt-3600000).slice(-28800));
@@ -177,15 +189,25 @@ export function RealTimeSumo(){
     setMapping(old=>({...old,[column]:node}));setReadings([]);setRun(null);
   }
   async function refresh(){
-    setConnected(false);setBusy(true);setError('');setSensorError('');setRun(null);
+    setConnecting(true);setConnected(false);setBusy(true);setError('');setSensorError('');setRun(null);
     try {
-      const selected=Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()));
+      const selected=selectedMappings(mapping);
+      setMapping(selected);
       const result=await json('/api/kepserver/snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mapping:selected})});
+      if(JSON.stringify(selected)!==JSON.stringify(selectedMappings(mappingRef.current)))
+        throw new Error('Sensor mappings changed while connecting. Please reconnect.');
+      if(result.unavailable?.length)throw new Error(result.unavailable.map((r:{column:string;reason:string;database_error:string})=>`${r.column}: ${r.reason}; ${r.database_error}`).join('\n'));
+      if(!Array.isArray(result.readings) || result.readings.length!==Object.keys(selected).length ||
+          !Object.entries(selected).every(([column,node])=>result.readings.some(
+            (r:Reading)=>r.column===column && r.node_id===node && Number.isFinite(r.value))))
+        throw new Error('Incomplete sensor snapshot; reconnect before calculating.');
+      // Commit connection feedback before processing plot history.
+      flushSync(()=>{setConnected(true);setConnecting(false);});
       setReadings(result.readings);
       const receivedAt=Date.now();
       setHistory(old=>[...old,...(result.readings as Reading[]).map(r=>({...r,receivedAt:Number.isFinite(Date.parse(r.timestamp))?Date.parse(r.timestamp):receivedAt}))].filter(s=>s.receivedAt>=receivedAt-3600000).slice(-28800));
-      setConnected(true);
-    }catch(e){setError(String(e));}finally{setBusy(false);}
+    }catch(e){setConnected(false);setSensorError(String(e));}
+    finally{setConnecting(false);setBusy(false);}
   }
   async function uploadModel(){
     if(modelSource==='upload'&&!modelFile)return;
@@ -205,7 +227,7 @@ export function RealTimeSumo(){
         if(!Number.isFinite(Number(steadyTolerance))||Number(steadyTolerance)<=0)
           throw new Error('Convergence tolerance must be positive.');
         form.append('tolerance',steadyTolerance);
-        form.append('mapping',JSON.stringify(Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()))));
+        form.append('mapping',JSON.stringify(selectedMappings(mapping)));
       }
       const model=await json('/api/sumo/live/models',{method:'POST',body:form});
       if(model.status==='ready')setUploadedModel(model);
@@ -239,7 +261,7 @@ export function RealTimeSumo(){
     if(!window.confirm(t('Start a new historical simulation? Results at matching timestamps for the same model will be updated. Other timestamps and raw sensor data are kept. The latest checkpoint is replaced after the first completed interval.')))return;
     setBusy(true);setError('');
     try{
-      const selected=Object.fromEntries(Object.entries(mapping).filter(([,node])=>node.trim()));
+      const selected=selectedMappings(mapping);
       const result:LiveRun=await json('/api/sumo/live/start',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({mapping:selected,interval_minutes:limitInterval,model_id:uploadedModel?.id||'builtin',mode:simulationMode,
           ...(simulationMode==='history_then_live'?{history_start:new Date(historyStart).toISOString()}: {})})});
@@ -254,7 +276,6 @@ export function RealTimeSumo(){
       setLiveRun(result);
       if(result.checkpoint?.mapping)setMapping(result.checkpoint.mapping);
       if(result.checkpoint?.interval_minutes)setLimitMinutes(String(result.checkpoint.interval_minutes));
-      setConnected(true);
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
   async function stop(){
@@ -279,11 +300,45 @@ export function RealTimeSumo(){
   const checkpointReady=!!checkpoint&&!checkpoint.error;
   const running=!statusReady||busy||liveActive||modelUploading||!!preparingModel;
   const sensorGroup=(key:string)=>defaultDoMapping[key]?'do':defaultControlMapping[key]?'control':'influent';
+  // Fill all influent defaults once without overwriting custom tags or future removals.
   useEffect(()=>{
-    if(!statusReady||liveActive||preparingModel||inputMappingVersion>=2)return;
-    setMapping(old=>({...{"Sumo__Plant__WAS_1__param__Qpumped_target": "ns=2;s=SiemensEth.PLC200.I_Q_WAS", "Sumo__Plant__WAS_2__param__Qpumped_target": "ns=2;s=GEeth.PLC147.II_Q_WAS", "Sumo__Plant__Clarifier1__param__Qsludge_target": "ns=2;s=Omron_PLC.PLC4.RAS_flow_Q_I", "Sumo__Plant__Clarifier2__param__Qsludge_target": "ns=2;s=GEeth.PLC147.RAS_flow_Q_II", "Sumo__Plant__MLR1_1__param__Qpumped_target": "ns=2;s=SiemensEth.PLC200.MLR _Flow_I_1", "Sumo__Plant__MLR1_2__param__Qpumped_target": "ns=2;s=SiemensEth.PLC200.MLR _Flow_I_2", "Sumo__Plant__Switchcontroller2__param__CVtreshold": "ns=2;s=MySQL.SWC1.parm_mlvss.parm_mlvss__1_", "Sumo__Plant__Switchcontroller3__param__CVtreshold": "ns=2;s=MySQL.SWC3.parm_mlvss.parm_mlvss__1_", "Sumo__Plant__Sideflowdivider9__param__Qpumped_target": "ns=2;s=GEeth.PLC128.Influent_flow_Q1", "Sumo__Plant__Influent__param__COD_analyzer": "ns=2;s=GEeth.PLC128.JS_COD", "Sumo__Plant__Primary1__param__TSS_sensor": "ns=2;s=GEeth.PLC132.PE_TSS_sensor", "Sumo__Plant__Influent__param__frVSS_TSS": "ns=2;s=MySQL.Dev6.Influent_VSS_TSS_Ratio", "Sumo__Plant__Primary1__param__TSS_lab": "ns=2;s=MySQL.Dev2.primary_eff_tss.primary_eff_tss__1_"},...old}));
-    setInputMappingVersion(2);
-  },[statusReady,liveActive,preparingModel,inputMappingVersion]);
+    if(!statusReady||liveActive||preparingModel||influentDefaultsVersion>=2)return;
+    setMapping(old=>{
+      const next={...old};
+      for(const [name,node] of Object.entries(defaultMapping))
+        if(typeof next[name]!=='string'||!next[name].trim())next[name]=node;
+      return next;
+    });
+    const column=defaultMapping[selectedColumn]?selectedColumn:defaultColumn;
+    setNodeDraft(mapping[column] || defaultMapping[column]);
+    setConnected(false);
+    setInfluentDefaultsVersion(2);
+  },[statusReady,liveActive,preparingModel,influentDefaultsVersion]);
+  // Populate existing browser drafts once; subsequent Remove actions stay removed.
+  useEffect(()=>{
+    if(!statusReady||liveActive||preparingModel||controlDefaultsVersion>=2)return;
+    setMapping(old=>{
+      const next={...old};
+      for(const [name,node] of Object.entries(defaultControlMapping))
+        if(typeof next[name]!=='string'||!next[name].trim())next[name]=node;
+      return next;
+    });
+    setControlDraft(mapping[selectedControl] || defaultControlMapping[selectedControl] || '');
+    setConnected(false);
+    setControlDefaultsVersion(2);
+  },[statusReady,liveActive,preparingModel,controlDefaultsVersion]);
+  useEffect(()=>{
+    if(!defaultMapping[selectedColumn]){
+      setSelectedColumn(defaultColumn);
+      setNodeDraft(mapping[defaultColumn] || '');
+    }
+  },[selectedColumn]);
+  useEffect(()=>{
+    if(!defaultControlMapping[selectedControl]){
+      setSelectedControl(controlSensorOptions[0].name);
+      setControlDraft(mapping[controlSensorOptions[0].name] || '');
+    }
+  },[selectedControl]);
   const comparisons = useSensorComparisons(liveRun?.id, !!liveRun?.result?.time_h.length, liveRun?.interval_minutes);
   const visualisationResult = liveRun?.result ? {...liveRun.result, comparison_series: comparisons?.series, simulation_series: mergeStoredSimulation(comparisons?.stored_series, liveRun.result)} : undefined;
   const chartMapping=liveRun?.mapping??mapping;
@@ -298,7 +353,7 @@ export function RealTimeSumo(){
     <section className="config-card">
       <div className="section-title"><div><h2>{t("Simulation settings")}</h2></div></div>
       <details className="sensor-setup sensor-step-collapsible" aria-labelledby="sensor-step-title">
-        <summary className="sensor-heading"><div><h3 id="sensor-step-title">{t("Step1: Connect sensors through KEPServer")}</h3><p>{t("Review the prefilled influent, DO and additional control tags, then connect to read sensor data.")}</p></div><span className={'sensor-status '+(connected?'is-connected':'')} role="status">{t(connected?'Connected · every 5 s':'Disconnected')}</span><span className="sensor-step-chevron" aria-hidden="true">⌄</span></summary>
+        <summary className="sensor-heading"><div><h3 id="sensor-step-title">{t("Step1: Connect sensors through KEPServer")}</h3><p>{t("Connect reads all configured influent, DO and additional control tags. Dropdowns only select the mapping to edit.")}</p></div><span className={'sensor-status '+(connected&&!sensorError?'is-connected':'')} role="status">{t(connecting?'Connecting...':sensorError?'Data unavailable':connected?'Connected':'Disconnected')}</span><span className="sensor-step-chevron" aria-hidden="true">⌄</span></summary>
         <div className="sensor-editor-grid sensor-input-grid">
           {[{title:'Influent variable',items:options,selected:selectedColumn,draft:nodeDraft,setSelected:setSelectedColumn,setDraft:setNodeDraft,kind:'influent'},
             {title:'DO sensors',items:doSensorOptions,selected:selectedDo,draft:doDraft,setSelected:setSelectedDo,setDraft:setDoDraft,kind:'do'},
@@ -321,8 +376,15 @@ export function RealTimeSumo(){
             </details>
           </article>)}
         </div>
-        <div className="sensor-actions"><button className="primary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{t(busy?'Connecting...':'Connect')}</button><button className="secondary" disabled={!connected||busy} onClick={()=>setConnected(false)}>{t("Disconnect")}</button><span>{t("Check sensor connectivity and current readings. Plots update with simulation results.")}</span></div>
-        {sensorError&&<div className="alert" role="alert">{t("Sensor update failed: ")}{t(sensorError)}</div>}
+        <div className="sensor-actions"><button className="primary" disabled={running||!Object.values(mapping).some(Boolean)} onClick={refresh}>{t(connecting?'Connecting...':connected&&!sensorError?'Connected':'Connect')}</button><button className="secondary" disabled={!connected||busy} onClick={()=>setConnected(false)}>{t("Disconnect")}</button><span>{t("Check sensor connectivity and current readings. Plots update with simulation results.")}</span></div>
+        {connected&&!sensorError&&readings.some(r=>r.source?.startsWith('database'))&&<details className="sensor-mapping-list">
+          <summary>{t('Database fallback details')} ({readings.filter(r=>r.source?.startsWith('database')).length})</summary>
+          <ul>{readings.filter(r=>r.source?.startsWith('database')).map(r=><li key={r.column}>
+            <code>{r.column}</code> · {r.source==='database_current'?t('Database at requested time'):t('Previous available database value')}
+            {' · '}{r.value}{' · '}{r.timestamp}{' · '}{t('Age (seconds):')}{Math.round(r.age_seconds||0)}
+          </li>)}</ul>
+        </details>}
+        {sensorError&&<div className="alert" role="alert">{t("Sensor connection/read failed: ")}{t(sensorError)}</div>}
       </details>
       <section className={`sensor-setup simulation-setup ${resumeMode ? "" : "history-setup"}`} aria-labelledby="simulation-step-title">
         <div className="sensor-heading"><div><h3 id="simulation-step-title">{t("Step2: Set up real time simulation")}</h3><p>{t("Choose a simulation mode, then configure a new run or resume the latest saved simulation.")}</p></div><span className={'sensor-status '+((resumeMode?checkpointReady:modelReady)?'is-connected':'')} role="status">{t(liveActive?'Simulation active':preparingModel?'Preparing state':resumeMode?(checkpointReady?'Checkpoint ready':'No usable checkpoint'):modelReady?'Model ready':'Setup required')}</span></div>
@@ -340,7 +402,7 @@ export function RealTimeSumo(){
             <option value="upload">{t("Upload a SUMO model")}</option>
           </select>
         </label>
-        {modelSource==='upload'&&<label className="sensor-field"><span>{t("SUMO project (.sumo, max 50 MB)")}</span><input type="file" accept=".sumo" disabled={running} onChange={e=>{setModelFile(e.target.files?.[0]||null);setUploadedModel(null);setModelError('');}}/></label>}
+        {modelSource==='upload'&&<label className="sensor-field"><span>{t("SUMO project (.sumo, max 50 MB)")}</span><input className="sumo-file-input" type="file" accept=".sumo" disabled={running} onChange={e=>{setModelFile(e.target.files?.[0]||null);setUploadedModel(null);setModelError('');}}/></label>}
           <p className="calibration-note">{t("Use the built-in plant model or upload a compiled SUMO project that supports your sensor variables.")}</p>
           <p className="calibration-note simulation-card-footnote">{t("Prepared models are available until the backend restarts.")}</p>
         </article>
@@ -353,7 +415,7 @@ export function RealTimeSumo(){
           </select>
         </label>
         {stateMode==='upload'?<>
-          <label className="sensor-field"><span>{t("Steady-state file (.xml, max 20 MB)")}</span><input type="file" accept=".xml" disabled={running} onChange={e=>{setStateFile(e.target.files?.[0]||null);setStateFilename(e.target.files?.[0]?.name||'');setUploadedModel(null);setModelError('');}}/></label>
+          <label className="sensor-field"><span>{t("Steady-state file (.xml, max 20 MB)")}</span><input className="sumo-file-input" type="file" accept=".xml" disabled={running} onChange={e=>{setStateFile(e.target.files?.[0]||null);setStateFilename(e.target.files?.[0]?.name||'');setUploadedModel(null);setModelError('');}}/></label>
           {stateFilename&&!stateFile&&!uploadedModel&&<p role="status">{t("Reselect ")}{t(stateFilename)}{t(" to prepare this state, or clear the selection to use the built-in state. ")}<button className="secondary" disabled={running} onClick={()=>setStateFilename('')}>{t("Clear file selection")}</button></p>}
           <p className="calibration-note">{t(modelSource==='builtin'&&!stateFile&&!stateFilename?'Using the built-in sumo_steady_state.xml. Select a file to replace it.':'Choose a steady-state XML matching the selected model.')}</p>
         </>:<>

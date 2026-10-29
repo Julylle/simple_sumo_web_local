@@ -2,10 +2,12 @@
 import asyncio
 import csv
 import io
+import math
+import os
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from services.sensor_inputs import SENSOR_COLUMNS
-from services.kepserver import read_snapshot
+from services.sensor_snapshot import read_resilient_snapshot
 from services.sumo_data import save_input
 
 router = APIRouter()
@@ -15,8 +17,20 @@ class SnapshotRequest(BaseModel):
 
 @router.post("/kepserver/snapshot")
 async def snapshot(request: SnapshotRequest):
+    timeout = 120.0
     try:
-        return {"readings": await asyncio.wait_for(read_snapshot(request.mapping), timeout=30)}
+        timeout = float(os.getenv("KEPSERVER_SNAPSHOT_TIMEOUT_SECONDS", "120"))
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("KEPSERVER_SNAPSHOT_TIMEOUT_SECONDS must be finite and positive")
+        return await asyncio.wait_for(
+            read_resilient_snapshot(request.mapping, opc_timeout=min(60, timeout / 2)), timeout=timeout)
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(
+            status_code=504,
+            detail=f"KEPServer snapshot timed out after up to {timeout:g} seconds: "
+                   f"{exc or 'the selected sensor snapshot was not completed'}. "
+                   "Check the selected tags or increase KEPSERVER_SNAPSHOT_TIMEOUT_SECONDS.",
+        ) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"KEPServer read failed: {exc}") from exc
 

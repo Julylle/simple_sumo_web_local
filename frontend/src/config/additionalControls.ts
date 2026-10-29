@@ -13,7 +13,27 @@ export const defaultControlMapping: Record<string,string> = {
   Sumo__Plant__Switchcontroller2__param__CVtreshold: "ns=2;s=MySQL.SWC1.parm_mlvss.parm_mlvss__1_",
   Sumo__Plant__Switchcontroller3__param__CVtreshold: "ns=2;s=MySQL.SWC3.parm_mlvss.parm_mlvss__1_",
   Sumo__Plant__Sideflowdivider9__param__Qpumped_target: "ns=2;s=GEeth.PLC128.Influent_flow_Q1",
+  Sumo__Plant__param__Qair_1_1_sensor: 'ns=2;s=SiemensEth.PLC204.I_airflow1_new',
+  Sumo__Plant__param__Qair_1_2_sensor: 'ns=2;s=SiemensEth.PLC204.I_airflow2',
+};
+const controlUnits: Record<string,string> = {
+  "Sumo__Plant__Sideflowdivider3__param__Qpumped_target": "m3.d-1",
+  "Sumo__Plant__Carbon1__param__Q": "m3.d-1",
+  "Sumo__Plant__Carbon2__param__Q": "m3.d-1",
+  "Sumo__Plant__Metal1__param__Q": "m3.d-1",
+  "Sumo__Plant__WAS_1__param__Qpumped_target": "m3.d-1",
+  "Sumo__Plant__WAS_2__param__Qpumped_target": "m3.d-1",
+  "Sumo__Plant__Clarifier1__param__Qsludge_target": "m3.d-1",
+  "Sumo__Plant__Clarifier2__param__Qsludge_target": "m3.d-1",
+  "Sumo__Plant__MLR1_1__param__Qpumped_target": "m3.d-1",
+  "Sumo__Plant__MLR1_2__param__Qpumped_target": "m3.d-1",
+  "Sumo__Plant__param__Qair_1_1_sensor": "m3 gas.d-1 at NTP",
+  "Sumo__Plant__param__Qair_1_2_sensor": "m3 gas.d-1 at NTP",
+  "Sumo__Plant__Switchcontroller2__param__CVtreshold": "g TSS.m-3",
+  "Sumo__Plant__Switchcontroller3__param__CVtreshold": "g TSS.m-3",
+  "Sumo__Plant__Sideflowdivider9__param__Qpumped_target": "m3.d-1",
+
 };
 export const controlSensorOptions = Object.keys(defaultControlMapping).map(name => ({
-  name, label: `${name.split('__')[2]} · ${name.split('__').pop()}`, unit: name.endsWith('__CVtreshold') ? 'mg VSS/L' : 'm3/d',
+  name, label: `${(name.includes('__Plant__param__') ? 'Plant' : name.split('__')[2])} · ${name.split('__').pop()}`, unit: controlUnits[name],
 }));

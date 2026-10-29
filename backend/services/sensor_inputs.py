@@ -1,4 +1,4 @@
-"""Supported live inputs: 16 influent, 24 reactor DO and 13 additional control parameters."""
+"""Supported live inputs: 16 influent, 24 reactor DO and 33 additional control parameters."""
 from services.sumo_data import ALLOWED_COLUMNS
 
 DO_COLUMNS = tuple(
@@ -19,6 +19,26 @@ CONTROL_COLUMNS = (
     'Sumo__Plant__Switchcontroller2__param__CVtreshold',
     'Sumo__Plant__Switchcontroller3__param__CVtreshold',
     'Sumo__Plant__Sideflowdivider9__param__Qpumped_target',
+    'Sumo__Plant__CSTR1_4__param__Ammonia_sensor',
+    'Sumo__Plant__CSTR1_4__param__Nitrate_sensor',
+    'Sumo__Plant__CSTR23__param__PO4_P_sensor',
+    'Sumo__Plant__CSTR1_10__param__MLSS_lab',
+    'Sumo__Plant__CSTR1_10__param__MLVSS_lab',
+    'Sumo__Plant__CSTR2_10__param__MLSS_lab',
+    'Sumo__Plant__CSTR2_10__param__MLVSS_lab',
+    'Sumo__Plant__CSTR3_10__param__MLSS_lab',
+    'Sumo__Plant__CSTR3_10__param__MLVSS_lab',
+    'Sumo__Plant__CSTR4_10__param__MLSS_lab',
+    'Sumo__Plant__CSTR4_10__param__MLVSS_lab',
+    'Sumo__Plant__CSTR1_10__param__Nitrate_sensor',
+    'Sumo__Plant__param__Qair_1_1_sensor',
+    'Sumo__Plant__param__Qair_1_2_sensor',
+    'Sumo__Plant__CSTR1_6__param__DO_sensor',
+    'Sumo__Plant__CSTR1_7__param__DO_sensor',
+    'Sumo__Plant__CSTR1_9__param__DO_sensor',
+    'Sumo__Plant__CSTR1_10__param__MLSS_sensor',
+    'Sumo__Plant__CSTR3_10__param__Nitrate_sensor',
+    'Sumo__Plant__CSTR3_4__param__Nitrate_sensor',
 )
 EXTRA_INFLUENT_COLUMNS = ('Sumo__Plant__Influent__param__COD_analyzer', 'Sumo__Plant__Primary1__param__TSS_sensor', 'Sumo__Plant__Influent__param__frVSS_TSS', 'Sumo__Plant__Primary1__param__TSS_lab')
 SENSOR_COLUMNS = (*ALLOWED_COLUMNS, *EXTRA_INFLUENT_COLUMNS, *DO_COLUMNS, *CONTROL_COLUMNS)

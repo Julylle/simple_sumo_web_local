@@ -197,6 +197,11 @@ def _worker(s):
     max_ms = resume_ms + 365 * dtool.day
     done = threading.Event()
     boundary = threading.Event()
+    paused = threading.Event()
+    paused_at = 0.0
+    native_time_ms = None
+    callback_count = 0
+    resumed_boundary = False
     errors = []
     state_loaded = False
     save_requested = False
@@ -260,10 +265,15 @@ def _worker(s):
         dtool.extract_dll_from_project(str(project), dll)
         ds.sumo.setParallelJobs(1)
         def message(job_id, msg):
-            nonlocal state_loaded
+            nonlocal state_loaded, paused_at
             logging.info("Live SUMO %s job %s: %s", s["id"], job_id, msg)
             with _lock:
                 s["last_sumo_message"] = msg
+            if msg.startswith("530003"):
+                paused_at = time.monotonic()
+                paused.set()
+            elif msg.startswith(("530002", "530008")):
+                paused.clear()
             if msg.startswith("530041"):
                 state_loaded = True
             if msg.startswith(("230013", "230046", "230008")):
@@ -278,10 +288,24 @@ def _worker(s):
                 errors.append("SUMO finished unexpectedly.")
                 done.set()
         def sample(job_id, data):
+            nonlocal native_time_ms, callback_count
             try:
                 ms = data.get("Sumo__Time")
                 if ms is None or not math.isfinite(float(ms)):
                     raise ValueError("Missing SUMO simulation time.")
+                previous_native_ms = native_time_ms
+                native_time_ms = float(ms)
+                callback_count += 1
+                if native_time_ms < 0 or (previous_native_ms is not None and native_time_ms < previous_native_ms):
+                    raise RuntimeError(f"Invalid SUMO local clock: {native_time_ms} ms after {previous_native_ms} ms")
+                # Each new native job starts at zero. Only application-facing
+                # times include the checkpoint offset, exactly once.
+                ms = resume_ms + native_time_ms
+                logging.info("Live SUMO %s data callback #%s: native_ms=%s cumulative_ms=%s target_ms=%s offset_ms=%s",
+                             s['id'], callback_count, native_time_ms, ms, target_ms, resume_ms)
+                if ms > target_ms:
+                    raise RuntimeError("SUMO advanced beyond its input boundary.")
+                data = {**data, "Sumo__Time": ms}
                 with _lock:
                     # Some schedulers emit the loaded checkpoint at start; do not duplicate it.
                     if s["times"] and float(ms)/3600000 <= s["times"][-1]:
@@ -305,10 +329,10 @@ def _worker(s):
         ds.sumo.message_callback = message
         ds.sumo.datacomm_callback = sample
         commands = [*project_parameter_commands(project),
-                    f'load "{initial.as_posix()}";', "maptoic;", f"set Sumo__Time {resume_ms};",
-                    f"set Sumo__StopTime {max_ms};", f"set Sumo__DataComm {step_ms};",
+                    f'load "{initial.as_posix()}";', "maptoic;", "set Sumo__Time 0;",
+                    f"set Sumo__StopTime {max_ms - resume_ms};", f"set Sumo__DataComm {step_ms};",
                     "mode dynamic;", *(f"set {k} {v};" for k,v in values.items()),
-                    f"set Sumo__LimitTime {target_ms};", "start;"]
+                    f"set Sumo__LimitTime {target_ms - resume_ms};", "start;"]
         def record_commands(items):
             for command in items:
                 logging.info("Live SUMO %s command: %r", s["id"], command)
@@ -372,12 +396,27 @@ def _worker(s):
                     # Do not label an unfinished interval as a saved checkpoint.
                     interrupted_before_boundary = True
                     break
+                # A paused engine cannot advance merely by waiting longer. Allow
+                # one explicit continuation per boundary, after a grace period
+                # for an in-flight boundary callback. Never infer completion.
+                if (paused.is_set() and state_loaded and not resumed_boundary
+                        and native_time_ms is not None and native_time_ms < target_ms - resume_ms
+                        and time.monotonic() - paused_at >= 1):
+                    resumed_boundary = True
+                    paused.clear()
+                    logging.warning("Live SUMO %s paused at %s ms before %s ms; continuing once",
+                                    s['id'], native_time_ms, target_ms - resume_ms)
+                    send_command(job, "continue;")
+                    continue
                 if time.monotonic() - boundary_started >= boundary_timeout:
                     raise RuntimeError(
-                        f"SUMO did not reach LimitTime {target_ms / 1000:g} s within "
+                        f"SUMO did not reach LimitTime {(target_ms - resume_ms) / 1000:g} s "
+                        f"(cumulative target {target_ms / 1000:g} s) within "
                         f"{boundary_timeout:g} seconds of wall time. Last model time: "
                         f"{s['sim_ms'] / 1000:g} s; initial state loaded: {state_loaded}. "
                         f"Last SUMO message: {s.get('last_sumo_message', 'none received')}. "
+                        f"Native callbacks: {callback_count}; last native time (ms): {native_time_ms}; "
+                        f"paused: {paused.is_set()}; continuation attempted: {resumed_boundary}. "
                         "Previous completed checkpoint retained. Inspect backend SUMO logs; "
                         "for a known slow model, increase SUMO_BOUNDARY_TIMEOUT_SECONDS.")
                 continue
@@ -453,10 +492,11 @@ def _worker(s):
             target_ms = current_ms + step_ms
             if following and target_ms >= max_ms:
                 max_ms = target_ms + 365 * dtool.day
-                send_command(job, f'set Sumo__StopTime {max_ms};')
+                send_command(job, f'set Sumo__StopTime {max_ms - resume_ms};')
             send_command(job, f"set Sumo__DataComm {step_ms};")
             boundary_started = time.monotonic()
-            send_command(job, f"set Sumo__LimitTime {target_ms};")
+            resumed_boundary = False
+            send_command(job, f"set Sumo__LimitTime {target_ms - resume_ms};")
             with _lock:
                 s["phase"] = "replaying_history" if s.get("mode") == "history" else "simulating_live"
         if errors:
