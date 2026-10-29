@@ -292,3 +292,5 @@
 }
 .simulation-setup .sumo-file-input:disabled { opacity: .55; cursor: not-allowed; }
 .simulation-setup .sumo-file-input:disabled::file-selector-button { cursor: not-allowed; }
+
+.mapping-indicator{display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:13px}.simulation-input-details{margin:12px 0;overflow:auto}.simulation-input-details table{width:100%;border-collapse:collapse;font-size:12px}.simulation-input-details th,.simulation-input-details td{padding:10px;text-align:left;border-bottom:1px solid #e2e8f0}.simulation-input-details code{overflow-wrap:anywhere}

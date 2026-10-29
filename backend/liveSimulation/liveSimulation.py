@@ -19,6 +19,7 @@ from database.simulation import open_recorder
 from services.historical_inputs import history_request, load_history, load_available_history, parse_time, history_time
 from services.kepserver import read_snapshot
 from services.model_inputs import scale_model_inputs
+from services.input_provenance import ModelInputs, input_provenance
 from services.sensor_inputs import SENSOR_COLUMNS
 from services.sumo_startup import write_startup_script, project_parameter_commands
 from services.live_progress import live_progress
@@ -48,6 +49,7 @@ def snapshot():
                 "last_sumo_message": s.get("last_sumo_message"),
                 "sumo_commands": list(s.get("sumo_commands", [])),
                 "diagnostics": live_progress(s),
+                "input_provenance": s.get("input_provenance"),
                 "phase": s["phase"], "simulated_h": s["sim_ms"] / 3600000,
                 "samples": len(s["times"]), "result": {
                     "sensor_timestamps": list(s.get("sensor_timestamps", [None] * len(s["times"]))),
@@ -132,7 +134,10 @@ def export_csv():
 def _read_model_inputs(mapping):
     """Read fresh raw sensors and convert flows only at the SUMO input boundary."""
     readings = asyncio.run(read_snapshot(mapping))
-    return scale_model_inputs(readings)
+    values = ModelInputs(scale_model_inputs(readings))
+    values.provenance = {r['column']: {'source': 'opcua', 'collected_from': r['timestamp'],
+        'collected_to': r['timestamp'], 'sample_count': 1} for r in readings}
+    return values
 
 
 def _wait_for_collected_windows(s, done=None):
@@ -251,6 +256,8 @@ def _worker(s):
         # First read must succeed before creating a SUMO job.
         values = windows[0].values if replaying else _read_model_inputs(s["mapping"])
         s["input_read_at"] = windows[0].timestamp if replaying else datetime.now(timezone.utc).isoformat()
+        with _lock:
+            s['input_provenance'] = input_provenance(s['mapping'], values, resume_ms, step_ms, windows[0] if replaying else None)
         # Release the scheduler before removing a directory containing its loaded DLL.
         workspace = tempfile.TemporaryDirectory(prefix="sumo_live_", ignore_cleanup_errors=True)
         directory = workspace.name
@@ -440,6 +447,7 @@ def _worker(s):
                     history['completed'] += 1
                     window = windows[history_index]
                     history['last_inputs'] = dict(window.values)
+                    history['last_input_provenance'] = dict(window.provenance)
                     history['held_inputs'] = list(window.held_inputs)
                     history['held_at'] = window.timestamp
                     history['held_intervals'] = history.get('held_intervals', 0) + bool(window.held_inputs)
@@ -486,6 +494,9 @@ def _worker(s):
                     s["input_read_at"] = datetime.now(timezone.utc).isoformat()
                 except Exception as exc:
                     raise RuntimeError("OPC UA unavailable; live simulation stopped: " + str(exc)) from exc
+            with _lock:
+                s['input_provenance'] = input_provenance(s['mapping'], new_values, current_ms, step_ms,
+                                                        windows[history_index] if replaying else None)
             interval_started = time.perf_counter()
             for key, value in new_values.items():
                 send_command(job, f"set {key} {value};")

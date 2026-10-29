@@ -17,7 +17,10 @@ type Sample = Reading & { receivedAt: number };
 type UploadedModel = {id:string;name:string;state_name:string};
 type Checkpoint = {sensor_boundary_at?:string;boundary_source?:string;error?:string;model_name?:string;saved_at?:string;simulated_h?:number;interval_minutes?:number;mapping?:Record<string,string>};
 type HistoryProgress = {start:string;end:string|null;completed:number;total:number;database:string;follow?:boolean;caught_up?:boolean};
-type LiveRun = {diagnostics?:LiveDiagnostics;sumo_commands?:string[];last_sumo_message?:string;mode?:'history'|'live';history?:HistoryProgress|null;mapping?:Record<string,string>;interval_minutes?:number;checkpoint?:Checkpoint|null;id?:string;model_id?:string;model_name?:string;status:string;phase?:string;error?:string;simulated_h?:number;samples?:number;result?:{sensor_timestamps?:(string|null)[];time_h:number[];variables:Record<string,number[]>}};
+type InputProvenance = {start_ms:number;end_ms:number;interval_start:string|null;interval_end:string|null;inputs:{column:string;node_id:string;model_value:number;source:string;original_source?:string;collected_from?:string;collected_to?:string;sample_count?:number}[]};
+function localCollectionTime(value?:string|null){return value?new Date(value).toLocaleString():t('Unknown');}
+function inputSource(source:string){return t(({opcua:'OPC UA real time',database_interval:'Database interval average',held_previous:'Previous available input',database_current:'Database at requested time',database_previous:'Previous available database value'} as Record<string,string>)[source]||'Unknown');}
+type LiveRun = {input_provenance?:InputProvenance;diagnostics?:LiveDiagnostics;sumo_commands?:string[];last_sumo_message?:string;mode?:'history'|'live';history?:HistoryProgress|null;mapping?:Record<string,string>;interval_minutes?:number;checkpoint?:Checkpoint|null;id?:string;model_id?:string;model_name?:string;status:string;phase?:string;error?:string;simulated_h?:number;samples?:number;result?:{sensor_timestamps?:(string|null)[];time_h:number[];variables:Record<string,number[]>}};
 type Run = {id:string;status:'running'|'completed'|'failed';error?:string;progress_pct?:number;phase?:string;result?:{sensor_timestamps?:(string|null)[];time_h:number[];variables:Record<string,number[]>}};
 // Default influent mappings from Julylle/Sumo_web/demo_MLE/cx_opcua1124.csv.
 const defaultMapping: Record<string,string> = {
@@ -354,6 +357,22 @@ export function RealTimeSumo(){
       <div className="section-title"><div><h2>{t("Simulation settings")}</h2></div></div>
       <details className="sensor-setup sensor-step-collapsible" aria-labelledby="sensor-step-title">
         <summary className="sensor-heading"><div><h3 id="sensor-step-title">{t("Step1: Connect sensors through KEPServer")}</h3><p>{t("Connect reads all configured influent, DO and additional control tags. Dropdowns only select the mapping to edit.")}</p></div><span className={'sensor-status '+(connected&&!sensorError?'is-connected':'')} role="status">{t(connecting?'Connecting...':sensorError?'Data unavailable':connected?'Connected':'Disconnected')}</span><span className="sensor-step-chevron" aria-hidden="true">⌄</span></summary>
+        <p className="mapping-indicator" role="status">
+          <span className={'sensor-status '+(connected&&!sensorError?'is-connected':'')}>{t('Sensor mappings')}: {Object.keys(mapping).length} / {Object.keys(allDefaultMapping).length}</span>
+          {' · '}{t(connecting?'Checking readings':sensorError?'Data unavailable':connected?'Readings available':'Not checked')}
+          {connected&&!sensorError&&<> · OPC UA: {readings.filter(r=>r.source==='opcua').length} · {t('Database fallback')}: {readings.filter(r=>r.source?.startsWith('database')).length}</>}
+        </p>
+        {liveRun?.input_provenance&&<details className="sensor-mapping-list simulation-input-details">
+          <summary>{t('Simulation interval input details')}</summary>
+          <p>{t('Latest interval')}: {liveRun.input_provenance.start_ms/1000}–{liveRun.input_provenance.end_ms/1000} s · {t(liveRun.phase||liveRun.status)}</p>
+          {liveRun.input_provenance.interval_start&&<p>{localCollectionTime(liveRun.input_provenance.interval_start)} → {localCollectionTime(liveRun.input_provenance.interval_end)}</p>}
+          <p>{t('Times use this computer’s local timezone')}: {Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
+          <table><thead><tr><th>{t('Sensor mapping')}</th><th>{t('Data source')}</th><th>{t('Model input value')}</th><th>{t('Collected from')}</th><th>{t('Collected to')}</th><th>{t('Samples')}</th></tr></thead>
+          <tbody>{liveRun.input_provenance.inputs.map(r=><tr key={r.column}>
+            <td><code>{r.column}</code><br/><small>{r.node_id}</small></td><td>{inputSource(r.source)}{r.original_source&&<> ({inputSource(r.original_source)})</>}</td>
+            <td>{r.model_value}</td><td>{localCollectionTime(r.collected_from)}</td><td>{localCollectionTime(r.collected_to)}</td><td>{r.sample_count??'—'}</td>
+          </tr>)}</tbody></table>
+        </details>}
         <div className="sensor-editor-grid sensor-input-grid">
           {[{title:'Influent variable',items:options,selected:selectedColumn,draft:nodeDraft,setSelected:setSelectedColumn,setDraft:setNodeDraft,kind:'influent'},
             {title:'DO sensors',items:doSensorOptions,selected:selectedDo,draft:doDraft,setSelected:setSelectedDo,setDraft:setDoDraft,kind:'do'},

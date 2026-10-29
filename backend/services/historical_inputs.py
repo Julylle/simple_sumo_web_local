@@ -1,5 +1,5 @@
 """Bulk indexed history reads. Raw values use the same conversion as live OPC inputs."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 import math
 import os
@@ -62,6 +62,7 @@ class HistoryWindow:
     timestamp: str
     values: dict[str, float]
     held_inputs: tuple[str, ...] = ()
+    provenance: dict = field(default_factory=dict)
 
 
 def load_history(mapping, interval_seconds, history):
@@ -79,7 +80,7 @@ def load_history(mapping, interval_seconds, history):
         return []
     filters, params = mapping_filters(mapping)
     sql = '''SELECT FLOOR(TIMESTAMPDIFF(MICROSECOND,%s,r.acquired_at)/%s) AS bucket,
-                    v.sumo_name, AVG(r.numeric_value)
+                    v.sumo_name, AVG(r.numeric_value), MIN(r.acquired_at), MAX(r.acquired_at), COUNT(*)
              FROM raw_data r JOIN raw_variables v ON v.id=r.variable_id
              WHERE r.acquired_at >= %s AND r.acquired_at < %s
                AND r.quality='good' AND r.numeric_value IS NOT NULL
@@ -95,11 +96,20 @@ def load_history(mapping, interval_seconds, history):
     finally:
         store.close()
     grouped = {}
-    for index, name, value in rows:
+    collected = {}
+    for row in rows:
+        index, name, value = row[:3]
         grouped.setdefault(int(index), {})[name] = float(value)
+        collected.setdefault(int(index), {})[name] = {
+            'source': 'database_interval',
+            'collected_from': row[3].replace(tzinfo=timezone.utc).isoformat() if len(row)>3 and row[3] else None,
+            'collected_to': row[4].replace(tzinfo=timezone.utc).isoformat() if len(row)>4 and row[4] else None,
+            'sample_count': int(row[5]) if len(row)>5 else None,
+        }
     windows = []
     previous = {key: float(value) for key, value in history.get('last_inputs', {}).items()
                 if key in mapping and isinstance(value, (int, float)) and math.isfinite(value) and value >= 0}
+    previous_provenance = dict(history.get('last_input_provenance') or {})
     count = math.ceil((end - begin).total_seconds() / interval_seconds)
     for index in range(count):
         left = begin + timedelta(seconds=index * interval_seconds)
@@ -113,7 +123,12 @@ def load_history(mapping, interval_seconds, history):
             raise ValueError(f'Invalid historical input at {left.isoformat()}')
         converted = scale_model_inputs([{'column': name, 'value': value} for name, value in values.items()])
         converted.update({key: previous[key] for key in missing})
-        windows.append(HistoryWindow(round((right-left).total_seconds()*1000), right.isoformat(), converted, tuple(sorted(missing))))
+        provenance = dict(collected.get(index, {}))
+        for key in missing:
+            provenance[key] = {**previous_provenance.get(key, {}), 'source': 'held_previous',
+                               'original_source': previous_provenance.get(key, {}).get('original_source') or previous_provenance.get(key, {}).get('source', 'checkpoint_unknown')}
+        windows.append(HistoryWindow(round((right-left).total_seconds()*1000), right.isoformat(), converted, tuple(sorted(missing)), provenance))
+        previous_provenance = provenance
         previous = converted
     return windows
 

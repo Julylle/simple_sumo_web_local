@@ -49,5 +49,6 @@ def resume_history(metadata):
         'database': previous.get('database') or os.getenv('SUMO_HISTORY_DATABASE', 'sumo_web_database'),
         'resume_boundary_source': source,
         'last_inputs': last_inputs,
+        'last_input_provenance': dict(previous.get('last_input_provenance') or {}),
         'held_intervals': previous.get('held_intervals', 0),
     }

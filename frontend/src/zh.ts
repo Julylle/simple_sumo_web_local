@@ -1,5 +1,23 @@
 // UI copy only. Model identifiers, CSV headers and numeric values are never translated.
 export const zh: Record<string, string> = {
+  "Sensor mappings": "传感器映射",
+  "Checking readings": "正在检查读数",
+  "Readings available": "读数可用",
+  "Not checked": "未检查",
+  "Database fallback": "数据库备用",
+  "Simulation interval input details": "模拟区间输入数据详情",
+  "Latest interval": "当前／最近模拟区间",
+  "Times use this computer\u2019s local timezone": "时间按本地电脑时区显示",
+  "Sensor mapping": "传感器映射",
+  "Data source": "数据来源",
+  "Model input value": "模型输入值",
+  "Collected from": "最早采集时间",
+  "Collected to": "最新采集时间",
+  "Samples": "样本数",
+  "OPC UA real time": "OPC UA 实时",
+  "Database interval average": "数据库区间均值",
+  "Previous available input": "沿用上次有效输入",
+
   'Database fallback details': '数据库备用数据详情',
   'Data unavailable': '数据不可用',
   'Connected using database fallback for the following sensors:': '已连接，以下传感器使用数据库备用数据：',
