@@ -83,11 +83,11 @@ export function RealTimeSumo(){
   const [doDraft,setDoDraft]=useLiveSetting('doDraft',defaultDoMapping[doSensorOptions[0].name]);
   const [selectedControl,setSelectedControl]=useLiveSetting('selectedControl',controlSensorOptions[0].name);
   const [controlDraft,setControlDraft]=useLiveSetting('controlDraft',defaultControlMapping[controlSensorOptions[0].name]);
-  const [readings,setReadings]=useState<Reading[]>([]);
+  const [readings,setReadings]=useLiveSetting<Reading[]>('lastSensorReadings',[]);
   const [history,setHistory]=useLiveSetting<Sample[]>('sensorHistory',[]);
-  const [connected,setConnected]=useState(false);
+  const [connected,setConnected]=useLiveSetting('sensorConnectionEnabled',false);
   const [connecting,setConnecting]=useState(false);
-  const [sensorError,setSensorError]=useState('');
+  const [sensorError,setSensorError]=useLiveSetting('sensorConnectionError','');
   const pollingRef=useRef(false);
   const mappingRef=useRef(mapping);
   mappingRef.current=mapping;
@@ -167,7 +167,7 @@ export function RealTimeSumo(){
     return()=>{active=false;clearInterval(timer);};
   },[]);
   useEffect(()=>{
-    if(!connected)return;
+    if(!connected||!statusReady)return;
     let cancelled=false;
     const poll=async()=>{
       if(pollingRef.current)return;
@@ -184,9 +184,11 @@ export function RealTimeSumo(){
       }catch(e){if(!cancelled)setSensorError(String(e));}
       finally{pollingRef.current=false;}
     };
+    // Restore the previous display, then refresh it without forcing Disconnected.
+    void poll();
     const timer=setInterval(()=>{void poll();},5000);
     return()=>{cancelled=true;clearInterval(timer);};
-  },[connected]);
+  },[connected,statusReady]);
   function changeMapping(column:string,node:string){
     setConnected(false);setHistory([]);setSensorError('');
     setMapping(old=>({...old,[column]:node}));setReadings([]);setRun(null);
@@ -356,12 +358,11 @@ export function RealTimeSumo(){
     <section className="config-card">
       <div className="section-title"><div><h2>{t("Simulation settings")}</h2></div></div>
       <details className="sensor-setup sensor-step-collapsible" aria-labelledby="sensor-step-title">
-        <summary className="sensor-heading"><div><h3 id="sensor-step-title">{t("Step1: Connect sensors through KEPServer")}</h3><p>{t("Connect reads all configured influent, DO and additional control tags. Dropdowns only select the mapping to edit.")}</p></div><span className={'sensor-status '+(connected&&!sensorError?'is-connected':'')} role="status">{t(connecting?'Connecting...':sensorError?'Data unavailable':connected?'Connected':'Disconnected')}</span><span className="sensor-step-chevron" aria-hidden="true">⌄</span></summary>
-        <p className="mapping-indicator" role="status">
+        <summary className="sensor-heading"><div><h3 id="sensor-step-title">{t("Step1: Connect sensors through KEPServer")}</h3><p>{t("Connect reads all configured influent, DO and additional control tags. Dropdowns only select the mapping to edit.")}</p></div><span className="mapping-indicator sensor-mapping-indicator" role="status">
           <span className={'sensor-status '+(connected&&!sensorError?'is-connected':'')}>{t('Sensor mappings')}: {Object.keys(mapping).length} / {Object.keys(allDefaultMapping).length}</span>
           {' · '}{t(connecting?'Checking readings':sensorError?'Data unavailable':connected?'Readings available':'Not checked')}
           {connected&&!sensorError&&<> · OPC UA: {readings.filter(r=>r.source==='opcua').length} · {t('Database fallback')}: {readings.filter(r=>r.source?.startsWith('database')).length}</>}
-        </p>
+        </span><span className="sensor-step-chevron" aria-hidden="true">⌄</span></summary>
         {liveRun?.input_provenance&&<details className="sensor-mapping-list simulation-input-details">
           <summary>{t('Simulation interval input details')}</summary>
           <p>{t('Latest interval')}: {liveRun.input_provenance.start_ms/1000}–{liveRun.input_provenance.end_ms/1000} s · {t(liveRun.phase||liveRun.status)}</p>
