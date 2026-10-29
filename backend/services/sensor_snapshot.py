@@ -1,6 +1,9 @@
 """Step 1: fresh OPC values, then exact/as-of UTC database observations (raw units)."""
 import asyncio
 import math
+import logging
+import time
+from uuid import uuid4
 import os
 from datetime import datetime, timezone
 
@@ -46,11 +49,18 @@ async def read_resilient_snapshot(mapping, *, opc_timeout=60):
         raise ValueError('Configure supported sensor mappings.')
     if any(not isinstance(v, str) or not v.strip() for v in mapping.values()):
         raise ValueError('Every mapped parameter requires an OPC UA node ID.')
+    snapshot_id = uuid4().hex[:8]
+    started = time.monotonic()
+    logging.info("Step1 snapshot %s started: %s mapped sensors", snapshot_id, len(mapping))
     at = datetime.now(timezone.utc)
     readings, errors = {}, {}
 
     async def opc():
-        async with Client(url=os.getenv('KEPSERVER_OPC_URL', 'opc.tcp://127.0.0.1:49320'), timeout=15) as client:
+        client = Client(url=os.getenv('KEPSERVER_OPC_URL', 'opc.tcp://127.0.0.1:49320'), timeout=15)
+        # Match the 60-second session lifetime granted by the site KEPServer.
+        # This is separate from request and overall snapshot timeouts.
+        client.session_timeout = 60000
+        async with client as client:
             for column, node in mapping.items():
                 try:
                     value = float(await client.get_node(node).read_value())
@@ -60,9 +70,13 @@ async def read_resilient_snapshot(mapping, *, opc_timeout=60):
                         timestamp=datetime.now(timezone.utc).isoformat(), source='opcua', age_seconds=0)
                 except Exception as exc:
                     errors[column] = f'{type(exc).__name__}: {exc}'
+                    logging.warning("Step1 snapshot %s OPC input unavailable: %s (%s): %s; trying database",
+                                    snapshot_id, column, node, errors[column])
     try:
         await asyncio.wait_for(opc(), timeout=opc_timeout)
     except Exception as exc:
+        logging.warning("Step1 snapshot %s OPC session/read failed: %s: %s; trying database for missing inputs",
+                        snapshot_id, type(exc).__name__, exc)
         for column in mapping:
             if column not in readings:
                 errors.setdefault(column, f'{type(exc).__name__}: {exc}')
@@ -75,6 +89,15 @@ async def read_resilient_snapshot(mapping, *, opc_timeout=60):
                 readings[reading['column']] = reading
         except Exception as exc:
             db_error = f'{type(exc).__name__}: {exc}'
+    unresolved = [k for k in mapping if k not in readings]
+    logging.log(logging.WARNING if unresolved else logging.INFO,
+                "Step1 snapshot %s completed in %.2fs: opcua=%s database=%s unavailable=%s",
+                snapshot_id, time.monotonic()-started,
+                sum(r['source']=='opcua' for r in readings.values()),
+                sum(r['source'].startswith('database') for r in readings.values()), len(unresolved))
+    if unresolved:
+        logging.error("Step1 snapshot %s unresolved inputs: %s; database: %s",
+                      snapshot_id, ', '.join(unresolved), db_error or 'No earlier good observations')
     return dict(readings=[readings[k] for k in mapping if k in readings], checked_at=at.isoformat(),
                 unavailable=[dict(column=k, node_id=v, reason=errors.get(k, 'No OPC reading'),
                     database_error=db_error or 'No good database observation at or before requested time')

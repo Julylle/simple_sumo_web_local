@@ -169,8 +169,11 @@ export function RealTimeSumo(){
   useEffect(()=>{
     if(!connected||!statusReady)return;
     let cancelled=false;
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    const scheduleNext=()=>{if(!cancelled)timer=setTimeout(()=>{void poll();},5000);};
     const poll=async()=>{
-      if(pollingRef.current)return;
+      if(cancelled)return;
+      if(pollingRef.current){scheduleNext();return;}
       pollingRef.current=true;
       try{
         const selected=selectedMappings(mappingRef.current);
@@ -182,12 +185,11 @@ export function RealTimeSumo(){
         setHistory(old=>[...old,...(result.readings as Reading[]).map(r=>({...r,receivedAt:Number.isFinite(Date.parse(r.timestamp))?Date.parse(r.timestamp):receivedAt}))].filter(s=>s.receivedAt>=receivedAt-3600000).slice(-28800));
         setSensorError('');
       }catch(e){if(!cancelled)setSensorError(String(e));}
-      finally{pollingRef.current=false;}
+      finally{pollingRef.current=false;scheduleNext();}
     };
-    // Restore the previous display, then refresh it without forcing Disconnected.
+    // Leave a full five-second gap after each completed read, including errors.
     void poll();
-    const timer=setInterval(()=>{void poll();},5000);
-    return()=>{cancelled=true;clearInterval(timer);};
+    return()=>{cancelled=true;clearTimeout(timer);};
   },[connected,statusReady]);
   function changeMapping(column:string,node:string){
     setConnected(false);setHistory([]);setSensorError('');
