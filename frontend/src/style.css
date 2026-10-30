@@ -353,3 +353,10 @@
   .processing-log-scroll{max-height:420px}
 }
 @media(prefers-reduced-motion:reduce){.processing-log-chevron{transition:none}}
+.processing-log-actions{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-top:14px}
+.processing-log-actions>span{font-size:11px;color:#64748b}
+.processing-log-actions>div{display:flex;gap:8px;flex-wrap:wrap}
+.processing-log-actions button.secondary{padding:8px 12px;font-size:12px;border-radius:7px}
+.processing-log-actions button.processing-log-clear{color:#b42318;border-color:#f0c9c5}
+.processing-log-actions button:disabled{opacity:.45;cursor:not-allowed}
+.input-processing-log .processing-log-notice{font-size:12px;color:#166534;margin:12px 0}

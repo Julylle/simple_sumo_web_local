@@ -1,5 +1,16 @@
 // UI copy only. Model identifiers, CSV headers and numeric values are never translated.
 export const zh: Record<string, string> = {
+  "Clear all current processing records for all viewers? New processing events will continue to be recorded. Simulation results are kept.": "确认清空当前全部处理记录？此操作对所有浏览者生效，后续处理事件会继续记录，模拟结果保留。",
+  "Actions apply to all current records, across every page.": "操作范围为当前全部记录，包含所有分页。",
+  "Download records (JSON)": "下载记录（JSON）",
+  "Downloading records…": "正在下载记录…",
+  "Clear records": "清空记录",
+  "Clearing records…": "正在清空记录…",
+  "Processing records cleared. New events will continue to be recorded.": "处理记录已清空，后续处理事件将继续记录。",
+  "Processing history action failed.": "处理历史操作失败。",
+  "Simulation changed; refresh processing history.": "模拟任务已更换，请刷新处理历史后重试。",
+  "Could not save cleared processing history.": "无法保存清空后的处理历史，请重试。",
+
   "Newest first": "最新记录优先",
   "Records": "记录",
   "Processing history pages": "处理历史分页",

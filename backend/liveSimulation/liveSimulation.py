@@ -26,7 +26,7 @@ from services.live_progress import live_progress
 from services.resume_history import resume_history
 from services.sensor_comparisons import LIVE_EXTRA_OUTPUTS
 from services.live_models import resolve_model
-from services.live_checkpoint import save_checkpoint, checkpoint_info, restore_checkpoint, saved_snapshot, persist_processing_records
+from services.live_checkpoint import save_checkpoint, checkpoint_info, restore_checkpoint, saved_snapshot, persist_processing_records, clear_processing_records
 
 ROOT = Path(__file__).resolve().parents[1]
 _lock = threading.RLock()
@@ -55,6 +55,25 @@ def snapshot():
                 "samples": len(s["times"]), "result": {
                     "sensor_timestamps": list(s.get("sensor_timestamps", [None] * len(s["times"]))),
                     "time_h": list(s["times"]), "variables": {k: list(v) for k, v in s["variables"].items()}}}
+
+
+def processing_records(run_id):
+    with _lock:
+        session = _session if _session is not None else saved_snapshot()
+        if not session or session['id'] != run_id:
+            raise ValueError('Simulation changed; refresh processing history.')
+        return {'run_id': session['id'],
+                'records': filter_processing_records(session.get('input_processing_records', []))}
+
+
+def clear_processing_history(run_id):
+    with _lock:
+        session = _session if _session is not None else saved_snapshot()
+        if not session or session['id'] != run_id:
+            raise ValueError('Simulation changed; refresh processing history.')
+        clear_processing_records(session)
+        return {'run_id': session['id'], 'records': []}
+
 
 def start(mapping, interval_minutes=1, model_id="builtin", mode="live", history_start=None, history_end=None):
     global _session

@@ -8,10 +8,37 @@ export type InputProcessingRecord = {
   replacement_raw_value?: number; reason?: string; raw_value?: number | string | null; negative_count?: number; previous_model_value?: number; invalid_count?: number;
 };
 const local = (value?: string | null) => value ? new Date(value).toLocaleString() : '—';
-export function InputProcessingLog({records = []}: {records?: InputProcessingRecord[]}) {
+export function InputProcessingLog({records = [], runId, onCleared}: {records?: InputProcessingRecord[]; runId?: string; onCleared?: () => void}) {
   useLanguage();
   const [page, setPage] = useState(0);
   const [open, setOpen] = useState(false);
+  const [action, setAction] = useState<'clear' | 'download' | null>(null);
+  const [actionError, setActionError] = useState('');
+  const [notice, setNotice] = useState('');
+  async function manageRecords(kind: 'clear' | 'download') {
+    if (!runId || action) return;
+    if (kind === 'clear' && !window.confirm(t('Clear all current processing records for all viewers? New processing events will continue to be recorded. Simulation results are kept.'))) return;
+    setAction(kind); setActionError(''); setNotice('');
+    try {
+      const response = kind === 'clear'
+        ? await fetch('/api/sumo/live/processing-records/clear', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({run_id:runId})})
+        : await fetch('/api/sumo/live/processing-records/download?run_id=' + encodeURIComponent(runId));
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(typeof data?.detail === 'string' ? data.detail : 'Processing history action failed.');
+      }
+      if (kind === 'clear') {
+        onCleared?.(); setPage(0); setNotice('Processing records cleared. New events will continue to be recorded.');
+      } else {
+        const url = URL.createObjectURL(await response.blob());
+        const link = document.createElement('a');
+        link.href = url; link.download = 'sensor_input_processing_history.json';
+        document.body.appendChild(link); link.click(); link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+    } catch (error) { setActionError(error instanceof Error ? error.message : String(error)); }
+    finally { setAction(null); }
+  }
   const pages = Math.max(1, Math.ceil(records.length / 100));
   const current = Math.min(page, pages - 1);
   const rows = records.slice(Math.max(0, records.length - (current + 1) * 100), records.length - current * 100).reverse();
@@ -22,6 +49,15 @@ export function InputProcessingLog({records = []}: {records?: InputProcessingRec
     </summary>
     {open && <div className="processing-log-body">
       <p className="processing-log-policy">{t('Negative readings use zero, except Sideflowdivider3 Qpumped_target uses 0.001 before scaling. Invalid or failed readings reuse the previous model input. Records are saved with the checkpoint and restored on Resume.')}</p>
+      <div className="processing-log-actions">
+        <span>{t('Actions apply to all current records, across every page.')}</span>
+        <div>
+          <button type="button" className="secondary" disabled={!runId || !records.length || !!action} onClick={() => void manageRecords('download')}>{t(action === 'download' ? 'Downloading records…' : 'Download records (JSON)')}</button>
+          <button type="button" className="secondary processing-log-clear" disabled={!runId || !records.length || !!action} onClick={() => void manageRecords('clear')}>{t(action === 'clear' ? 'Clearing records…' : 'Clear records')}</button>
+        </div>
+      </div>
+      {actionError && <p className="alert" role="alert">{t(actionError)}</p>}
+      {notice && <p className="processing-log-notice" role="status">{t(notice)}</p>}
       {!records.length ? <div className="processing-log-empty">{t('No sensor input adjustments recorded.')}</div> : <>
         <div className="processing-log-toolbar">
           <span className="processing-log-order">{t('Newest first')} · {t('Records')} {Math.max(1, records.length - (current + 1) * 100 + 1)}–{records.length - current * 100} / {records.length}</span>

@@ -189,3 +189,14 @@ def persist_processing_records(session):
             os.replace(pending, target)
         finally:
             pending.unlink(missing_ok=True)
+
+
+def clear_processing_records(session):
+    """Clear the audit durably before publishing the change to an active session.
+
+    Use the same lock as checkpoint writes so a concurrent save cannot resurrect
+    the old records. Native state, results and checkpoint timestamps are untouched.
+    """
+    with _lock:
+        persist_processing_records({'id': session['id'], 'input_processing_records': []})
+        session['input_processing_records'] = []

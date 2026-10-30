@@ -376,3 +376,10 @@ in `SUMO_LIVE_STATE_DIR` (default `backend/live_states`) and the same run's bund
 receives its final audit, without changing its last completed native state. Entries
 beyond that saved boundary describe attempted intervals; Resume may retry them and
 appends new entries. Old checkpoints without an audit restore an empty list.
+
+The processing-history panel offers **Download records (JSON)** for all retained
+records across pages, and **Clear records** for the current run. Clearing updates
+the standalone audit and matching latest checkpoint before clearing active memory;
+future events continue to append. The action also works on a saved checkpoint
+without starting SUMO. It leaves model state, simulation results and timestamps
+unchanged. Requests carry the run ID, so a stale page cannot clear a newer run.
