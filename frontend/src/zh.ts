@@ -1,5 +1,11 @@
 // UI copy only. Model identifiers, CSV headers and numeric values are never translated.
 export const zh: Record<string, string> = {
+  "Newest first": "最新记录优先",
+  "Records": "记录",
+  "Processing history pages": "处理历史分页",
+  "Original reading": "原始读数",
+  "Invalid samples": "无效样本数",
+
   "Negative → 0.001": "负值 → 0.001",
   "Replacement raw value": "原始读数替代值",
   "Negative sensor readings replaced before averaging": "负读数按规则替换后计算区间均值",

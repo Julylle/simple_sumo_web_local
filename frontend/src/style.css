@@ -296,3 +296,60 @@
 .mapping-indicator{display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:13px}.simulation-input-details{margin:12px 0;overflow:auto}.simulation-input-details table{width:100%;border-collapse:collapse;font-size:12px}.simulation-input-details th,.simulation-input-details td{padding:10px;text-align:left;border-bottom:1px solid #e2e8f0}.simulation-input-details code{overflow-wrap:anywhere}
 
 .sensor-step-collapsible>summary.sensor-heading{align-items:flex-start}.sensor-step-collapsible>summary>.sensor-mapping-indicator{margin-left:auto;justify-content:flex-end;max-width:360px;text-align:right;font-size:12px;gap:5px}.sensor-mapping-indicator .sensor-status{white-space:normal}@media(max-width:900px){.sensor-step-collapsible>summary>.sensor-mapping-indicator{order:3;flex-basis:100%;max-width:none}.sensor-mapping-indicator .sensor-status{order:initial}}
+
+/* Input processing history: a single scrollable table with persistent column labels. */
+.sensor-mapping-list.input-processing-log{margin-top:20px;padding:0;border:1px solid #dce4ee;border-radius:12px;background:#fff;min-width:0}
+.sensor-mapping-list.input-processing-log[open]{max-height:none;overflow:visible}
+.input-processing-log>summary{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 18px;list-style:none;color:#334155;font-size:13px;border-radius:12px;background:#f8fafc}
+.input-processing-log>summary::-webkit-details-marker{display:none}
+.input-processing-log[open]>summary{border-bottom:1px solid #e2e8f0;border-radius:12px 12px 0 0}
+.processing-log-heading{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+.processing-log-count{padding:2px 9px;border-radius:20px;background:#e8eef7;color:#475569;font-size:11px;font-variant-numeric:tabular-nums}
+.processing-log-chevron{font-size:18px;transition:transform .15s ease}
+.input-processing-log[open] .processing-log-chevron{transform:rotate(180deg)}
+.processing-log-body{padding:16px;min-width:0}
+.input-processing-log .processing-log-policy{margin:0;padding:12px 14px;border-left:3px solid #94aecd;border-radius:0 7px 7px 0;background:#f5f8fc;color:#526277;font-size:12px;line-height:1.8}
+.processing-log-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0 12px}
+.processing-log-order{font-size:12px;color:#64748b;font-variant-numeric:tabular-nums}
+.processing-log-pagination{display:flex;align-items:center;gap:10px}
+.processing-log-pagination>span{min-width:42px;text-align:center;font-size:12px;color:#475569;font-variant-numeric:tabular-nums}
+.processing-log-pagination button.secondary{padding:7px 11px;font-size:12px;border-radius:7px;min-height:32px}
+.processing-log-pagination button:disabled{opacity:.45;cursor:not-allowed}
+.processing-log-scroll{max-height:520px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;scrollbar-gutter:stable}
+.processing-log-scroll:focus-visible{outline:3px solid #bfdbfe;outline-offset:2px}
+.processing-log-table{width:100%;min-width:1080px;table-layout:fixed;border-collapse:separate;border-spacing:0;font-size:12px;line-height:1.6}
+.processing-col-time{width:18%}.processing-col-sensor{width:25%}.processing-col-action{width:15%}.processing-col-reason{width:26%}.processing-col-value{width:16%}
+.processing-log-table th{position:sticky;top:0;z-index:1;background:#f1f5f9;padding:12px 14px;border-bottom:1px solid #dce4ee;text-align:left;color:#526277;font-weight:600;white-space:normal}
+.processing-log-table td{padding:16px 14px;border-bottom:1px solid #e9eef4;vertical-align:top;color:#334155;overflow-wrap:anywhere}
+.processing-log-table tbody tr:nth-child(even){background:#fafbfd}
+.processing-log-table tbody tr:hover{background:#f0f6fc}
+.processing-log-table tbody tr:last-child td{border-bottom:0}
+.processing-log-sequence{display:inline-block;margin-bottom:6px;color:#64748b;font-size:10px;font-variant-numeric:tabular-nums}
+.processing-log-interval{font-variant-numeric:tabular-nums;font-size:11px;color:#334155}
+.processing-log-interval time,.processing-log-end{display:block}
+.processing-log-end{color:#64748b;margin-top:3px}
+.processing-log-recorded{display:grid;gap:2px;margin-top:12px;font-size:10px;color:#64748b;font-variant-numeric:tabular-nums}
+.processing-log-sensor-name{display:block;font-size:12px;font-weight:600;color:#243d59;margin-bottom:9px}
+.processing-log-model-id,.processing-log-node{display:block;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:10px;line-height:1.7;white-space:normal;overflow-wrap:anywhere}
+.processing-log-model-id{color:#64748b}
+.processing-log-node{margin-top:8px;padding:5px 7px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;color:#526277}
+.processing-log-treatment{display:inline-block;padding:5px 9px;border:1px solid;border-radius:6px;font-size:11px;line-height:1.6;font-weight:600}
+.processing-log-treatment.is-replaced{background:#fff7ed;border-color:#fed7aa;color:#9a4315}
+.processing-log-treatment.is-held{background:#eff6ff;border-color:#bfdbfe;color:#1e5696}
+.input-processing-log .processing-log-reason{margin:0;color:#475569;font-size:12px;line-height:1.7;white-space:pre-wrap}
+.processing-log-facts{display:grid;gap:6px;margin:10px 0 0;font-size:11px}
+.processing-log-facts:empty{display:none}
+.processing-log-facts>div{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;padding-top:5px;border-top:1px solid #e9eef4}
+.processing-log-facts dt{color:#64748b}.processing-log-facts dd{margin:0;text-align:right;color:#334155;font-variant-numeric:tabular-nums}
+.processing-log-table th:last-child,.processing-log-value-cell{text-align:right}
+.processing-log-value{display:block;padding:7px 9px;border-radius:6px;background:#edf4fa;color:#244865;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+.processing-log-previous{display:grid;gap:4px;margin-top:10px;font-size:10px;color:#64748b;font-variant-numeric:tabular-nums}
+.processing-log-empty{padding:32px 16px;text-align:center;font-size:13px;color:#64748b;background:#fafbfd;border:1px dashed #dce4ee;border-radius:8px;margin-top:16px}
+@media(max-width:700px){
+  .input-processing-log>summary{padding:14px 12px}
+  .processing-log-body{padding:12px}
+  .processing-log-toolbar{align-items:flex-start;gap:10px}
+  .processing-log-pagination{width:100%;justify-content:space-between}
+  .processing-log-scroll{max-height:420px}
+}
+@media(prefers-reduced-motion:reduce){.processing-log-chevron{transition:none}}
