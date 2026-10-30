@@ -8,7 +8,7 @@ try { if (localStorage.getItem(storageKey) === 'zh') language = 'zh'; } catch { 
 const listeners = new Set<() => void>();
 function updateDocument() {
   document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en';
-  document.title = language === 'zh' ? '活性污泥模型模拟' : 'Activated Sludge Model Simulation';
+  document.title = 'Plant-wide model test';
 }
 updateDocument();
 export function setLanguage(next: Language) {
