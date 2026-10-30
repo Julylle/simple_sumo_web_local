@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 from services.resume_history import checkpoint_boundary
+from services.processing_history import filter_processing_records
 
 _lock = threading.RLock()
 
@@ -42,7 +43,7 @@ def save_checkpoint(session, state_file, simulated_ms):
             with pending.open('wb') as stream:
                 with zipfile.ZipFile(stream, 'w', compression=zipfile.ZIP_STORED) as archive:
                     archive.writestr('metadata.json', json.dumps(metadata))
-                    archive.writestr('input_processing_records.json', json.dumps(session.get('input_processing_records', []), allow_nan=False))
+                    archive.writestr('input_processing_records.json', json.dumps(filter_processing_records(session.get('input_processing_records', [])), allow_nan=False))
                     archive.writestr('results.json', json.dumps({
                         'time_h': session.get('times', []),
                         'sensor_timestamps': session.get('sensor_timestamps', [None] * len(session.get('times', []))),
@@ -157,14 +158,14 @@ def saved_snapshot():
 def _read_processing_records(archive):
     if 'input_processing_records.json' not in archive.namelist():
         return []
-    return json.loads(archive.read('input_processing_records.json'))
+    return filter_processing_records(json.loads(archive.read('input_processing_records.json')))
 
 
 def persist_processing_records(session):
     """Save the final audit trail without relabeling an unfinished native boundary."""
     with _lock:
         target = checkpoint_path()
-        payload = json.dumps(session.get('input_processing_records', []), allow_nan=False)
+        payload = json.dumps(filter_processing_records(session.get('input_processing_records', [])), allow_nan=False)
         # Also preserve failed first-run diagnostics where no native checkpoint exists.
         audit = target.parent / ('input_processing_' + session['id'] + '.json')
         pending_audit = audit.with_suffix('.pending')
@@ -177,7 +178,8 @@ def persist_processing_records(session):
             with zipfile.ZipFile(target) as original:
                 if json.loads(original.read('metadata.json'))['run_id'] != session['id']:
                     return
-                if _read_processing_records(original) == session.get('input_processing_records', []):
+                if ('input_processing_records.json' in original.namelist()
+                        and original.read('input_processing_records.json').decode('utf-8') == payload):
                     return
                 with zipfile.ZipFile(pending, 'w', compression=zipfile.ZIP_STORED) as updated:
                     for item in original.infolist():

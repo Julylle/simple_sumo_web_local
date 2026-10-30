@@ -20,6 +20,7 @@ from services.historical_inputs import history_request, load_history, load_avail
 from services.kepserver import read_snapshot
 from services.input_provenance import input_provenance, process_readings, record_treatments
 from services.sensor_inputs import SENSOR_COLUMNS
+from services.processing_history import filter_processing_records
 from services.sumo_startup import write_startup_script, project_parameter_commands
 from services.live_progress import live_progress
 from services.resume_history import resume_history
@@ -49,7 +50,7 @@ def snapshot():
                 "sumo_commands": list(s.get("sumo_commands", [])),
                 "diagnostics": live_progress(s),
                 "input_provenance": s.get("input_provenance"),
-                "input_processing_records": list(s.get("input_processing_records", [])),
+                "input_processing_records": filter_processing_records(s.get("input_processing_records", [])),
                 "phase": s["phase"], "simulated_h": s["sim_ms"] / 3600000,
                 "samples": len(s["times"]), "result": {
                     "sensor_timestamps": list(s.get("sensor_timestamps", [None] * len(s["times"]))),
@@ -81,7 +82,7 @@ def _launch(mapping, interval_minutes, model_id, selected_model, resume_ms=0, re
         if _session is not None and _session["status"] in ("starting", "running", "stopping"):
             raise RuntimeError("A live SUMO session is already active.")
         s = {"id": run_id or str(uuid4()), "status": "starting", "phase": "initializing",
-             "input_processing_records": list(input_processing_records or []),
+             "input_processing_records": filter_processing_records(input_processing_records or []),
              "error": None, "sim_ms": resume_ms, "resume_ms": resume_ms,
              "resume_folder": resume_folder, "times": list((result or {}).get("time_h", [])),
              "variables": {k: list(v) for k, v in (result or {}).get("variables", {}).items()},

@@ -362,8 +362,12 @@ errors are included in the audit reason. Database connection failures hold the p
 inputs for complete elapsed intervals, with retries paced by LimitTime. Original
 collector rows are never modified.
 
-Step2 ends with a collapsed **Sensor input processing history**. It retains all
-adjustments and read-failure reasons, with local interval times and the actual model
+Step2 ends with a collapsed **Sensor input processing history**. It retains
+adjustments and read-failure reasons, except CSTR1/CSTR2 SO2 and all MLR1/MLR2
+inputs (including numbered branches). This exclusion only affects the audit log,
+not input processing or model calculations. Existing checkpoint entries are filtered
+on read/Resume, and subsequent checkpoint and stop-audit saves omit them.
+Other records are shown with local interval times and the actual model
 value; pages contain at most 100 records. Records are appended only when an interval
 is selected for simulation, not when future intervals are prefetched.
 `latest_checkpoint.zip` includes `input_processing_records.json` at every saved

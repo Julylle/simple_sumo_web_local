@@ -1,6 +1,7 @@
 """Describe actual applied model inputs without consulting preview sensor data."""
 from datetime import timedelta
 from services.sensor_policy import negative_details
+from services.processing_history import filter_processing_records, should_record_input
 from services.historical_inputs import parse_time
 
 
@@ -60,10 +61,13 @@ def process_readings(mapping, readings, previous=None):
 def record_treatments(session, provenance):
     """Append only when a window is selected for the native model, never during prefetch."""
     from datetime import datetime, timezone
-    records = session.setdefault('input_processing_records', [])
+    records = filter_processing_records(session.get('input_processing_records', []))
+    session['input_processing_records'] = records
+    sequence = max((row.get('sequence', 0) for row in records), default=0)
     for row in provenance['inputs']:
-        if row.get('treatment') or row.get('source') == 'held_previous':
-            records.append(dict(row, sequence=len(records) + 1,
+        if should_record_input(row.get('column')) and (row.get('treatment') or row.get('source') == 'held_previous'):
+            sequence += 1
+            records.append(dict(row, sequence=sequence,
                 recorded_at=datetime.now(timezone.utc).isoformat(),
                 start_ms=provenance['start_ms'], end_ms=provenance['end_ms'],
                 interval_start=provenance.get('interval_start'), interval_end=provenance.get('interval_end')))
