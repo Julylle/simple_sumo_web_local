@@ -38,7 +38,7 @@ def test_node_errors_include_mapping_and_original_cause(monkeypatch, error):
     assert NODE in progress[-1]
 
 
-@pytest.mark.parametrize("value", [float("nan"), float("inf"), -1])
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
 def test_invalid_values_rejected_with_node_context(monkeypatch, value):
     install_client(monkeypatch, AsyncMock(return_value=value))
     with pytest.raises(ValueError, match=NODE):
@@ -76,3 +76,8 @@ def test_skip_bad_does_not_swallow_connection_failure(monkeypatch):
     install_client(monkeypatch, AsyncMock(side_effect=ConnectionError("offline")))
     with pytest.raises(RuntimeError, match="offline"):
         asyncio.run(kepserver.read_snapshot({Q: NODE}, skip_bad=True))
+
+
+def test_negative_opc_reading_is_zero(monkeypatch):
+    install_client(monkeypatch, AsyncMock(return_value=-334.88330078125))
+    assert asyncio.run(kepserver.read_snapshot({Q: NODE}))[0]['value'] == 0

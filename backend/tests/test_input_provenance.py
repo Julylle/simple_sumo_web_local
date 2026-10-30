@@ -23,6 +23,22 @@ class InputProvenanceTests(unittest.TestCase):
         self.assertEqual(windows[1].provenance[Q]['original_source'],'database_interval')
         self.assertAlmostEqual(windows[0].values[Q],1000)
 
+    def test_clamped_history_retains_collection_provenance(self):
+        store = MagicMock()
+        cursor = store.connection.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = [(0,Q,0,datetime(2026,10,30,1,47),datetime(2026,10,30,1,47,30),2)]
+        plan = history_request('2026-10-30T01:47:00Z','2026-10-30T01:48:00Z',1)
+        with patch('services.historical_inputs.Store',return_value=store):
+            window = load_history(MAPPING,60,plan)[0]
+        self.assertEqual(window.values[Q],0)
+        self.assertEqual(window.held_inputs,())
+        self.assertEqual(window.provenance[Q]['source'],'database_interval')
+        self.assertEqual(window.provenance[Q]['sample_count'],2)
+        self.assertEqual(window.provenance[Q]['collected_to'],'2026-10-30T01:47:30+00:00')
+        sql = cursor.execute.call_args.args[0]
+        self.assertIn('AVG(GREATEST(r.numeric_value, 0))',sql)
+        self.assertIn('MIN(r.acquired_at), MAX(r.acquired_at), COUNT(*)',sql)
+
     def test_old_checkpoint_time_is_unknown(self):
         store = MagicMock()
         store.connection.cursor.return_value.__enter__.return_value.fetchall.return_value = []

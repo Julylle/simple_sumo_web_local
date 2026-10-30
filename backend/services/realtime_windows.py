@@ -40,9 +40,9 @@ def make_windows(samples, step_seconds=300):
         index = int(elapsed // step_seconds)
         bucket = grouped.setdefault(index, {})
         for column, value in values.items():
-            if not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+            if not isinstance(value, (int, float)) or not math.isfinite(value):
                 raise ValueError(f"Invalid sensor value for {column}")
-            bucket.setdefault(column, []).append(float(value))
+            bucket.setdefault(column, []).append(max(0.0, float(value)))
     if not grouped:
         raise ValueError("No samples")
     columns = set(next(iter(grouped.values())))

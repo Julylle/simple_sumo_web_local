@@ -10,10 +10,10 @@ DO = 'Sumo__Plant__CSTR1_5__param__SO2'
 
 
 def test_fresh_flow_is_divided_once_and_other_readings_unchanged():
-    initial = [{'column': Q, 'value': 41.7}, {'column': TKN, 'value': 40},
-               {'column': DO, 'value': 2.5}]
-    updated = [{'column': Q, 'value': 83.4}, {'column': TKN, 'value': 42},
-               {'column': DO, 'value': 3}]
+    initial = [{'timestamp': '2026-10-30T01:47:00+00:00', 'column': Q, 'value': 41.7}, {'timestamp': '2026-10-30T01:47:00+00:00', 'column': TKN, 'value': 40},
+               {'timestamp': '2026-10-30T01:47:00+00:00', 'column': DO, 'value': 2.5}]
+    updated = [{'timestamp': '2026-10-30T01:47:00+00:00', 'column': Q, 'value': 83.4}, {'timestamp': '2026-10-30T01:47:00+00:00', 'column': TKN, 'value': 42},
+               {'timestamp': '2026-10-30T01:47:00+00:00', 'column': DO, 'value': 3}]
     mapping = {Q: 'flow-tag', TKN: 'tkn-tag', DO: 'do-tag'}
     with patch('liveSimulation.liveSimulation.read_snapshot',
                new=AsyncMock(side_effect=[initial, updated])) as read:
@@ -27,7 +27,7 @@ def test_fresh_flow_is_divided_once_and_other_readings_unchanged():
 
 def test_mapping_without_flow_is_unchanged():
     with patch('liveSimulation.liveSimulation.read_snapshot',
-               new=AsyncMock(return_value=[{'column': DO, 'value': 2}])):
+               new=AsyncMock(return_value=[{'timestamp': '2026-10-30T01:47:00+00:00', 'column': DO, 'value': 2}])):
         assert _read_model_inputs({DO: 'do-tag'}) == {DO: 2}
 
 
@@ -38,10 +38,21 @@ def test_mapping_without_flow_is_unchanged():
     ('Sumo__Plant__Metal1__param__Q', 166.68, 4),
 ])
 def test_additional_control_conversions_on_every_fresh_read(column, raw, expected):
-    readings = [{'column': column, 'value': raw}, {'column': DO, 'value': 2.5}]
+    readings = [{'timestamp': '2026-10-30T01:47:00+00:00', 'column': column, 'value': raw}, {'timestamp': '2026-10-30T01:47:00+00:00', 'column': DO, 'value': 2.5}]
     with patch('liveSimulation.liveSimulation.read_snapshot',
                new=AsyncMock(return_value=readings)):
         for _ in range(2):
             assert _read_model_inputs({column: 'tag', DO: 'do-tag'}) == {
                 column: pytest.approx(expected), DO: 2.5}
     assert readings[0]['value'] == raw
+
+
+def test_negative_sensor_values_clamped_before_model_conversion():
+    from services.model_inputs import scale_model_inputs
+    key = 'Sumo__Plant__Sideflowdivider3__param__Qpumped_target'
+    readings = [{'timestamp': '2026-10-30T01:47:00+00:00', 'column': key, 'value': -334.88330078125}, {'timestamp': '2026-10-30T01:47:00+00:00', 'column': DO, 'value': -1}]
+    assert scale_model_inputs(readings) == {key: 0, DO: 0}
+    assert readings[0]['value'] == -334.88330078125
+    for value in [float('nan'), float('inf'), float('-inf')]:
+        with pytest.raises(ValueError, match='Non-finite'):
+            scale_model_inputs([{'timestamp': '2026-10-30T01:47:00+00:00', 'column': key, 'value': value}])

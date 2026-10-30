@@ -47,13 +47,13 @@ def test_bulk_read_timezone_partial_tail_and_scaling_once(monkeypatch):
     store.close.assert_called_once()
     cursor.execute.assert_called_once()
     sql, params = cursor.execute.call_args.args
-    assert 'AVG(r.numeric_value)' in sql and "r.quality='good'" in sql
+    assert 'AVG(GREATEST(r.numeric_value, 0))' in sql and "r.quality='good'" in sql
     assert 'r.acquired_at < %s' in sql and 'flow' not in sql
     assert params[0] == datetime(2026, 1, 1)
     assert params[-4:] == [Q, 'flow', NH, 'nitrogen']
 
 
-@pytest.mark.parametrize('rows', [[], [(0, Q, 41.7)], [(0,Q,-1),(0,NH,20),(1,Q,41.7),(1,NH,20)]])
+@pytest.mark.parametrize('rows', [[], [(0, Q, 41.7)], [(0,Q,float('nan')),(0,NH,20),(1,Q,41.7),(1,NH,20)]])
 def test_empty_missing_partial_and_invalid_input_fail_closed(monkeypatch, rows):
     store, _ = fake_store(monkeypatch, rows)
     with pytest.raises(ValueError):
@@ -196,3 +196,13 @@ def test_follow_missing_sensor_does_not_block_initialized_model(monkeypatch):
     assert window.held_inputs == (NH,)
     assert plan['input_frontier']['missing_inputs'] == [NH]
     assert "r.quality='good'" not in cursor.execute.call_args_list[0].args[0]
+
+
+def test_negative_history_input_becomes_zero_and_is_not_held(monkeypatch):
+    _, cursor = fake_store(monkeypatch, [(0,Q,-334.88330078125),(0,NH,20),(1,Q,41.7),(1,NH,20)])
+    windows = history.load_history(MAPPING,60,request())
+    assert windows[0].values[Q] == 0
+    assert windows[0].held_inputs == ()
+    assert windows[1].values[Q] == pytest.approx(1000)
+    # Clamp each raw observation before AVG, not the final interval average.
+    assert 'AVG(GREATEST(r.numeric_value, 0))' in cursor.execute.call_args.args[0]

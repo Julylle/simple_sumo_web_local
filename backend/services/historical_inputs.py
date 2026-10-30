@@ -68,7 +68,7 @@ class HistoryWindow:
 def load_history(mapping, interval_seconds, history):
     """Aggregate in MySQL, not per sensor/per interval network round trips.
 
-    Use acquisition UTC time and [start,end), average only good numeric values.
+    Use acquisition UTC time and [start,end), replace negative readings with zero before averaging good numeric values.
     Missing inputs retain their previous interval value in model units.
     The first interval needs valid inputs or checkpoint-provided previous values.
     Resume queries only the unprocessed part of the original selected range.
@@ -80,7 +80,7 @@ def load_history(mapping, interval_seconds, history):
         return []
     filters, params = mapping_filters(mapping)
     sql = '''SELECT FLOOR(TIMESTAMPDIFF(MICROSECOND,%s,r.acquired_at)/%s) AS bucket,
-                    v.sumo_name, AVG(r.numeric_value), MIN(r.acquired_at), MAX(r.acquired_at), COUNT(*)
+                    v.sumo_name, AVG(GREATEST(r.numeric_value, 0)), MIN(r.acquired_at), MAX(r.acquired_at), COUNT(*)
              FROM raw_data r JOIN raw_variables v ON v.id=r.variable_id
              WHERE r.acquired_at >= %s AND r.acquired_at < %s
                AND r.quality='good' AND r.numeric_value IS NOT NULL
@@ -119,7 +119,7 @@ def load_history(mapping, interval_seconds, history):
         unseeded = missing - previous.keys()
         if unseeded:
             raise ValueError(f'History data missing at {left.isoformat()} with no previous input to reuse: ' + ', '.join(sorted(unseeded)))
-        if any(not math.isfinite(value) or value < 0 for value in values.values()):
+        if any(not math.isfinite(value) for value in values.values()):
             raise ValueError(f'Invalid historical input at {left.isoformat()}')
         converted = scale_model_inputs([{'column': name, 'value': value} for name, value in values.items()])
         converted.update({key: previous[key] for key in missing})

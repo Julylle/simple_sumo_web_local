@@ -46,8 +46,9 @@ async def read_snapshot(mapping: dict[str, str], *, progress=None, skip_bad=Fals
                 raise RuntimeError(
                     f"OPC UA read failed: {context}; {type(exc).__name__}: {exc}"
                 ) from exc
-            if not math.isfinite(value) or value < 0:
+            if not math.isfinite(value):
                 raise ValueError(f"Invalid reading for {context}: {value!r}")
+            value = max(0.0, value)
             readings.append({"column": column, "node_id": node_id, "value": value,
                              "timestamp": datetime.now(timezone.utc).isoformat()})
         if progress:
