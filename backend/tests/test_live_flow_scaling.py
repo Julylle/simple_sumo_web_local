@@ -20,7 +20,7 @@ def test_fresh_flow_is_divided_once_and_other_readings_unchanged():
         assert _read_model_inputs(mapping) == {Q: pytest.approx(1000), TKN: 40, DO: 2.5}
         assert _read_model_inputs(mapping) == {Q: pytest.approx(2000), TKN: 42, DO: 3}
         assert read.await_count == 2
-        read.assert_awaited_with(mapping)
+        read.assert_awaited_with(mapping, tolerate_errors=True)
     assert initial[0]['value'] == 41.7
     assert updated[0]['value'] == 83.4
 

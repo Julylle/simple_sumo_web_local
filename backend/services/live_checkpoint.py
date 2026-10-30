@@ -42,6 +42,7 @@ def save_checkpoint(session, state_file, simulated_ms):
             with pending.open('wb') as stream:
                 with zipfile.ZipFile(stream, 'w', compression=zipfile.ZIP_STORED) as archive:
                     archive.writestr('metadata.json', json.dumps(metadata))
+                    archive.writestr('input_processing_records.json', json.dumps(session.get('input_processing_records', []), allow_nan=False))
                     archive.writestr('results.json', json.dumps({
                         'time_h': session.get('times', []),
                         'sensor_timestamps': session.get('sensor_timestamps', [None] * len(session.get('times', []))),
@@ -89,6 +90,7 @@ def restore_checkpoint():
                     raise ValueError('Checkpoint checksum validation failed.')
                 metadata = json.loads(archive.read('metadata.json'))
                 metadata['result'] = _read_results(archive)
+                metadata['input_processing_records'] = _read_processing_records(archive)
                 if metadata.get('version') != 1:
                     raise ValueError('Unsupported checkpoint version.')
                 for name in ('model.sumo', 'state.xml'):
@@ -138,13 +140,50 @@ def saved_snapshot():
         with zipfile.ZipFile(target) as archive:
             metadata = json.loads(archive.read('metadata.json'))
             result = _read_results(archive)
+            records = _read_processing_records(archive)
         return {'id': metadata['run_id'], 'status': 'interrupted',
                 'phase': 'Saved checkpoint — resume to continue',
                 'model_id': 'checkpoint', 'model_name': metadata['model_name'],
                 'mapping': metadata['mapping'], 'interval_minutes': metadata['interval_minutes'],
                 'simulated_h': metadata['simulated_ms'] / 3600000,
                 'samples': len(result['time_h']), 'result': result,
+                'input_processing_records': records,
                 'history': metadata.get('history'),
                 'mode': ('history' if (not metadata['history'].get('caught_up') if metadata['history'].get('follow')
                                       else metadata['history']['completed'] < metadata['history']['total']) else 'live')
                         if metadata.get('history') else 'live'}
+
+
+def _read_processing_records(archive):
+    if 'input_processing_records.json' not in archive.namelist():
+        return []
+    return json.loads(archive.read('input_processing_records.json'))
+
+
+def persist_processing_records(session):
+    """Save the final audit trail without relabeling an unfinished native boundary."""
+    with _lock:
+        target = checkpoint_path()
+        payload = json.dumps(session.get('input_processing_records', []), allow_nan=False)
+        # Also preserve failed first-run diagnostics where no native checkpoint exists.
+        audit = target.parent / ('input_processing_' + session['id'] + '.json')
+        pending_audit = audit.with_suffix('.pending')
+        pending_audit.write_text(payload, encoding='utf-8')
+        os.replace(pending_audit, audit)
+        if not target.exists():
+            return
+        pending = target.with_suffix('.pending')
+        try:
+            with zipfile.ZipFile(target) as original:
+                if json.loads(original.read('metadata.json'))['run_id'] != session['id']:
+                    return
+                if _read_processing_records(original) == session.get('input_processing_records', []):
+                    return
+                with zipfile.ZipFile(pending, 'w', compression=zipfile.ZIP_STORED) as updated:
+                    for item in original.infolist():
+                        if item.filename != 'input_processing_records.json':
+                            updated.writestr(item, original.read(item.filename))
+                    updated.writestr('input_processing_records.json', payload)
+            os.replace(pending, target)
+        finally:
+            pending.unlink(missing_ok=True)

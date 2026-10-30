@@ -18,3 +18,51 @@ def input_provenance(mapping, values, start_ms, duration_ms, window=None):
                             **details.get(key, {'source': 'unknown'})) for key, node in mapping.items() if key in values]}
 
 
+
+
+def process_readings(mapping, readings, previous=None):
+    """Apply sensor policy once, retaining previous values already in model units."""
+    import math
+    from services.model_inputs import scale_model_inputs
+    previous = previous or {}
+    indexed = {r['column']: r for r in readings}
+    values = ModelInputs()
+    values.provenance = {}
+    for column, node in mapping.items():
+        reading = indexed.get(column, {'error': 'No observation returned'})
+        detail = dict(source='opcua', collected_from=reading.get('timestamp'),
+                      collected_to=reading.get('timestamp'), sample_count=1)
+        reason = reading.get('error')
+        raw = None
+        if not reason:
+            try:
+                raw = float(reading['value'])
+                if not math.isfinite(raw):
+                    reason = 'Non-finite sensor reading: ' + repr(raw)
+            except (ValueError, TypeError, KeyError) as exc:
+                reason = f'{type(exc).__name__}: {exc}'
+        if reason:
+            old = previous.get(column)
+            if not isinstance(old, (int, float)) or not math.isfinite(old):
+                raise ValueError(f'{column} ({node}): {reason}; no previous valid model input to reuse')
+            values[column] = old
+            detail.update(source='held_previous', treatment='held_previous', reason=reason,
+                          raw_value=repr(raw) if raw is not None else None)
+        else:
+            values[column] = scale_model_inputs([dict(column=column, value=raw)])[column]
+            if raw < 0:
+                detail.update(treatment='negative_to_zero', reason='Negative sensor reading', raw_value=raw)
+        values.provenance[column] = detail
+    return values
+
+
+def record_treatments(session, provenance):
+    """Append only when a window is selected for the native model, never during prefetch."""
+    from datetime import datetime, timezone
+    records = session.setdefault('input_processing_records', [])
+    for row in provenance['inputs']:
+        if row.get('treatment') or row.get('source') == 'held_previous':
+            records.append(dict(row, sequence=len(records) + 1,
+                recorded_at=datetime.now(timezone.utc).isoformat(),
+                start_ms=provenance['start_ms'], end_ms=provenance['end_ms'],
+                interval_start=provenance.get('interval_start'), interval_end=provenance.get('interval_end')))

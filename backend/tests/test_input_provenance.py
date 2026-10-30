@@ -36,7 +36,7 @@ class InputProvenanceTests(unittest.TestCase):
         self.assertEqual(window.provenance[Q]['sample_count'],2)
         self.assertEqual(window.provenance[Q]['collected_to'],'2026-10-30T01:47:30+00:00')
         sql = cursor.execute.call_args.args[0]
-        self.assertIn('AVG(GREATEST(r.numeric_value, 0))',sql)
+        self.assertIn('THEN GREATEST(r.numeric_value, 0) END)',sql)
         self.assertIn('MIN(r.acquired_at), MAX(r.acquired_at), COUNT(*)',sql)
 
     def test_old_checkpoint_time_is_unknown(self):

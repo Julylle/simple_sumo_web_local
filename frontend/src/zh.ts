@@ -1,5 +1,26 @@
 // UI copy only. Model identifiers, CSV headers and numeric values are never translated.
 export const zh: Record<string, string> = {
+  'Invalid samples → previous value, then average': '无效样本沿用前值后取均值',
+  'Previous model value': '前一模型输入值',
+
+  "Sensor input processing history": "传感器输入处理历史",
+  "Negative readings use zero. Invalid or failed readings reuse the previous model input. Records are saved with the checkpoint and restored on Resume.": "负读数使用 0；无效读数或读取失败时沿用前一个模型输入值。记录随检查点保存，恢复模拟时重新载入。",
+  "No sensor input adjustments recorded.": "暂无传感器输入处理记录。",
+  "Newer records": "较新记录",
+  "Older records": "较早记录",
+  "Simulation interval": "模拟区间",
+  "Sensor / model input": "传感器 / 模型输入",
+  "Processing": "处理方式",
+  "Reason / original reading": "原因 / 原始读数",
+  "Applied model value": "实际使用的模型值",
+  "Recorded at": "记录时间",
+  "Negative \u2192 zero": "负值 → 0",
+  "Reuse previous value": "沿用前值",
+  "Negative samples": "负读数数量",
+  "No valid recorded input in interval": "该区间无有效输入记录",
+  "Negative sensor reading": "传感器读数为负值",
+  "Negative sensor readings replaced with zero before averaging": "负读数先替换为 0，再计算区间均值",
+
   "Sensor mappings": "传感器映射",
   "Checking readings": "正在检查读数",
   "Readings available": "读数可用",

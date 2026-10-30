@@ -185,7 +185,7 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
     engine.schedule.side_effect = schedule
     engine.sendCommand.side_effect = send
     reads = 0
-    def read(mapping):
+    def read(mapping, previous=None):
         nonlocal reads
         reads += 1
         if reads > 1:

@@ -47,7 +47,7 @@ def test_bulk_read_timezone_partial_tail_and_scaling_once(monkeypatch):
     store.close.assert_called_once()
     cursor.execute.assert_called_once()
     sql, params = cursor.execute.call_args.args
-    assert 'AVG(GREATEST(r.numeric_value, 0))' in sql and "r.quality='good'" in sql
+    assert 'THEN GREATEST(r.numeric_value, 0) END)' in sql and "r.quality='good'" in sql
     assert 'r.acquired_at < %s' in sql and 'flow' not in sql
     assert params[0] == datetime(2026, 1, 1)
     assert params[-4:] == [Q, 'flow', NH, 'nitrogen']
@@ -205,4 +205,4 @@ def test_negative_history_input_becomes_zero_and_is_not_held(monkeypatch):
     assert windows[0].held_inputs == ()
     assert windows[1].values[Q] == pytest.approx(1000)
     # Clamp each raw observation before AVG, not the final interval average.
-    assert 'AVG(GREATEST(r.numeric_value, 0))' in cursor.execute.call_args.args[0]
+    assert 'THEN GREATEST(r.numeric_value, 0) END)' in cursor.execute.call_args.args[0]
