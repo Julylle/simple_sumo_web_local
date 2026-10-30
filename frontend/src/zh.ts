@@ -1,5 +1,10 @@
 // UI copy only. Model identifiers, CSV headers and numeric values are never translated.
 export const zh: Record<string, string> = {
+  "Negative → 0.001": "负值 → 0.001",
+  "Replacement raw value": "原始读数替代值",
+  "Negative sensor readings replaced before averaging": "负读数按规则替换后计算区间均值",
+  "Negative readings use zero, except Sideflowdivider3 Qpumped_target uses 0.001 before scaling. Invalid or failed readings reuse the previous model input. Records are saved with the checkpoint and restored on Resume.": "负读数使用 0；Sideflowdivider3 Qpumped_target 的负读数使用 0.001，再进行 scaling 换算。无效读数或读取失败时沿用前一个模型输入值。记录随检查点保存，恢复模拟时重新载入。",
+
   "Connected": "已连接",
   "Language": "语言",
   "simulation": "模拟",

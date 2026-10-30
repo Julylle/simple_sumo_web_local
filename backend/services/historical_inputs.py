@@ -7,6 +7,7 @@ import re
 
 from database.store import Store, dbtime
 from services.model_inputs import scale_model_inputs
+from services.sensor_policy import SIDEFLOW_COLUMN, SIDEFLOW_NEGATIVE_VALUE, negative_details
 
 
 def parse_time(value, field='History timestamp'):
@@ -68,7 +69,7 @@ class HistoryWindow:
 def load_history(mapping, interval_seconds, history):
     """Aggregate in MySQL, not per sensor/per interval network round trips.
 
-    Use acquisition UTC time and [start,end), replace negative readings with zero before averaging good numeric values.
+    Use acquisition UTC time and [start,end), replace negative readings per sensor policy before averaging good numeric values.
     Missing/invalid inputs retain their previous interval value in model units.
     Invalid recorded samples contribute that prior value to the interval mean.
     The first interval needs valid inputs or checkpoint-provided previous values.
@@ -82,7 +83,9 @@ def load_history(mapping, interval_seconds, history):
     filters, params = mapping_filters(mapping)
     valid = "r.quality='good' AND r.numeric_value IS NOT NULL AND ABS(r.numeric_value) <= 1.7976931348623157e308"
     sql = f'''SELECT FLOOR(TIMESTAMPDIFF(MICROSECOND,%s,r.acquired_at)/%s) AS bucket,
-                    v.sumo_name, AVG(CASE WHEN {valid} THEN GREATEST(r.numeric_value, 0) END),
+                    v.sumo_name, AVG(CASE WHEN {valid} AND v.sumo_name='{SIDEFLOW_COLUMN}' AND r.numeric_value < 0
+                         THEN {SIDEFLOW_NEGATIVE_VALUE}
+                         WHEN {valid} THEN GREATEST(r.numeric_value, 0) END),
                     MIN(r.acquired_at), MAX(r.acquired_at), COUNT(*),
                     SUM(CASE WHEN {valid} AND r.numeric_value < 0 THEN 1 ELSE 0 END),
                     SUM(CASE WHEN {valid} THEN 0 ELSE 1 END),
@@ -116,7 +119,7 @@ def load_history(mapping, interval_seconds, history):
             'sample_count': int(row[5]) if len(row)>5 else None,
             'invalid_count': int(row[7]) if len(row)>7 and row[7] else 0,
             'read_error': row[8] if len(row)>8 else None,
-            **({'treatment': 'negative_to_zero', 'reason': 'Negative sensor readings replaced with zero before averaging',
+            **({**negative_details(name), 'reason': 'Negative sensor readings replaced before averaging',
                 'negative_count': int(row[6])} if len(row)>6 and row[6] else {}),
         }
     windows = []
@@ -142,7 +145,7 @@ def load_history(mapping, interval_seconds, history):
         provenance = dict(collected.get(index, {}))
         for key, value in values.items():
             if value < 0:
-                provenance.setdefault(key, {}).update(treatment='negative_to_zero', reason='Negative sensor reading', raw_value=value)
+                provenance.setdefault(key, {}).update(**negative_details(key), reason='Negative sensor reading', raw_value=value)
         for key in bad_samples - missing:
             detail = provenance[key]
             count_bad, count_all = detail['invalid_count'], detail['sample_count']

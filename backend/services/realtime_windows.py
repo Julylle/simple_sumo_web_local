@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 import math
+from services.sensor_policy import normalize_reading
 import time
 
 
@@ -42,7 +43,7 @@ def make_windows(samples, step_seconds=300):
         for column, value in values.items():
             if not isinstance(value, (int, float)) or not math.isfinite(value):
                 raise ValueError(f"Invalid sensor value for {column}")
-            bucket.setdefault(column, []).append(max(0.0, float(value)))
+            bucket.setdefault(column, []).append(normalize_reading(column, float(value)))
     if not grouped:
         raise ValueError("No samples")
     columns = set(next(iter(grouped.values())))

@@ -1,6 +1,7 @@
 """Read a single OPC UA snapshot; no background polling or simulation."""
 import asyncio
 import math
+from services.sensor_policy import normalize_reading
 import os
 from datetime import datetime, timezone
 
@@ -50,7 +51,7 @@ async def read_snapshot(mapping: dict[str, str], *, progress=None, skip_bad=Fals
                 ) from exc
             if not math.isfinite(value):
                 raise ValueError(f"Invalid reading for {context}: {value!r}")
-            value = max(0.0, value)
+            value = normalize_reading(column, value)
             readings.append({"column": column, "node_id": node_id, "value": value,
                              "timestamp": datetime.now(timezone.utc).isoformat()})
         if progress:

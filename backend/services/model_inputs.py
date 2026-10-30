@@ -1,5 +1,6 @@
 """Shared raw-sensor conversion for live and steady SUMO inputs."""
 import math
+from services.sensor_policy import normalize_reading
 from database.catalog import load_mapping
 
 INPUT_CONVERSIONS = {row['SumoName']: (float(row['Scaling']), float(row['Offset']))
@@ -12,7 +13,7 @@ def scale_model_inputs(readings):
         column, value = reading['column'], float(reading['value'])
         if not math.isfinite(value):
             raise ValueError('Non-finite sensor input: ' + column)
-        values[column] = max(0.0, value)
+        values[column] = normalize_reading(column, value)
     # Raw OPC and historical numeric_value use the same CSV conversion once.
     for column in values:
         if column in INPUT_CONVERSIONS:

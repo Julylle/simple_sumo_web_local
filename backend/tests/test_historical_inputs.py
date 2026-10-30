@@ -48,7 +48,7 @@ def test_bulk_read_timezone_partial_tail_and_scaling_once(monkeypatch):
     cursor.execute.assert_called_once()
     sql, params = cursor.execute.call_args.args
     assert 'THEN GREATEST(r.numeric_value, 0) END)' in sql and "r.quality='good'" in sql
-    assert 'r.acquired_at < %s' in sql and 'flow' not in sql
+    assert 'r.acquired_at < %s' in sql and "'flow'" not in sql
     assert params[0] == datetime(2026, 1, 1)
     assert params[-4:] == [Q, 'flow', NH, 'nitrogen']
 

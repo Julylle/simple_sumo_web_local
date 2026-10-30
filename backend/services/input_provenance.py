@@ -1,5 +1,6 @@
 """Describe actual applied model inputs without consulting preview sensor data."""
 from datetime import timedelta
+from services.sensor_policy import negative_details
 from services.historical_inputs import parse_time
 
 
@@ -51,7 +52,7 @@ def process_readings(mapping, readings, previous=None):
         else:
             values[column] = scale_model_inputs([dict(column=column, value=raw)])[column]
             if raw < 0:
-                detail.update(treatment='negative_to_zero', reason='Negative sensor reading', raw_value=raw)
+                detail.update(**negative_details(column), reason='Negative sensor reading', raw_value=raw)
         values.provenance[column] = detail
     return values
 
