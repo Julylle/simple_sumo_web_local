@@ -261,7 +261,11 @@ The previous inputs are stored in model units in each completed checkpoint.
 Older checkpoints recover them from their saved input series, without rescaling
 flow a second time. If the first interval has a missing input and no previous
 value is available, startup reports an error rather than choosing zero or using
-a future observation. Invalid negative/non-finite numeric inputs still error.
+a future observation. Finite negative sensor readings are replaced with zero before
+interval averaging and model-unit conversion. Non-finite inputs still error.
+The same zero-clamping applies to OPC connection previews, database snapshot fallback,
+live model inputs and sensor-based steady-state preparation. Raw collector records
+are retained unchanged; missing/bad-quality readings are not fabricated as zero.
 
 The collection frontier now uses the newest recorded acquisition among mapped
 inputs (including quality-error records), so one missing sensor does not block

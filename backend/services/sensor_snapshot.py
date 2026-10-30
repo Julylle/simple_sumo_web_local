@@ -23,16 +23,17 @@ def database_readings(mapping, at):
                 cursor.execute('''SELECT r.numeric_value,r.acquired_at
                     FROM raw_data r JOIN raw_variables v ON v.id=r.variable_id
                     WHERE ''' + filters[0] + ''' AND r.acquired_at <= %s
-                    AND r.quality='good' AND r.numeric_value >= 0
+                    AND r.quality='good' AND r.numeric_value IS NOT NULL
+                    AND r.numeric_value >= -1.7976931348623157e308
                     AND r.numeric_value <= 1.7976931348623157e308
                     ORDER BY r.acquired_at DESC,r.id DESC LIMIT 1''', [*params, dbtime(at)])
                 row = cursor.fetchone()
                 if row is None:
                     continue
                 value, timestamp = float(row[0]), row[1].replace(tzinfo=timezone.utc)
-                if not math.isfinite(value) or value < 0 or timestamp > at:
+                if not math.isfinite(value) or timestamp > at:
                     continue
-                result.append(dict(column=column, node_id=node, value=value,
+                result.append(dict(column=column, node_id=node, value=max(0.0, value),
                     timestamp=timestamp.isoformat(),
                     source='database_current' if dbtime(timestamp) == dbtime(at) else 'database_previous',
                     age_seconds=(at-timestamp).total_seconds()))
@@ -54,9 +55,9 @@ async def read_resilient_snapshot(mapping, *, opc_timeout=60):
             for column, node in mapping.items():
                 try:
                     value = float(await client.get_node(node).read_value())
-                    if not math.isfinite(value) or value < 0:
-                        raise ValueError('Non-finite or negative sensor value')
-                    readings[column] = dict(column=column, node_id=node, value=value,
+                    if not math.isfinite(value):
+                        raise ValueError('Non-finite sensor value')
+                    readings[column] = dict(column=column, node_id=node, value=max(0.0, value),
                         timestamp=datetime.now(timezone.utc).isoformat(), source='opcua', age_seconds=0)
                 except Exception as exc:
                     errors[column] = f'{type(exc).__name__}: {exc}'

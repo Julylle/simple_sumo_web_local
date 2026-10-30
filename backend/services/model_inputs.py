@@ -7,7 +7,12 @@ INPUT_CONVERSIONS = {row['SumoName']: (float(row['Scaling']), float(row['Offset'
 
 
 def scale_model_inputs(readings):
-    values = {r["column"]: r["value"] for r in readings}
+    values = {}
+    for reading in readings:
+        column, value = reading['column'], float(reading['value'])
+        if not math.isfinite(value):
+            raise ValueError('Non-finite sensor input: ' + column)
+        values[column] = max(0.0, value)
     # Raw OPC and historical numeric_value use the same CSV conversion once.
     for column in values:
         if column in INPUT_CONVERSIONS:

@@ -28,3 +28,8 @@ class WindowTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_negative_observations_are_zero_before_window_mean():
+    window = make_windows([(0, {'DO': -2}), (10, {'DO': 4})])[0]
+    assert window.inputs['DO'] == 2

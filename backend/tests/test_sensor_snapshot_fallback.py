@@ -100,3 +100,27 @@ def test_database_matching_timestamp_source_and_raw_units(monkeypatch):
     assert "r.quality='good'" in sql and 'r.acquired_at <= %s' in sql
     assert params == [Q, 'flow', at.replace(tzinfo=None)]
     store.close.assert_called_once()
+
+
+def test_negative_opc_uses_zero_without_replacing_with_old_database_value(monkeypatch):
+    client(monkeypatch, [-334.8833, 21])
+    db = Mock(side_effect=AssertionError('negative finite values do not need fallback'))
+    monkeypatch.setattr(module, 'database_readings', db)
+    result = asyncio.run(module.read_resilient_snapshot(M))
+    assert result['readings'][0]['value'] == 0
+    assert result['readings'][0]['source'] == 'opcua'
+    assert result['unavailable'] == []
+    db.assert_not_called()
+
+
+def test_database_negative_current_value_is_zero_not_skipped(monkeypatch):
+    from unittest.mock import MagicMock
+    at = datetime(2026,10,30,1,47,tzinfo=timezone.utc)
+    store = MagicMock()
+    cursor = store.connection.cursor.return_value.__enter__.return_value
+    cursor.fetchone.return_value = (-334.8833, at.replace(tzinfo=None))
+    monkeypatch.setattr(module, 'Store', lambda:store)
+    result = module.database_readings({Q:M[Q]}, at)
+    assert result[0]['value'] == 0
+    assert result[0]['source'] == 'database_current'
+    assert 'r.numeric_value >= 0' not in cursor.execute.call_args.args[0]
