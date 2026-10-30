@@ -1,5 +1,19 @@
 // UI copy only. Model identifiers, CSV headers and numeric values are never translated.
 export const zh: Record<string, string> = {
+  "Connected": "已连接",
+  "Language": "语言",
+  "simulation": "模拟",
+
+  "Plant-wide model test": "全厂模型测试",
+  "Unknown": "未知",
+  "Connect reads all configured influent, DO and additional control tags. Dropdowns only select the mapping to edit.": "连接时读取全部已配置的进水、溶解氧及附加控制变量。下拉选项仅用于选择需要编辑的映射。",
+  ": recorded nitrate and MLSS/MLVSS means over": "：硝酸盐及 MLSS/MLVSS 记录的平均区间为",
+  "seconds, compared with corresponding simulation results. Missing measurements remain gaps.": "秒，与对应模拟结果对比；缺失的实测值保留为空缺。",
+  "Invalid recorded samples": "采集记录中存在无效样本",
+  "No OPC reading": "未获取到 OPC 读数",
+  "No good database observation at or before requested time": "指定时间及之前无质量合格的数据库记录",
+  "s": "秒",
+
   'Invalid samples → previous value, then average': '无效样本沿用前值后取均值',
   'Previous model value': '前一模型输入值',
 
@@ -206,7 +220,6 @@ export const zh: Record<string, string> = {
   'Uploaded input has expired. Please upload the CSV again.': '上传数据已过期，请重新上传 CSV。',
 
   "Real-time SUMO": "实时 SUMO",
-  "Plant-wide model testing": "全厂模型测试",
   "Simplified modelling workspace": "简化建模工作台",
   "Latest model result:": "最新模型结果：",
   "· Behind current time:": "· 落后当前时间：",

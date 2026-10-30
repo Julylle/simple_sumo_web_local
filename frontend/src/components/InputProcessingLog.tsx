@@ -28,7 +28,7 @@ export function InputProcessingLog({records = []}: {records?: InputProcessingRec
         <div style={{overflowX:'auto', maxHeight:440}}><table>
           <thead><tr>{['Simulation interval', 'Sensor / model input', 'Processing', 'Reason / original reading', 'Applied model value'].map(label => <th key={label}>{t(label)}</th>)}</tr></thead>
           <tbody>{rows.map(row => <tr key={row.sequence}>
-            <td>{row.interval_start ? <>{local(row.interval_start)} → {local(row.interval_end)}</> : <>{row.start_ms / 1000}–{row.end_ms / 1000} s</>}<br/><small>{t('Recorded at')}: {local(row.recorded_at)}</small></td>
+            <td>{row.interval_start ? <>{local(row.interval_start)} → {local(row.interval_end)}</> : <>{row.start_ms / 1000}–{row.end_ms / 1000} {t('s')}</>}<br/><small>{t('Recorded at')}: {local(row.recorded_at)}</small></td>
             <td>{row.column}<br/><small>{row.node_id}</small></td>
             <td>{t(row.treatment === 'negative_to_zero' ? 'Negative → zero' : row.treatment === 'held_previous_samples' ? 'Invalid samples → previous value, then average' : 'Reuse previous value')}</td>
             <td>{t(row.reason || 'No valid recorded input in interval')}{row.raw_value != null && <div>{String(row.raw_value)}</div>}{row.negative_count != null && <div>{t('Negative samples')}: {row.negative_count}</div>}</td>

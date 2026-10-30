@@ -368,7 +368,7 @@ export function RealTimeSumo(){
         </span><span className="sensor-step-chevron" aria-hidden="true">⌄</span></summary>
         {liveRun?.input_provenance&&<details className="sensor-mapping-list simulation-input-details">
           <summary>{t('Simulation interval input details')}</summary>
-          <p>{t('Latest interval')}: {liveRun.input_provenance.start_ms/1000}–{liveRun.input_provenance.end_ms/1000} s · {t(liveRun.phase||liveRun.status)}</p>
+          <p>{t('Latest interval')}: {liveRun.input_provenance.start_ms/1000}–{liveRun.input_provenance.end_ms/1000} {t('s')} · {t(liveRun.phase||liveRun.status)}</p>
           {liveRun.input_provenance.interval_start&&<p>{localCollectionTime(liveRun.input_provenance.interval_start)} → {localCollectionTime(liveRun.input_provenance.interval_end)}</p>}
           <p>{t('Times use this computer’s local timezone')}: {Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
           <table><thead><tr><th>{t('Sensor mapping')}</th><th>{t('Data source')}</th><th>{t('Model input value')}</th><th>{t('Collected from')}</th><th>{t('Collected to')}</th><th>{t('Samples')}</th></tr></thead>

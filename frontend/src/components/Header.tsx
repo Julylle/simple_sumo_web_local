@@ -6,7 +6,7 @@ export function Header({ engine = "Python" }: { engine?: string }) {
       <div className="brand">
         {/* <div className="brand-mark">M</div>? */}
         <div>
-          <strong>{t("Plant-wide model testing")}</strong>
+          <strong>{t("Plant-wide model test")}</strong>
           <span>{t("Simplified modelling workspace")}</span>
         </div>
       </div>

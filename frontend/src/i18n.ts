@@ -8,7 +8,7 @@ try { if (localStorage.getItem(storageKey) === 'zh') language = 'zh'; } catch { 
 const listeners = new Set<() => void>();
 function updateDocument() {
   document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en';
-  document.title = 'Plant-wide model test';
+  document.title = t('Plant-wide model test');
 }
 updateDocument();
 export function setLanguage(next: Language) {
@@ -28,6 +28,12 @@ export function t<T>(value: T): T {
   let translated = zh[text];
   if (!translated) {
     translated = text
+      .replace(/^Non-finite sensor reading: (.+)$/, '传感器读数为非有限值：$1')
+      .replace(/^Invalid recorded input; quality=(.*)$/, '输入记录无效；质量标记=$1')
+      .replace(/^Sensor database read failed with no previous input to reuse: (.*)$/, (_, detail: string) => `传感器数据库读取失败，且无可沿用的前值：${t(detail)}`)
+      .replace(/^Invalid historical input at (.+)$/, '历史输入无效，时间：$1')
+      .replace(/^(.*) · simulation$/, '$1 · 模拟值')
+      .replace(/^(.*) · lab$/, '$1 · 化验值')
       .replace(/^Error: (.+)$/, (_, detail: string) => `错误：${t(detail)}`)
       .replace(/^Sensor comparisons from (.+) unavailable\. (.+)$/, (_, database: string, detail: string) => `无法从 ${database} 读取传感器对比数据。${t(detail)}`)
       .replace(/^SUMO MySQL write failed \((.+)\)\. (.+) Simulation stopped to avoid silent history loss\.$/, (_, operation: string, detail: string) => `SUMO 数据库写入失败（${t(operation)}）。${t(detail)} 为避免历史数据丢失，模拟已停止。`)

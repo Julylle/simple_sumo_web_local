@@ -29,7 +29,7 @@ test('Chinese covers realtime setup, recovery, diagnostics and plot copy; Englis
     'DO concentrations · simulation inputs':'DO 浓度 · 模型实际输入',
     'waiting_for_boundary':'等待模拟区间完成',
     'Reset axes':'重置坐标轴',
-    'Plant-wide model testing':'全厂模型测试',
+    'Plant-wide model test':'全厂模型测试',
     'Auto-Calibration':'自动校准',
   };
   app.setLanguage('zh');
@@ -66,4 +66,38 @@ test('all static translated UI phrases have Chinese entries or are intentional t
       assert.notEqual(app.t(text),text,`${file}: missing translation for ${text}`);
     }
   }
+});
+
+
+test('tab title follows language changes and restores the saved language on reload',()=>{
+  const app=translationApp();
+  assert.equal(app.context.document.title,'Plant-wide model test');
+  app.setLanguage('zh');
+  assert.equal(app.context.document.title,'全厂模型测试');
+  assert.equal(translationApp(app.storage.get('model-platform-language')).context.document.title,'全厂模型测试');
+  app.setLanguage('en');
+  assert.equal(app.context.document.title,'Plant-wide model test');
+});
+
+test('input provenance, processing records and dynamic chart labels translate',()=>{
+  const app=translationApp('zh');
+  const samples={
+    'Connected':'已连接',
+    'Unknown':'未知',
+    'Simulation interval input details':'模拟区间输入数据详情',
+    'Database interval average':'数据库区间均值',
+    'Sensor input processing history':'传感器输入处理历史',
+    'Invalid samples → previous value, then average':'无效样本沿用前值后取均值',
+    'Invalid recorded samples':'采集记录中存在无效样本',
+    'Non-finite sensor reading: nan':'传感器读数为非有限值：nan',
+    'Non-finite sensor reading: inf':'传感器读数为非有限值：inf',
+    'Invalid recorded input; quality=bad':'输入记录无效；质量标记=bad',
+    'CSTR3_10 MLSS · simulation':'CSTR3_10 MLSS · 模拟值',
+    'CSTR4_10 MLVSS · lab':'CSTR4_10 MLVSS · 化验值',
+  };
+  for(const [en,zh] of Object.entries(samples))assert.equal(app.t(en),zh);
+  const reason='Sensor database read failed with no previous input to reuse: OperationalError: (2003)';
+  assert.equal(app.t(reason),'传感器数据库读取失败，且无可沿用的前值：OperationalError: (2003)');
+  app.setLanguage('en');
+  for(const en of Object.keys(samples))assert.equal(app.t(en),en);
 });
