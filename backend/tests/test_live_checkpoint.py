@@ -94,7 +94,7 @@ def test_restart_resume_uses_checkpoint_time_mapping_and_model(session, monkeypa
 @pytest.mark.parametrize('resume_ms', [0, 120000, 167160000])
 @pytest.mark.parametrize('stop_at_boundary', [False, True])
 @pytest.mark.parametrize('locked_cleanup', [False, True])
-def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failure(session, tmp_path, monkeypatch, resume_ms, stop_at_boundary, locked_cleanup, database_enabled):
+def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failure(session, tmp_path, monkeypatch, resume_ms, stop_at_boundary, locked_cleanup, database_enabled, wait_for_continue=False):
     import sys
     recorder = Mock()
     recorder.names = ['all_state_test']
@@ -156,16 +156,19 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
         else:
             emit(resume_ms+60000)
         return 1
+    pending_limit = [None]
     def send(job, command):
         if command == 'continue;':
             engine.message_callback(1, '530008 Simulation continues...')
-            emit(resume_ms+60000)
+            emit(resume_ms + (pending_limit[0] if pending_limit[0] is not None else 60000))
         elif command.startswith('save '):
             path = Path(command.split('"')[1])
             path.write_text(f'<systemstate><time>{current}</time></systemstate>')
             engine.message_callback(1, '530045 Saved')
         elif command.startswith('set Sumo__LimitTime '):
-            emit(resume_ms + int(command.split()[-1].rstrip(';')))
+            pending_limit[0] = int(command.split()[-1].rstrip(';'))
+            if not wait_for_continue:
+                emit(resume_ms + pending_limit[0])
     original_temporary_directory = live.tempfile.TemporaryDirectory
     temporary_folders = []
     cleanup_calls = []
@@ -196,6 +199,10 @@ def test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failur
     monkeypatch.setattr(live, '_read_model_inputs', read)
     try:
         live._worker(session)
+        if wait_for_continue:
+            commands_sent = [c.args[1] for c in engine.sendCommand.call_args_list]
+            limit_index = next(i for i,c in enumerate(commands_sent) if c.startswith('set Sumo__LimitTime '))
+            assert commands_sent[limit_index + 1] == 'continue;'
     finally:
         for directory in temporary_folders:
             directory.cleanup()
@@ -302,3 +309,10 @@ def test_only_new_history_launch_requests_database_replacement(session, monkeypa
         live._launch(session['mapping'], 1, 'checkpoint' if resume_id else 'builtin', session['model'],
                      run_id=resume_id, resume_ms=0, history=plan)
     assert 'replace_existing_results' not in live._session
+
+
+def test_saved_boundary_without_pause_message_continues_once(session, tmp_path, monkeypatch):
+    test_worker_saves_each_boundary_before_sensor_update_and_preserves_on_failure(
+        session, tmp_path, monkeypatch, resume_ms=344400000,
+        stop_at_boundary=True, locked_cleanup=False, database_enabled=True,
+        wait_for_continue=True)

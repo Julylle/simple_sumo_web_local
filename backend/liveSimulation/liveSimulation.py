@@ -225,6 +225,7 @@ def _worker(s):
     native_time_ms = None
     callback_count = 0
     resumed_boundary = False
+    completed_native_ms = None
     errors = []
     state_loaded = False
     save_requested = False
@@ -425,13 +426,21 @@ def _worker(s):
                 # A paused engine cannot advance merely by waiting longer. Allow
                 # one explicit continuation per boundary, after a grace period
                 # for an in-flight boundary callback. Never infer completion.
-                if (paused.is_set() and state_loaded and not resumed_boundary
+                # Some native runs stop at LimitTime without delivering 530003.
+                # Only retry an unchanged, saved boundary after the next limit
+                # has been sent. Never infer completion or retry a progressing job.
+                stalled_at_saved_boundary = (
+                    completed_native_ms is not None
+                    and native_time_ms == completed_native_ms
+                    and time.monotonic() - boundary_started >= 5)
+                if (state_loaded and not resumed_boundary
                         and native_time_ms is not None and native_time_ms < target_ms - resume_ms
-                        and time.monotonic() - paused_at >= 1):
+                        and ((paused.is_set() and time.monotonic() - paused_at >= 1)
+                             or stalled_at_saved_boundary)):
                     resumed_boundary = True
                     paused.clear()
-                    logging.warning("Live SUMO %s paused at %s ms before %s ms; continuing once",
-                                    s['id'], native_time_ms, target_ms - resume_ms)
+                    logging.warning("Live SUMO %s stalled at %s ms before %s ms; continuing once (saved boundary: %s)",
+                                    s['id'], native_time_ms, target_ms - resume_ms, stalled_at_saved_boundary)
                     send_command(job, "continue;")
                     continue
                 if time.monotonic() - boundary_started >= boundary_timeout:
@@ -471,6 +480,7 @@ def _worker(s):
                     history['held_at'] = window.timestamp
                     history['held_intervals'] = history.get('held_intervals', 0) + bool(window.held_inputs)
             checkpoint(current_ms)
+            completed_native_ms = current_ms - resume_ms
             saved_at = time.perf_counter()
             with _lock:
                 s.setdefault('timings', {}).update(
