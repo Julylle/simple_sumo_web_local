@@ -1,4 +1,5 @@
 """Keep one local Uvicorn process running until stop.ps1 requests a stop."""
+import errno
 import logging
 import os
 import socket
@@ -32,9 +33,15 @@ def supervise(logs, command, port=8000, initial_delay=5, poll=1):
     with (logs / "backend-watchdog.lock").open("a+b") as lock:
         try:
             claim(lock)
-        except OSError:
-            logging.info("Watchdog already running; duplicate launcher exiting")
-            return
+        except OSError as exc:
+            if exc.errno in (errno.EACCES, errno.EAGAIN, errno.EDEADLK):
+                logging.warning("Watchdog lock unavailable; another watchdog may be running. Lock: %s; error: %s",
+                                logs / "backend-watchdog.lock", exc)
+                return
+            logging.exception("Cannot acquire watchdog lock")
+            raise
+        logging.info("Watchdog PID %d acquired lock; Python %s; backend directory %s",
+                     os.getpid(), sys.executable, BACKEND)
         delay = initial_delay
         child = None
         try:
