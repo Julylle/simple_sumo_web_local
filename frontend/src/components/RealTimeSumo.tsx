@@ -358,7 +358,7 @@ export function RealTimeSumo(){
   const doPlotOptions=doSensorOptions.filter(o=>/^Sumo__Plant__CSTR[34]_/.test(o.name)&&doChartMapping[o.name]).map(o=>({key:o.name,label:o.label,unit:o.unit}));
   return <>
     <section className="page-head"><div><h1>{t("SUMO Real-time Simulation")}</h1><p>{t("Cixi Eastern WWTP · KEPServer OPC UA · Manual simulation")}</p></div></section>
-    <section className="config-card">
+    <section className="config-card live-configuration">
       <div className="section-title"><div><h2>{t("Simulation settings")}</h2></div></div>
       <details className="sensor-setup sensor-step-collapsible" aria-labelledby="sensor-step-title">
         <summary className="sensor-heading"><div><h3 id="sensor-step-title">{t("Step1: Connect sensors through KEPServer")}</h3><p>{t("Connect reads all configured influent, DO and additional control tags. Dropdowns only select the mapping to edit.")}</p></div><span className="mapping-indicator sensor-mapping-indicator" role="status">
@@ -371,11 +371,11 @@ export function RealTimeSumo(){
           <p>{t('Latest interval')}: {liveRun.input_provenance.start_ms/1000}–{liveRun.input_provenance.end_ms/1000} {t('s')} · {t(liveRun.phase||liveRun.status)}</p>
           {liveRun.input_provenance.interval_start&&<p>{localCollectionTime(liveRun.input_provenance.interval_start)} → {localCollectionTime(liveRun.input_provenance.interval_end)}</p>}
           <p>{t('Times use this computer’s local timezone')}: {Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
-          <table><thead><tr><th>{t('Sensor mapping')}</th><th>{t('Data source')}</th><th>{t('Model input value')}</th><th>{t('Collected from')}</th><th>{t('Collected to')}</th><th>{t('Samples')}</th></tr></thead>
+          <div className="provenance-table-scroll" role="region" aria-label={t("Simulation interval input details")} tabIndex={0}><table><thead><tr><th>{t('Sensor mapping')}</th><th>{t('Data source')}</th><th>{t('Model input value')}</th><th>{t('Collected from')}</th><th>{t('Collected to')}</th><th>{t('Samples')}</th></tr></thead>
           <tbody>{liveRun.input_provenance.inputs.map(r=><tr key={r.column}>
             <td><code>{r.column}</code><br/><small>{r.node_id}</small></td><td>{inputSource(r.source)}{r.original_source&&<> ({inputSource(r.original_source)})</>}</td>
             <td>{r.model_value}</td><td>{localCollectionTime(r.collected_from)}</td><td>{localCollectionTime(r.collected_to)}</td><td>{r.sample_count??'—'}</td>
-          </tr>)}</tbody></table>
+          </tr>)}</tbody></table></div>
         </details>}
         <div className="sensor-editor-grid sensor-input-grid">
           {[{title:'Influent variable',items:options,selected:selectedColumn,draft:nodeDraft,setSelected:setSelectedColumn,setDraft:setNodeDraft,kind:'influent'},
@@ -504,7 +504,7 @@ export function RealTimeSumo(){
       <InputProcessingLog key={liveRun?.id} runId={liveRun?.id} records={liveRun?.input_processing_records} onCleared={() => setLiveRun(current => current && current.id === liveRun?.id ? {...current, input_processing_records: []} : current)}/>
       </section>
     </section>
-    <section className="config-card"><div className="section-title"><div><h2>{t("Simulation results")}</h2></div><button className="secondary" disabled={!liveRun?.result?.time_h?.length||downloading} onClick={async()=>{setDownloading(true);try{const response=await fetch('/api/sumo/live/download');if(!response.ok)throw Error('Download failed');const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download='sumo_live_results.csv';link.click();URL.revokeObjectURL(url);}catch(e){setError(String(e));}finally{setDownloading(false);}}}>{t("Download results CSV")}</button></div>
+    <section className="config-card live-results"><div className="section-title"><div><h2>{t("Simulation results")}</h2></div><button className="secondary" disabled={!liveRun?.result?.time_h?.length||downloading} onClick={async()=>{setDownloading(true);try{const response=await fetch('/api/sumo/live/download');if(!response.ok)throw Error('Download failed');const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download='sumo_live_results.csv';link.click();URL.revokeObjectURL(url);}catch(e){setError(String(e));}finally{setDownloading(false);}}}>{t("Download results CSV")}</button></div>
       <LiveSensorPlot title={t("Influent variables · simulation inputs")} groupTitle="Influent variables"
         options={influentPlotOptions} history={history} source="simulation"
         simulationResult={liveRun?.result} runId={liveRun?.id||'simulation-inputs'} />

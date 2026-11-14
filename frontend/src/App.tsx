@@ -133,7 +133,7 @@ export default function App() {
                 onClick={() => { if (applyCalibratedParameters()) setTab("simulation"); }}>{t("Update parameters to Simulation")}</button>
               {parameterActionStatus && <span role="status">{t(parameterActionStatus)}</span>}
             </div>
-            <section className="chart-grid">
+            <section className="chart-grid calibration-workspace">
             <CalibrationComparison measurements={measurements} result={comparison} current={autoCalibrationComplete} />
             <CalibrationParameters parameters={autoParameters} loaded={calibrationLoaded}
               error={calibrationError} busy={busy} onChange={updateAutoParameter} onRetry={retryCalibration}
