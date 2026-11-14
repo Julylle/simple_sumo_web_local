@@ -1,3 +1,4 @@
+import { scientificPlotLayout, scientificPlotGrid } from '../plotAppearance';
 import { plotInteractionConfig, plotInteractionLayout } from '../plotInteraction';
 import { t, useLanguage } from '../i18n';
 import { useMemo, useState } from "react";
@@ -78,19 +79,17 @@ export function SimulationCharts({ data, calibrationPanel, measurements }: {
           <Plot
             data={traces}
             layout={{
-              ...plotInteractionLayout,
+              ...plotInteractionLayout, ...scientificPlotLayout,
               autosize: true,
               height: 480,
               hovermode: "closest",
-              paper_bgcolor: "transparent",
-              plot_bgcolor: "transparent",
-              legend: { orientation: "v", x: 1.02, y: 1, groupclick: "toggleitem" },
-              xaxis: { title: { text: t("Time (h)") }, gridcolor: "#edf0f4" },
+              legend: { orientation: "h", x: 0, y: -0.24, yanchor: "top", maxheight: 0.28, groupclick: "toggleitem" },
+              xaxis: { title: { text: t("Time (h)") }, gridcolor: scientificPlotGrid },
               yaxis: {
                 title: { text: t("Concentration (mg/L)") },
-                gridcolor: "#edf0f4",
+                gridcolor: scientificPlotGrid,
               },
-              margin: { l: 65, r: 110, t: 48, b: 60 },
+              margin: { l: 65, r: 24, t: 48, b: 130 },
             }}
             useResizeHandler
             style={{ width: "100%" }}
