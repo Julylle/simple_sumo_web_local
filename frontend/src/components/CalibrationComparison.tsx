@@ -38,7 +38,7 @@ export function CalibrationComparison({ measurements, result, current }: {
         {result && !current && <p className="calibration-note" role="status">{t("Calibration settings have changed. Curves show the last completed calibration; run again to update.")}</p>}
         {series.length > 0 ? <>
           <Plot data={series.flatMap(({ variable, observed, color }) => [
-            { x: measurements.time_h, y: observed, type: "scatter" as const, mode: "markers" as const, name: t(`${variable} · Measured`), legendgroup: variable, marker: { color, size: 8 } },
+            { x: measurements.time_h, y: observed, type: "scatter" as const, mode: "markers" as const, name: t(`${variable} · Measured`), legendgroup: variable, marker: { color, size: 8, opacity: 0.45 } },
             ...(result ? [
               { x: result.time_h, y: result.before[variable], type: "scatter" as const, mode: "lines" as const, name: t(`${variable} · Before calibration`), legendgroup: variable, line: { color, dash: "dash" as const, width: 2 } },
               { x: result.time_h, y: result.after[variable], type: "scatter" as const, mode: "lines" as const, name: t(`${variable} · After calibration`), legendgroup: variable, line: { color, width: 2.5 } },

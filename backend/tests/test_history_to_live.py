@@ -58,7 +58,7 @@ def test_history_runs_without_wait_then_same_job_switches_to_live(session, tmp_p
             Path(command.split('"')[1]).write_text('<systemstate><value/></systemstate>')
             engine.message_callback(1,'530045 Saved')
         elif command.startswith('set Sumo__LimitTime '):emit(int(command.split()[-1].rstrip(';')))
-    def read(mapping):
+    def read(mapping, previous=None):
         reads.append(clock[0])
         assert cp.checkpoint_info()['history']['completed']==2
         if len(reads)==2:raise RuntimeError('test end: OPC offline')

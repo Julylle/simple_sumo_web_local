@@ -4,6 +4,11 @@
 # ==========================================
 
 $PORTS = @(8000, 5173)
+$logDir = Join-Path $PSScriptRoot "logs"
+function Stop-BackendWatchdog {
+    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+    New-Item -ItemType File -Force -Path (Join-Path $logDir "backend.stop") | Out-Null
+}
 
 Write-Host "Checking Frontend and Backend..." -ForegroundColor Cyan
 
@@ -18,6 +23,9 @@ foreach ($PORT in $PORTS) {
 
     if ($connections.Count -eq 0) {
         Write-Host "Port ${PORT}: Not running" -ForegroundColor Yellow
+        if ($PORT -eq 8000 -and (Read-Host "Disable backend auto-restart? (Y/N)") -eq "Y") {
+            Stop-BackendWatchdog
+        }
         continue
     }
 
@@ -53,7 +61,8 @@ foreach ($PORT in $PORTS) {
         }
 
         try {
-            Stop-Process -Id $processId -Force -ErrorAction Stop
+            if ($PORT -eq 8000) { Stop-BackendWatchdog }
+            if (-not $process.HasExited) { $process.Kill() }
             Write-Host "Stopped PID $processId" -ForegroundColor Green
         }
         catch {

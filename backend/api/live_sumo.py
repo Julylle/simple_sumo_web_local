@@ -48,6 +48,31 @@ def download():
                     headers={"Content-Disposition": 'attachment; filename="sumo_live_results.csv"'})
 
 
+class ProcessingHistoryRequest(BaseModel):
+    run_id: str = Field(min_length=1, max_length=64)
+
+
+@router.post("/sumo/live/processing-records/clear")
+def clear_processing_history(body: ProcessingHistoryRequest):
+    try:
+        return live_sumo.clear_processing_history(body.run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail='Could not save cleared processing history.') from exc
+
+
+@router.get("/sumo/live/processing-records/download")
+def download_processing_history(run_id: str):
+    try:
+        data = live_sumo.processing_records(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return Response(content=json.dumps(data, ensure_ascii=False, allow_nan=False, indent=2),
+                    media_type="application/json",
+                    headers={"Content-Disposition": 'attachment; filename="sensor_input_processing_history.json"'})
+
+
 @router.post("/sumo/live/models", status_code=202)
 async def upload_model(project: UploadFile | None = File(None),
                        initial_state: UploadFile | None = File(None),

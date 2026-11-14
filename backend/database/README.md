@@ -349,3 +349,37 @@ Sample ownership and values commit atomically; failed writes roll back together.
 Previously accumulated duplicate timestamps are not bulk-cleaned. Old run-specific
 queries no longer include samples transferred to the new run. Restart the backend
 to load this behavior; existing database tables require no migration.
+
+
+### Model-input treatment audit
+
+Realtime and Historical → Live apply negative finite sensor readings as zero before
+CSV scaling. NaN/infinity, bad quality, missing observations and read failures reuse
+the previous applied model-unit input (without scaling it twice). A first interval
+without a usable previous value fails explicitly. Historical interval means include
+a previous-value contribution for each invalid recorded sample; recorded collector
+errors are included in the audit reason. Database connection failures hold the prior
+inputs for complete elapsed intervals, with retries paced by LimitTime. Original
+collector rows are never modified.
+
+Step2 ends with a collapsed **Sensor input processing history**. It retains
+adjustments and read-failure reasons, except CSTR1/CSTR2 SO2 and all MLR1/MLR2
+inputs (including numbered branches). This exclusion only affects the audit log,
+not input processing or model calculations. Existing checkpoint entries are filtered
+on read/Resume, and subsequent checkpoint and stop-audit saves omit them.
+Other records are shown with local interval times and the actual model
+value; pages contain at most 100 records. Records are appended only when an interval
+is selected for simulation, not when future intervals are prefetched.
+`latest_checkpoint.zip` includes `input_processing_records.json` at every saved
+boundary. On stop/failure the audit is also written as `input_processing_<run-id>.json`
+in `SUMO_LIVE_STATE_DIR` (default `backend/live_states`) and the same run's bundle
+receives its final audit, without changing its last completed native state. Entries
+beyond that saved boundary describe attempted intervals; Resume may retry them and
+appends new entries. Old checkpoints without an audit restore an empty list.
+
+The processing-history panel offers **Download records (JSON)** for all retained
+records across pages, and **Clear records** for the current run. Clearing updates
+the standalone audit and matching latest checkpoint before clearing active memory;
+future events continue to append. The action also works on a saved checkpoint
+without starting SUMO. It leaves model state, simulation results and timestamps
+unchanged. Requests carry the run ID, so a stale page cannot clear a newer run.

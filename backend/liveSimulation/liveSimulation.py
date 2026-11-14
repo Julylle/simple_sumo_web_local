@@ -18,14 +18,15 @@ from uuid import uuid4
 from database.simulation import open_recorder
 from services.historical_inputs import history_request, load_history, load_available_history, parse_time, history_time
 from services.kepserver import read_snapshot
-from services.model_inputs import scale_model_inputs
+from services.input_provenance import input_provenance, process_readings, record_treatments
 from services.sensor_inputs import SENSOR_COLUMNS
+from services.processing_history import filter_processing_records
 from services.sumo_startup import write_startup_script, project_parameter_commands
 from services.live_progress import live_progress
 from services.resume_history import resume_history
 from services.sensor_comparisons import LIVE_EXTRA_OUTPUTS
 from services.live_models import resolve_model
-from services.live_checkpoint import save_checkpoint, checkpoint_info, restore_checkpoint, saved_snapshot
+from services.live_checkpoint import save_checkpoint, checkpoint_info, restore_checkpoint, saved_snapshot, persist_processing_records, clear_processing_records
 
 ROOT = Path(__file__).resolve().parents[1]
 _lock = threading.RLock()
@@ -48,10 +49,31 @@ def snapshot():
                 "last_sumo_message": s.get("last_sumo_message"),
                 "sumo_commands": list(s.get("sumo_commands", [])),
                 "diagnostics": live_progress(s),
+                "input_provenance": s.get("input_provenance"),
+                "input_processing_records": filter_processing_records(s.get("input_processing_records", [])),
                 "phase": s["phase"], "simulated_h": s["sim_ms"] / 3600000,
                 "samples": len(s["times"]), "result": {
                     "sensor_timestamps": list(s.get("sensor_timestamps", [None] * len(s["times"]))),
                     "time_h": list(s["times"]), "variables": {k: list(v) for k, v in s["variables"].items()}}}
+
+
+def processing_records(run_id):
+    with _lock:
+        session = _session if _session is not None else saved_snapshot()
+        if not session or session['id'] != run_id:
+            raise ValueError('Simulation changed; refresh processing history.')
+        return {'run_id': session['id'],
+                'records': filter_processing_records(session.get('input_processing_records', []))}
+
+
+def clear_processing_history(run_id):
+    with _lock:
+        session = _session if _session is not None else saved_snapshot()
+        if not session or session['id'] != run_id:
+            raise ValueError('Simulation changed; refresh processing history.')
+        clear_processing_records(session)
+        return {'run_id': session['id'], 'records': []}
+
 
 def start(mapping, interval_minutes=1, model_id="builtin", mode="live", history_start=None, history_end=None):
     global _session
@@ -65,7 +87,7 @@ def start(mapping, interval_minutes=1, model_id="builtin", mode="live", history_
     selected_model = resolve_model(model_id)
     return _launch(mapping, interval_minutes, model_id, selected_model, history=history)
 
-def _launch(mapping, interval_minutes, model_id, selected_model, resume_ms=0, resume_folder=None, result=None, run_id=None, history=None):
+def _launch(mapping, interval_minutes, model_id, selected_model, resume_ms=0, resume_folder=None, result=None, run_id=None, history=None, input_processing_records=None):
     global _session
     if history is not None:
         history = dict(history)
@@ -79,6 +101,7 @@ def _launch(mapping, interval_minutes, model_id, selected_model, resume_ms=0, re
         if _session is not None and _session["status"] in ("starting", "running", "stopping"):
             raise RuntimeError("A live SUMO session is already active.")
         s = {"id": run_id or str(uuid4()), "status": "starting", "phase": "initializing",
+             "input_processing_records": filter_processing_records(input_processing_records or []),
              "error": None, "sim_ms": resume_ms, "resume_ms": resume_ms,
              "resume_folder": resume_folder, "times": list((result or {}).get("time_h", [])),
              "variables": {k: list(v) for k, v in (result or {}).get("variables", {}).items()},
@@ -99,7 +122,8 @@ def resume():
         metadata, model, folder = restore_checkpoint()
         try:
             return _launch(metadata['mapping'], metadata['interval_minutes'], 'checkpoint', model,
-                           metadata['simulated_ms'], folder, metadata.get('result'), metadata['run_id'], resume_history(metadata))
+                           metadata['simulated_ms'], folder, metadata.get('result'), metadata['run_id'], resume_history(metadata),
+                           metadata.get('input_processing_records', []))
         except Exception:
             folder.cleanup()
             raise
@@ -129,10 +153,9 @@ def export_csv():
             writer.writerow([t, result.get("sensor_timestamps", [None] * len(s["times"]))[i], *(s["variables"][k][i] for k in names)])
         return out.getvalue()
 
-def _read_model_inputs(mapping):
-    """Read fresh raw sensors and convert flows only at the SUMO input boundary."""
-    readings = asyncio.run(read_snapshot(mapping))
-    return scale_model_inputs(readings)
+def _read_model_inputs(mapping, previous=None):
+    readings = asyncio.run(read_snapshot(mapping, tolerate_errors=True))
+    return process_readings(mapping, readings, previous)
 
 
 def _wait_for_collected_windows(s, done=None):
@@ -202,6 +225,7 @@ def _worker(s):
     native_time_ms = None
     callback_count = 0
     resumed_boundary = False
+    completed_native_ms = None
     errors = []
     state_loaded = False
     save_requested = False
@@ -249,8 +273,11 @@ def _worker(s):
                                  {'mapping': s['mapping'], 'interval_seconds': s['interval'], 'history': history}, output_variables)
         database_variables = recorder.names if recorder else []
         # First read must succeed before creating a SUMO job.
-        values = windows[0].values if replaying else _read_model_inputs(s["mapping"])
+        values = windows[0].values if replaying else _read_model_inputs(s["mapping"], (history or {}).get("last_inputs"))
         s["input_read_at"] = windows[0].timestamp if replaying else datetime.now(timezone.utc).isoformat()
+        with _lock:
+            s['input_provenance'] = input_provenance(s['mapping'], values, resume_ms, step_ms, windows[0] if replaying else None)
+            record_treatments(s, s['input_provenance'])
         # Release the scheduler before removing a directory containing its loaded DLL.
         workspace = tempfile.TemporaryDirectory(prefix="sumo_live_", ignore_cleanup_errors=True)
         directory = workspace.name
@@ -399,13 +426,21 @@ def _worker(s):
                 # A paused engine cannot advance merely by waiting longer. Allow
                 # one explicit continuation per boundary, after a grace period
                 # for an in-flight boundary callback. Never infer completion.
-                if (paused.is_set() and state_loaded and not resumed_boundary
+                # Some native runs stop at LimitTime without delivering 530003.
+                # Only retry an unchanged, saved boundary after the next limit
+                # has been sent. Never infer completion or retry a progressing job.
+                stalled_at_saved_boundary = (
+                    completed_native_ms is not None
+                    and native_time_ms == completed_native_ms
+                    and time.monotonic() - boundary_started >= 5)
+                if (state_loaded and not resumed_boundary
                         and native_time_ms is not None and native_time_ms < target_ms - resume_ms
-                        and time.monotonic() - paused_at >= 1):
+                        and ((paused.is_set() and time.monotonic() - paused_at >= 1)
+                             or stalled_at_saved_boundary)):
                     resumed_boundary = True
                     paused.clear()
-                    logging.warning("Live SUMO %s paused at %s ms before %s ms; continuing once",
-                                    s['id'], native_time_ms, target_ms - resume_ms)
+                    logging.warning("Live SUMO %s stalled at %s ms before %s ms; continuing once (saved boundary: %s)",
+                                    s['id'], native_time_ms, target_ms - resume_ms, stalled_at_saved_boundary)
                     send_command(job, "continue;")
                     continue
                 if time.monotonic() - boundary_started >= boundary_timeout:
@@ -440,10 +475,12 @@ def _worker(s):
                     history['completed'] += 1
                     window = windows[history_index]
                     history['last_inputs'] = dict(window.values)
+                    history['last_input_provenance'] = dict(window.provenance)
                     history['held_inputs'] = list(window.held_inputs)
                     history['held_at'] = window.timestamp
                     history['held_intervals'] = history.get('held_intervals', 0) + bool(window.held_inputs)
             checkpoint(current_ms)
+            completed_native_ms = current_ms - resume_ms
             saved_at = time.perf_counter()
             with _lock:
                 s.setdefault('timings', {}).update(
@@ -482,10 +519,15 @@ def _worker(s):
                     due += s['interval']
                 step_ms = s['interval'] * dtool.sec
                 try:
-                    new_values = _read_model_inputs(s["mapping"])
+                    new_values = _read_model_inputs(s["mapping"], values)
                     s["input_read_at"] = datetime.now(timezone.utc).isoformat()
                 except Exception as exc:
                     raise RuntimeError("OPC UA unavailable; live simulation stopped: " + str(exc)) from exc
+            with _lock:
+                s['input_provenance'] = input_provenance(s['mapping'], new_values, current_ms, step_ms,
+                                                        windows[history_index] if replaying else None)
+                record_treatments(s, s['input_provenance'])
+            values = new_values
             interval_started = time.perf_counter()
             for key, value in new_values.items():
                 send_command(job, f"set {key} {value};")
@@ -511,6 +553,12 @@ def _worker(s):
             s["phase"] = "failed"
             s["error"] = str(exc)
     finally:
+        try:
+            persist_processing_records(s)
+        except Exception as exc:
+            logging.exception('Failed to save sensor processing records')
+            with _lock:
+                s.update(status='failed', error='Failed to save sensor processing records: ' + str(exc))
         if recorder:
             try:
                 recorder.close()
