@@ -2,13 +2,99 @@
 
 Starter architecture for an interactive browser UI that changes model parameters, executes a server-side Python model, and displays approved results. A SUMO adapter placeholder is included.
 
-## Run with Docker
+## Run with Docker on Windows Server 2022 + WSL2
+
+In Ubuntu, from the repository root:
 
 ```bash
-docker compose up --build
+docker compose config --quiet
+docker compose up -d --build --wait
+curl -f http://127.0.0.1:8080/api/health
 ```
 
-Open `http://localhost:8080`.
+Open `http://localhost:8080` in the Windows browser on that server. Only the
+gateway is published by default. Set `WEB_PORT=8180` in the root `.env` if port
+8080 is occupied. Add any site-specific PyASM workbooks to `private/DataForModel/`
+before running workflows that use those datasets.
+
+### Use the licensed Windows SUMO backend from WSL2
+
+The bundled SUMO model uses a Windows DLL. Run the full Windows backend in the
+licensed environment with `.\start.ps1 -BackendOnly` if it is not already
+running. The Compose gateway forwards `/api/sumo/` and `/api/kepserver/` to
+`SUMO_API_UPSTREAM` when set. PyASM and `/api/health` continue to use the Linux
+container. The Windows backend keeps using its existing KEPServer and MySQL
+settings.
+
+The Windows watchdog binds to `127.0.0.1:8000`. With WSL2 NAT, get the Windows
+host address as seen from Ubuntu with `ip route show default`. If you need to
+forward that address to the loopback service, run the following in an elevated
+Windows PowerShell, replacing the sample address with the WSL default gateway:
+
+```powershell
+$WindowsWslIp = '172.28.0.1'
+netsh interface portproxy add v4tov4 listenaddress=$WindowsWslIp listenport=8001 connectaddress=127.0.0.1 connectport=8000
+```
+
+Allow TCP 8001 on the Windows WSL interface from the WSL address if Windows
+Firewall blocks it. From Ubuntu, verify the forward, write the matching value
+into the root `.env`, and reload the gateway:
+
+```bash
+WINDOWS_WSL_IP=$(ip route show default | awk 'NR == 1 {print $3}')
+curl -f "http://$WINDOWS_WSL_IP:8001/api/sumo/input-options"
+# Set SUMO_API_UPSTREAM=<Windows WSL gateway IP>:8001 in .env, without http://.
+docker compose up -d --wait
+curl -f http://127.0.0.1:8080/api/sumo/input-options
+```
+
+If WSL changes the NAT address on restart, update the Windows forward and `.env`.
+
+### Optional MySQL container
+
+Keep an existing plant database for the Windows service if one is configured.
+To provision a separate MySQL 8.4 instance, put `MYSQL_PASSWORD` and
+`MYSQL_ROOT_PASSWORD` in the root `.env` (defaults for the database and app user
+are `sumo_timeseries` and `sumo`). Set `MYSQL_PORT=3307` if WSL port 3306 is in use.
+
+```bash
+docker compose --profile mysql up -d --wait
+docker compose exec backend micromamba run -n base python -m database init
+```
+
+The container backend uses `mysql:3306` for this instance. If the Windows
+backend will use it, check connectivity from Windows to the published port and
+configure its credentials separately. Historical replay needs its initialized
+history database and existing data. See [database setup](backend/database/README.md).
+If you already use the legacy MySQL Compose file, keep its current instance and
+volume. Starting the profile under another Compose project creates a separate
+volume. Use the same Compose project name and existing credentials to reuse an
+existing volume in the same Docker Engine.
+
+### Offline WSL server
+
+On a connected Linux Docker machine with the same CPU architecture, use the same
+checkout to build and package the images:
+
+```bash
+docker compose build
+docker compose pull nginx
+docker save -o simple-sumo-web-images.tar \
+  simple-sumo-web-backend:local simple-sumo-web-frontend:local nginx:alpine
+```
+
+Transfer the checkout and the tar file to the server. In Ubuntu, from the
+checkout root, run:
+
+```bash
+docker load -i simple-sumo-web-images.tar
+docker compose up -d --no-build --pull never --wait
+```
+
+For the optional database, also pull and save `mysql:8.4` on the connected
+machine and pass `--profile mysql` on the server. If you set `BACKEND_IMAGE` or
+`FRONTEND_IMAGE`, save those exact tags. To reuse existing named volumes, keep
+the same Compose project name (use `-p` if the checkout directory changed).
 
 ## Development without Docker
 
@@ -176,9 +262,8 @@ of the deployed calculation assets.
 The backend host needs a licensed **Dynamita SUMO 24** installation discoverable
 by the bundled scheduler and a compatible Python interpreter. Set `SUMO_PYTHON`
 to that interpreter's absolute path if it differs from the API interpreter.
-The supplied Windows model DLL does not run in the existing Linux Docker
-container: use the separate Windows service described below. Only `/api/sumo/` is
-forwarded to Windows; the PyASM API remains in Docker.
+The supplied Windows model DLL needs the licensed Windows backend. For WSL2,
+use `SUMO_API_UPSTREAM` as described above. The PyASM API remains in Docker.
 
 `POST /api/sumo/runs` accepts `{ "duration_h": 168 }` and returns a task ID;
 `GET /api/sumo/runs/{id}` returns running/completed/failed status and results.
@@ -193,7 +278,10 @@ and `npm run build --prefix frontend`. An actual simulation additionally require
 the SUMO runtime and license; mocked adapter tests do not validate model physics.
 
 
-### Windows SUMO service with Docker frontend
+### Legacy Docker Desktop SUMO service
+
+For Docker Engine running directly in WSL2, use the deployment above, which
+routes the offline SUMO, live SUMO and KEPServer APIs to the full Windows backend.
 
 Run the service as the Windows user who has the SUMO installation and license.
 The service binds to loopback `127.0.0.1:8001`; Docker Desktop reaches it through

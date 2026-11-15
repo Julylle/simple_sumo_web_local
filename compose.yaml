@@ -1,0 +1,85 @@
+services:
+  backend:
+    image: ${BACKEND_IMAGE:-simple-sumo-web-backend:local}
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      PRIVATE_DATA_DIR: /private
+      SERIES_STORE_DIR: /home/mambauser/input-series
+      MYSQL_HOST: ${DOCKER_MYSQL_HOST:-mysql}
+      MYSQL_PORT: ${DOCKER_MYSQL_PORT:-3306}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-sumo_timeseries}
+      MYSQL_USER: ${MYSQL_USER:-sumo}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-}
+      SUMO_MYSQL_ENABLED: ${SUMO_MYSQL_ENABLED:-0}
+      SUMO_HISTORY_DATABASE: ${SUMO_HISTORY_DATABASE:-sumo_web_database}
+      SUMO_COMPARISON_DATABASE: ${SUMO_COMPARISON_DATABASE:-sumo_web_database}
+      SUMO_DISPLAY_TIMEZONE: ${SUMO_DISPLAY_TIMEZONE:-}
+      KEPSERVER_OPC_URL: ${KEPSERVER_OPC_URL:-opc.tcp://127.0.0.1:49320}
+      KEPSERVER_NAMESPACE_INDEX: ${KEPSERVER_NAMESPACE_INDEX:-2}
+      KEPSERVER_NAMESPACE_URI: ${KEPSERVER_NAMESPACE_URI:-}
+    volumes:
+      - ./private:/private:ro
+      - input-series:/home/mambauser/input-series
+    healthcheck:
+      test: ["CMD", "/opt/conda/bin/python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/api/health', timeout=3).close()"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 6
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-simple-sumo-web-frontend:local}
+    build: ./frontend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "${WEB_BIND_IP:-127.0.0.1}:${WEB_PORT:-8080}:80"
+    environment:
+      NGINX_ENVSUBST_FILTER: '^SUMO_API_UPSTREAM$'
+      SUMO_API_UPSTREAM: ${SUMO_API_UPSTREAM:-backend:8000}
+    volumes:
+      - ./nginx/compose.conf.template:/etc/nginx/templates/default.conf.template:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  mysql:
+    image: mysql:8.4
+    profiles: [mysql]
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-sumo_timeseries}
+      MYSQL_USER: ${MYSQL_USER:-sumo}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-}
+    ports:
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - sumo_mysql:/var/lib/mysql
+    command: ["--max-allowed-packet=64M", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_bin"]
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_PASSWORD\" mysql --protocol=TCP -h 127.0.0.1 -u\"$$MYSQL_USER\" -D \"$$MYSQL_DATABASE\" -e 'SELECT 1' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 12
+
+volumes:
+  input-series:
+  sumo_mysql:
