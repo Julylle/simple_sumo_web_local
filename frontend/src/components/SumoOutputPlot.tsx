@@ -1,3 +1,4 @@
+import { scientificPlotLayout, scientificPlotGrid } from '../plotAppearance';
 import { localPlotTimestamp } from '../utils/liveSensorDisplay';
 import { usePlotSetting } from '../hooks/usePlotSetting';
 import { validViewport, stringList } from '../utils/plotSettings';
@@ -78,21 +79,19 @@ export function SumoOutputPlot({ result, variables, rightAxis, overlay, options,
   const layout = useMemo<Partial<Layout>>(() => ({
     // Dimensions belong to the container, not the axis viewport. Reset axes
     // changes ranges only; resize the plot only when its container changes.
-    ...plotInteractionLayout,
+    ...plotInteractionLayout, ...scientificPlotLayout,
     autosize: false, width: plotWidth, height,
     uirevision: `${viewportScope}:${resetRevision}`,
-    paper_bgcolor: '#ffffff', plot_bgcolor: '#ffffff',
-    font: { family: 'Inter, Segoe UI, sans-serif', size: 11, color: '#64748b' },
-    xaxis: { ...axisViewport(viewport, 'xaxis'), type: hasTimestamps ? 'date' : 'linear', hoverformat: hasTimestamps ? '%Y-%m-%d %H:%M:%S.%L' : undefined, title: { text: hasTimestamps ? t('Sensor timestamp (computer local time)') : t('Time (h)'), standoff: 12 }, gridcolor: '#f1f5f9',
+    xaxis: { ...axisViewport(viewport, 'xaxis'), type: hasTimestamps ? 'date' : 'linear', hoverformat: hasTimestamps ? '%Y-%m-%d %H:%M:%S.%L' : undefined, title: { text: hasTimestamps ? t('Sensor timestamp (computer local time)') : t('Time (h)'), standoff: 12 }, gridcolor: scientificPlotGrid,
       zeroline: false, showline: true, linecolor: '#cbd5e1', ticks: 'outside', tickcolor: '#cbd5e1', automargin: false },
     yaxis: { ...axisViewport(viewport, 'yaxis'), title: { text: leftTitle, standoff: 12 },
-      gridcolor: '#e8edf3', zeroline: false, rangemode: 'tozero', tickformat: '~g', automargin: false },
+      gridcolor: scientificPlotGrid, zeroline: false, rangemode: 'tozero', tickformat: '~g', automargin: false },
     ...(hasRight ? { yaxis2: { ...axisViewport(viewport, 'yaxis2'), title: { text: rightTitle, standoff: 12 }, overlaying: 'y', side: 'right',
       showgrid: false, zeroline: false, rangemode: 'tozero', tickformat: '~g', automargin: false } } : {}),
     showlegend: overlay, legend: { orientation: 'h', y: -64 / plotHeight, yanchor: 'top', x: 0, xanchor: 'left',
       font: { size: 11 }, maxheight: legend.height },
     margin: { t: 48, b: bottom, l: 75, r: overlay ? 75 : 25, autoexpand: false },
-    hovermode: 'x unified', hoverlabel: { bgcolor: '#ffffff', bordercolor: '#e2e8f0', font: { size: 12 } },
+    hovermode: 'x unified',
     dragmode: 'zoom',
   }), [height, overlay, hasRight, leftTitle, rightTitle, language, hasTimestamps, bottom, plotWidth, legend.height, resetRevision, viewport, viewportScope]);
   const config = useMemo(() => ({

@@ -1,3 +1,4 @@
+import { scientificPlotLayout, scientificPlotGrid } from '../plotAppearance';
 import { plotInteractionConfig, plotInteractionLayout } from '../plotInteraction';
 import { t, useLanguage } from '../i18n';
 import { useMemo, useState } from "react";
@@ -43,10 +44,10 @@ export function CalibrationComparison({ measurements, result, current }: {
               { x: result.time_h, y: result.before[variable], type: "scatter" as const, mode: "lines" as const, name: t(`${variable} · Before calibration`), legendgroup: variable, line: { color, dash: "dash" as const, width: 2 } },
               { x: result.time_h, y: result.after[variable], type: "scatter" as const, mode: "lines" as const, name: t(`${variable} · After calibration`), legendgroup: variable, line: { color, width: 2.5 } },
             ] : []),
-          ])} layout={{ ...plotInteractionLayout, autosize: true, height: tank === "all" ? 580 : 420, hovermode: "closest", margin: { l: 65, r: 20, t: 48, b: tank === "all" ? 180 : 85 },
-            legend: { orientation: "h", y: -0.2, groupclick: "toggleitem" }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
-            xaxis: { title: { text: t("Elapsed time (h)") }, gridcolor: "#edf0f4" },
-            yaxis: { title: { text: `${selectionLabel} (mg/L)` }, gridcolor: "#edf0f4" },
+          ])} layout={{ ...plotInteractionLayout, ...scientificPlotLayout, autosize: true, height: tank === "all" ? 580 : 420, hovermode: "closest", margin: { l: 65, r: 20, t: 48, b: tank === "all" ? 180 : 85 },
+            legend: { orientation: "h", y: -0.2, groupclick: "toggleitem" },
+            xaxis: { title: { text: t("Elapsed time (h)") }, gridcolor: scientificPlotGrid },
+            yaxis: { title: { text: `${selectionLabel} (mg/L)` }, gridcolor: scientificPlotGrid },
           }} config={plotConfig} useResizeHandler style={{ width: "100%" }} />
           <p className="calibration-note">{t("Color identifies the model variable and matches Simulation. Points: measured · dashed: before calibration · solid: after calibration.")}</p>
           {series.map(({ variable, observed, color, metrics }) => metrics && <div className="calibration-metrics" key={variable}>

@@ -4,7 +4,6 @@ export function Header({ engine = "Python" }: { engine?: string }) {
   return (
     <header className="topbar">
       <div className="brand">
-        {/* <div className="brand-mark">M</div>? */}
         <div>
           <strong>{t("Plant-wide model test")}</strong>
           <span>{t("Simplified modelling workspace")}</span>
@@ -18,13 +17,10 @@ export function Header({ engine = "Python" }: { engine?: string }) {
             <option value="zh">中文</option>
           </select>
         </label>
-        <span className="connection">
+        <span className="connection backend-label">
           <i /> {t("Backend connected")} </span>
         <span className="engine"> {t("Engine")} <b>{t(engine)}</b>
         </span>
-        {/* <button className="avatar" title={t("Local development")}>
-          Admin
-        </button> */}
       </div>
     </header>
   );

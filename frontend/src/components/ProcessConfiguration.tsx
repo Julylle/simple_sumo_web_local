@@ -40,7 +40,7 @@ export function ProcessConfiguration({ parameters, onChange, inputSeries, busy }
       </div>
       <div id="process-diagram">
         <p className="process-help">{t("Select a reactor or flow to edit its parameters. Import each input from Excel: first sheet, time_h and value columns, starting at 0 h. All flows are per lane. Each value is held until the next time point, and the last value is held after the series ends. Imports persist after refresh; Reset keeps imported files.")}</p>
-        <div className="process-scroll">
+        <div className="process-scroll" tabIndex={0} role="region" aria-labelledby="process-title">
           <ProcessFlowDiagram parameters={parameters} selected={selected} onSelect={setSelected} />
         </div>
         <div className="process-editor">

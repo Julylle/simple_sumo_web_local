@@ -13,7 +13,7 @@ export function Sidebar({ tab, onTabChange }: SidebarProps) {
   return (
     <aside className="sidebar">
       <nav className="nav-section model-navigation" aria-label={t("Models")}>
-        <p>{t("MODELS")}</p>
+        <p>{t("Models")}</p>
         <ul className="model-menu">
           <li>
             <button className={"nav " + ((tab === "sumo" || tab === "realtime-sumo") ? "active" : "")} onClick={() => onTabChange("realtime-sumo")}>
