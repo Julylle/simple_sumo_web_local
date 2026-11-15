@@ -1,4 +1,9 @@
 runtime/
+live_states/
+raw_spool/
+.env
+.env.*
+*.log
 __pycache__/
 **/__pycache__/
 *.pyc
