@@ -37,11 +37,7 @@ def database_readings(mapping, at):
                 value, timestamp = float(row[0]), row[1].replace(tzinfo=timezone.utc)
                 if not math.isfinite(value) or timestamp > at:
                     continue
-<<<<<<< HEAD
-                result.append(dict(column=column, node_id=node, value=max(0.0, value),
-=======
                 result.append(dict(column=column, node_id=node, value=normalize_reading(column, value),
->>>>>>> feat/realtime-input-provenance
                     timestamp=timestamp.isoformat(),
                     source='database_current' if dbtime(timestamp) == dbtime(at) else 'database_previous',
                     age_seconds=(at-timestamp).total_seconds()))
@@ -72,11 +68,7 @@ async def read_resilient_snapshot(mapping, *, opc_timeout=60):
                     value = float(await client.get_node(node).read_value())
                     if not math.isfinite(value):
                         raise ValueError('Non-finite sensor value')
-<<<<<<< HEAD
-                    readings[column] = dict(column=column, node_id=node, value=max(0.0, value),
-=======
                     readings[column] = dict(column=column, node_id=node, value=normalize_reading(column, value),
->>>>>>> feat/realtime-input-provenance
                         timestamp=datetime.now(timezone.utc).isoformat(), source='opcua', age_seconds=0)
                 except Exception as exc:
                     errors[column] = f'{type(exc).__name__}: {exc}'

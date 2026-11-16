@@ -50,18 +50,9 @@ def test_additional_control_conversions_on_every_fresh_read(column, raw, expecte
 def test_negative_sensor_values_clamped_before_model_conversion():
     from services.model_inputs import scale_model_inputs
     key = 'Sumo__Plant__Sideflowdivider3__param__Qpumped_target'
-<<<<<<< HEAD
-    readings = [{'column': key, 'value': -334.88330078125}, {'column': DO, 'value': -1}]
-    assert scale_model_inputs(readings) == {key: 0, DO: 0}
-    assert readings[0]['value'] == -334.88330078125
-    for value in [float('nan'), float('inf'), float('-inf')]:
-        with pytest.raises(ValueError, match='Non-finite'):
-            scale_model_inputs([{'column': key, 'value': value}])
-=======
     readings = [{'timestamp': '2026-10-30T01:47:00+00:00', 'column': key, 'value': -334.88330078125}, {'timestamp': '2026-10-30T01:47:00+00:00', 'column': DO, 'value': -1}]
     assert scale_model_inputs(readings) == {key: pytest.approx(0.001 / 0.0417), DO: 0}
     assert readings[0]['value'] == -334.88330078125
     for value in [float('nan'), float('inf'), float('-inf')]:
         with pytest.raises(ValueError, match='Non-finite'):
             scale_model_inputs([{'timestamp': '2026-10-30T01:47:00+00:00', 'column': key, 'value': value}])
->>>>>>> feat/realtime-input-provenance

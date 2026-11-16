@@ -51,11 +51,7 @@ async def read_snapshot(mapping: dict[str, str], *, progress=None, skip_bad=Fals
                 ) from exc
             if not math.isfinite(value):
                 raise ValueError(f"Invalid reading for {context}: {value!r}")
-<<<<<<< HEAD
-            value = max(0.0, value)
-=======
             value = normalize_reading(column, value)
->>>>>>> feat/realtime-input-provenance
             readings.append({"column": column, "node_id": node_id, "value": value,
                              "timestamp": datetime.now(timezone.utc).isoformat()})
         if progress:
