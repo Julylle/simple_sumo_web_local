@@ -13,11 +13,7 @@ def scale_model_inputs(readings):
         column, value = reading['column'], float(reading['value'])
         if not math.isfinite(value):
             raise ValueError('Non-finite sensor input: ' + column)
-<<<<<<< HEAD
-        values[column] = max(0.0, value)
-=======
         values[column] = normalize_reading(column, value)
->>>>>>> feat/realtime-input-provenance
     # Raw OPC and historical numeric_value use the same CSV conversion once.
     for column in values:
         if column in INPUT_CONVERSIONS:

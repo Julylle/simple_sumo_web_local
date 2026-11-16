@@ -43,11 +43,7 @@ def make_windows(samples, step_seconds=300):
         for column, value in values.items():
             if not isinstance(value, (int, float)) or not math.isfinite(value):
                 raise ValueError(f"Invalid sensor value for {column}")
-<<<<<<< HEAD
-            bucket.setdefault(column, []).append(max(0.0, float(value)))
-=======
             bucket.setdefault(column, []).append(normalize_reading(column, float(value)))
->>>>>>> feat/realtime-input-provenance
     if not grouped:
         raise ValueError("No samples")
     columns = set(next(iter(grouped.values())))

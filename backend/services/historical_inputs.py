@@ -69,14 +69,9 @@ class HistoryWindow:
 def load_history(mapping, interval_seconds, history):
     """Aggregate in MySQL, not per sensor/per interval network round trips.
 
-<<<<<<< HEAD
-    Use acquisition UTC time and [start,end), replace negative readings with zero before averaging good numeric values.
-    Missing inputs retain their previous interval value in model units.
-=======
     Use acquisition UTC time and [start,end), replace negative readings per sensor policy before averaging good numeric values.
     Missing/invalid inputs retain their previous interval value in model units.
     Invalid recorded samples contribute that prior value to the interval mean.
->>>>>>> feat/realtime-input-provenance
     The first interval needs valid inputs or checkpoint-provided previous values.
     Resume queries only the unprocessed part of the original selected range.
     """
@@ -86,10 +81,6 @@ def load_history(mapping, interval_seconds, history):
     if begin >= end:
         return []
     filters, params = mapping_filters(mapping)
-<<<<<<< HEAD
-    sql = '''SELECT FLOOR(TIMESTAMPDIFF(MICROSECOND,%s,r.acquired_at)/%s) AS bucket,
-                    v.sumo_name, AVG(GREATEST(r.numeric_value, 0))
-=======
     valid = "r.quality='good' AND r.numeric_value IS NOT NULL AND ABS(r.numeric_value) <= 1.7976931348623157e308"
     sql = f'''SELECT FLOOR(TIMESTAMPDIFF(MICROSECOND,%s,r.acquired_at)/%s) AS bucket,
                     v.sumo_name, AVG(CASE WHEN {valid} AND v.sumo_name='{SIDEFLOW_COLUMN}' AND r.numeric_value < 0
@@ -99,7 +90,6 @@ def load_history(mapping, interval_seconds, history):
                     SUM(CASE WHEN {valid} AND r.numeric_value < 0 THEN 1 ELSE 0 END),
                     SUM(CASE WHEN {valid} THEN 0 ELSE 1 END),
                     MAX(CASE WHEN {valid} THEN NULL ELSE COALESCE(NULLIF(r.error,''), CONCAT('Invalid recorded input; quality=',r.quality)) END)
->>>>>>> feat/realtime-input-provenance
              FROM raw_data r JOIN raw_variables v ON v.id=r.variable_id
              WHERE r.acquired_at >= %s AND r.acquired_at < %s
                AND (''' + ' OR '.join(filters) + ''')
@@ -150,11 +140,6 @@ def load_history(mapping, interval_seconds, history):
             if read_error:
                 raise RuntimeError('Sensor database read failed with no previous input to reuse: ' + read_error)
             raise ValueError(f'History data missing at {left.isoformat()} with no previous input to reuse: ' + ', '.join(sorted(unseeded)))
-<<<<<<< HEAD
-        if any(not math.isfinite(value) for value in values.values()):
-            raise ValueError(f'Invalid historical input at {left.isoformat()}')
-=======
->>>>>>> feat/realtime-input-provenance
         converted = scale_model_inputs([{'column': name, 'value': value} for name, value in values.items()])
         converted.update({key: previous[key] for key in missing})
         provenance = dict(collected.get(index, {}))
